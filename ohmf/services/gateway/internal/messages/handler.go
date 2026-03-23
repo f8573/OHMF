@@ -680,11 +680,8 @@ func (h *Handler) Edit(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, r, http.StatusBadRequest, "invalid_request", "content required", nil)
 		return
 	}
-	if err := validateSendContent("text", req.Content); err != nil {
-		httpx.WriteError(w, r, http.StatusBadRequest, "invalid_request", err.Error(), nil)
-		return
-	}
-	if err := h.svc.EditMessage(r.Context(), userID, id, req.Content); err != nil {
+	deviceID, _ := middleware.DeviceIDFromContext(r.Context())
+	if err := h.svc.EditMessage(r.Context(), userID, deviceID, id, req.Content); err != nil {
 		switch err.Error() {
 		case "forbidden":
 			httpx.WriteError(w, r, http.StatusForbidden, "forbidden", "not allowed to edit", nil)
@@ -696,8 +693,17 @@ func (h *Handler) Edit(w http.ResponseWriter, r *http.Request) {
 			httpx.WriteError(w, r, http.StatusConflict, "message_not_editable", "message cannot be edited", nil)
 			return
 		}
-		if errors.Is(err, ErrEncryptedMessageEdit) {
-			httpx.WriteError(w, r, http.StatusConflict, "e2ee_edit_not_supported", "encrypted messages cannot be edited in this rollout", nil)
+		var invalidEditErr *invalidEditContentError
+		if errors.As(err, &invalidEditErr) {
+			httpx.WriteError(w, r, http.StatusBadRequest, "invalid_request", invalidEditErr.Error(), nil)
+			return
+		}
+		if errors.Is(err, ErrEncryptedMessageInvalid) || errors.Is(err, ErrSenderDeviceRequired) || errors.Is(err, ErrSenderDeviceInvalid) {
+			httpx.WriteError(w, r, http.StatusConflict, "invalid_encrypted_message", err.Error(), nil)
+			return
+		}
+		if errors.Is(err, ErrEncryptedEditDeviceMismatch) {
+			httpx.WriteError(w, r, http.StatusConflict, "e2ee_edit_requires_origin_device", "encrypted messages must be edited from the originating device", nil)
 			return
 		}
 		httpx.WriteError(w, r, http.StatusInternalServerError, "edit_failed", err.Error(), nil)
@@ -733,6 +739,33 @@ func (h *Handler) GetEditHistory(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{"edits": edits})
 }
 
+func (h *Handler) GetReactionHistory(w http.ResponseWriter, r *http.Request) {
+	userID, ok := middleware.UserIDFromContext(r.Context())
+	if !ok {
+		httpx.WriteError(w, r, http.StatusUnauthorized, "unauthorized", "missing auth", nil)
+		return
+	}
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		httpx.WriteError(w, r, http.StatusBadRequest, "invalid_request", "message id required", nil)
+		return
+	}
+	history, err := h.svc.GetMessageReactionHistory(r.Context(), userID, id)
+	if err != nil {
+		if errors.Is(err, ErrConversationAccess) {
+			httpx.WriteError(w, r, http.StatusForbidden, "forbidden", "not a member", nil)
+			return
+		}
+		if err.Error() == "message_not_found" {
+			httpx.WriteError(w, r, http.StatusNotFound, "not_found", "message not found", nil)
+			return
+		}
+		httpx.WriteError(w, r, http.StatusInternalServerError, "list_failed", err.Error(), nil)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"history": history})
+}
+
 func (h *Handler) Search(w http.ResponseWriter, r *http.Request) {
 	userID, ok := middleware.UserIDFromContext(r.Context())
 	if !ok {
@@ -762,9 +795,9 @@ func (h *Handler) Search(w http.ResponseWriter, r *http.Request) {
 	opts := SearchOptions{
 		SenderUserID: r.URL.Query().Get("sender_user_id"),
 		ContentType:  r.URL.Query().Get("content_type"),
-		SearchMode:   r.URL.Query().Get("search_mode"),   // "standard" | "fuzzy" | "exact"
-		MatchType:    r.URL.Query().Get("match_type"),     // "any" | "all"
-		SortBy:       r.URL.Query().Get("sort_by"),        // "relevance" | "recency"
+		SearchMode:   r.URL.Query().Get("search_mode"), // "standard" | "fuzzy" | "exact"
+		MatchType:    r.URL.Query().Get("match_type"),  // "any" | "all"
+		SortBy:       r.URL.Query().Get("sort_by"),     // "relevance" | "recency"
 		ExactMatch:   r.URL.Query().Get("exact_match") == "true",
 		IncludeEdits: r.URL.Query().Get("include_edits") == "true",
 	}
@@ -967,10 +1000,6 @@ func (h *Handler) AddReaction(w http.ResponseWriter, r *http.Request) {
 			httpx.WriteError(w, r, http.StatusForbidden, "forbidden", "not a member", nil)
 			return
 		}
-		if errors.Is(err, ErrEncryptedReactionBlocked) {
-			httpx.WriteError(w, r, http.StatusConflict, "e2ee_reactions_not_supported", "encrypted DM reactions are disabled in this rollout", nil)
-			return
-		}
 		httpx.WriteError(w, r, http.StatusInternalServerError, "add_reaction_failed", err.Error(), nil)
 		return
 	}
@@ -1010,10 +1039,6 @@ func (h *Handler) RemoveReaction(w http.ResponseWriter, r *http.Request) {
 	if err := h.svc.RemoveReaction(r.Context(), userID, id, body.Emoji); err != nil {
 		if errors.Is(err, ErrConversationAccess) {
 			httpx.WriteError(w, r, http.StatusForbidden, "forbidden", "not a member", nil)
-			return
-		}
-		if errors.Is(err, ErrEncryptedReactionBlocked) {
-			httpx.WriteError(w, r, http.StatusConflict, "e2ee_reactions_not_supported", "encrypted DM reactions are disabled in this rollout", nil)
 			return
 		}
 		httpx.WriteError(w, r, http.StatusInternalServerError, "remove_reaction_failed", err.Error(), nil)

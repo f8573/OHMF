@@ -33,14 +33,14 @@ type miniappServiceInterface interface {
 }
 
 type Handler struct {
-	tokens           *token.Service
-	messages         *messages.Service
-	miniappService   any // P4.3: Mini-app service for session validation (avoids circular import)
-	redis            *redis.Client
-	limiter          *limit.TokenBucket
-	enableSend       bool
-	replication      *replication.Store
-	upgrader         websocket.Upgrader
+	tokens         *token.Service
+	messages       *messages.Service
+	miniappService any // P4.3: Mini-app service for session validation (avoids circular import)
+	redis          *redis.Client
+	limiter        *limit.TokenBucket
+	enableSend     bool
+	replication    *replication.Store
+	upgrader       websocket.Upgrader
 
 	mu      sync.RWMutex
 	clients map[string]map[*client]struct{}
@@ -57,7 +57,7 @@ type client struct {
 
 	// P4.3: Mini-app session subscriptions (maps session_id -> cancel func)
 	sessionSubscriptions map[string]context.CancelFunc
-	clientCtx            context.Context        // Context tied to client connection lifecycle (removed: explicit timeout, now uses cleanup cancellation)
+	clientCtx            context.Context // Context tied to client connection lifecycle (removed: explicit timeout, now uses cleanup cancellation)
 	clientCancel         context.CancelFunc
 
 	sendMu sync.RWMutex
@@ -110,13 +110,13 @@ func NewHandlerReadOnly(tokens *token.Service, messageService *messages.Service,
 
 func newHandlerInternal(tokens *token.Service, messageService *messages.Service, redisClient *redis.Client, limiter *limit.TokenBucket, enableSend bool, store *replication.Store, miniappService any) *Handler {
 	return &Handler{
-		tokens:           tokens,
-		messages:         messageService,
-		miniappService:   miniappService,
-		redis:            redisClient,
-		limiter:          limiter,
-		enableSend:       enableSend,
-		replication:      store,
+		tokens:         tokens,
+		messages:       messageService,
+		miniappService: miniappService,
+		redis:          redisClient,
+		limiter:        limiter,
+		enableSend:     enableSend,
+		replication:    store,
 		upgrader: websocket.Upgrader{
 			CheckOrigin: func(_ *http.Request) bool { return true },
 		},
@@ -550,8 +550,7 @@ func (h *Handler) subscribeUserEvents(ctx context.Context, c *client) {
 			observability.RecordWSMessage("user_event_unmarshal_error", evt.Type)
 			continue
 		}
-		eventName := h.userEventTypeName(evt.Type)
-		h.sendJSON(c, eventName, evt.Payload)
+		h.sendJSON(c, "event", evt)
 	}
 }
 

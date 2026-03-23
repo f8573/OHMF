@@ -235,7 +235,7 @@ func TestEditMessagePublishesSyncEventAndProjectsUpdatedContent(t *testing.T) {
 		t.Fatal("timed out waiting for initial sync event")
 	}
 
-	if err := svc.EditMessage(ctx, senderID, sendResult.Message.MessageID, map[string]any{"text": "after"}); err != nil {
+	if err := svc.EditMessage(ctx, senderID, "", sendResult.Message.MessageID, map[string]any{"text": "after"}); err != nil {
 		t.Fatalf("edit message: %v", err)
 	}
 

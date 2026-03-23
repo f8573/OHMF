@@ -278,7 +278,25 @@ func (s *Service) DeleteMessage(ctx context.Context, actorUserID, messageID stri
 
 // removed: deletion flow comments repeated the control flow and SQL
 
-func (s *Service) EditMessage(ctx context.Context, actorUserID, messageID string, content map[string]any) error {
+type invalidEditContentError struct {
+	err error
+}
+
+func (e *invalidEditContentError) Error() string {
+	if e == nil || e.err == nil {
+		return "invalid_request"
+	}
+	return e.err.Error()
+}
+
+func (e *invalidEditContentError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.err
+}
+
+func (s *Service) EditMessage(ctx context.Context, actorUserID, actorDeviceID, messageID string, content map[string]any) error {
 	tx, err := s.db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return err
@@ -293,14 +311,45 @@ func (s *Service) EditMessage(ctx context.Context, actorUserID, messageID string
 	var transport string
 	var serverOrder int64
 	var createdAt time.Time
+	var deliveredAt sql.NullTime
+	var readAt sql.NullTime
 	var deletedAt sql.NullTime
 	var expiresAt sql.NullTime
 	var previousContent string
 	err = tx.QueryRow(ctx, `
-		SELECT sender_user_id::text, COALESCE(sender_device_id::text, ''), conversation_id::text, content_type, client_generated_id, transport, server_order, created_at, deleted_at, expires_at, content::text
-		FROM messages
-		WHERE id = $1
-	`, messageID).Scan(&senderID, &senderDeviceID, &convID, &contentType, &clientGeneratedID, &transport, &serverOrder, &createdAt, &deletedAt, &expiresAt, &previousContent)
+		SELECT
+			m.sender_user_id::text,
+			COALESCE(m.sender_device_id::text, ''),
+			m.conversation_id::text,
+			m.content_type,
+			m.client_generated_id,
+			m.transport,
+			m.server_order,
+			m.created_at,
+			delivered_meta.delivered_at,
+			read_meta.read_at,
+			m.deleted_at,
+			m.expires_at,
+			m.content::text
+		FROM messages m
+		LEFT JOIN LATERAL (
+			SELECT MAX(de.created_at) AS delivered_at
+			FROM domain_events de
+			WHERE de.conversation_id = m.conversation_id
+			  AND de.event_type = 'delivery_checkpoint_advanced'
+			  AND COALESCE((de.payload->>'through_server_order')::bigint, 0) >= m.server_order
+			  AND COALESCE(de.payload->>'user_id', '') <> $2::text
+		) delivered_meta ON TRUE
+		LEFT JOIN LATERAL (
+			SELECT MAX(other.last_read_at) AS read_at
+			FROM conversation_members other
+			WHERE other.conversation_id = m.conversation_id
+			  AND other.user_id <> $2::uuid
+			  AND other.last_read_server_order >= m.server_order
+			  AND other.last_read_at IS NOT NULL
+		) read_meta ON TRUE
+		WHERE m.id = $1
+	`, messageID, actorUserID).Scan(&senderID, &senderDeviceID, &convID, &contentType, &clientGeneratedID, &transport, &serverOrder, &createdAt, &deliveredAt, &readAt, &deletedAt, &expiresAt, &previousContent)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return fmt.Errorf("message_not_found")
@@ -316,18 +365,52 @@ func (s *Service) EditMessage(ctx context.Context, actorUserID, messageID string
 	if expiresAt.Valid && !expiresAt.Time.After(time.Now().UTC()) {
 		return fmt.Errorf("message_not_editable")
 	}
-	if contentType == "encrypted" {
-		return ErrEncryptedMessageEdit
+
+	contentForStorage := cloneMessageContent(content)
+	if contentForStorage == nil {
+		contentForStorage = map[string]any{}
 	}
-	if contentType != "text" {
+	previousContentForStorage := parseStoredMessageContent(previousContent)
+
+	if contentType != "text" && contentType != "encrypted" {
 		return fmt.Errorf("message_not_editable")
 	}
-
-	if _, err := messageLifecycleHintsFromContent(content); err != nil {
-		return err
+	if err := validateSendContent(contentType, contentForStorage); err != nil {
+		return &invalidEditContentError{err: err}
+	}
+	encryptionScheme := ""
+	if contentType == "encrypted" {
+		originDeviceID := strings.TrimSpace(senderDeviceID.String)
+		if originDeviceID == "" {
+			originDeviceID = encryptionSenderDeviceID(previousContentForStorage)
+		}
+		currentDeviceID := strings.TrimSpace(actorDeviceID)
+		if originDeviceID == "" {
+			return ErrEncryptedMessageInvalid
+		}
+		if currentDeviceID == "" {
+			return ErrSenderDeviceRequired
+		}
+		ownsDevice, err := s.senderOwnsDevice(ctx, tx, actorUserID, currentDeviceID)
+		if err != nil {
+			return err
+		}
+		if !ownsDevice {
+			return ErrSenderDeviceInvalid
+		}
+		if currentDeviceID != originDeviceID {
+			return ErrEncryptedEditDeviceMismatch
+		}
+		encryptedMetadata, err := ProcessEncryptedMessage(ctx, tx, actorUserID, currentDeviceID, contentForStorage)
+		if err != nil {
+			return &invalidEditContentError{err: err}
+		}
+		encryptionScheme = encryptedMetadata.Scheme
+		senderDeviceID.String = originDeviceID
+		senderDeviceID.Valid = true
 	}
 
-	contentJSON, err := json.Marshal(content)
+	contentJSON, err := json.Marshal(contentForStorage)
 	if err != nil {
 		return err
 	}
@@ -336,10 +419,22 @@ func (s *Service) EditMessage(ctx context.Context, actorUserID, messageID string
 	err = tx.QueryRow(ctx, `
 		UPDATE messages
 		SET content = $2::jsonb,
-			edited_at = now()
+			edited_at = now(),
+			sender_device_id = CASE
+				WHEN content_type = 'encrypted' AND sender_device_id IS NULL THEN NULLIF($3, '')::uuid
+				ELSE sender_device_id
+			END,
+			is_encrypted = CASE
+				WHEN content_type = 'encrypted' THEN TRUE
+				ELSE is_encrypted
+			END,
+			encryption_scheme = CASE
+				WHEN content_type = 'encrypted' THEN NULLIF($4, '')
+				ELSE encryption_scheme
+			END
 		WHERE id = $1
 		RETURNING edited_at
-	`, messageID, string(contentJSON)).Scan(&editedAt)
+	`, messageID, string(contentJSON), strings.TrimSpace(senderDeviceID.String), encryptionScheme).Scan(&editedAt)
 	if err != nil {
 		return err
 	}
@@ -349,9 +444,19 @@ func (s *Service) EditMessage(ctx context.Context, actorUserID, messageID string
 	}
 
 	if _, err := tx.Exec(ctx, `
-		INSERT INTO message_edits (message_id, conversation_id, edited_by, previous_content, new_content, edited_at)
-		VALUES ($1::uuid, $2::uuid, $3::uuid, $4::jsonb, $5::jsonb, $6)
-	`, messageID, convID, actorUserID, previousContent, string(contentJSON), editedAt); err != nil {
+		INSERT INTO message_edits (
+			message_id,
+			conversation_id,
+			edited_by,
+			previous_content,
+			new_content,
+			sent_at,
+			delivered_at,
+			read_at,
+			edited_at
+		)
+		VALUES ($1::uuid, $2::uuid, $3::uuid, $4::jsonb, $5::jsonb, $6, $7, $8, $9)
+	`, messageID, convID, actorUserID, previousContent, string(contentJSON), createdAt, nullableTime(deliveredAt), nullableTime(readAt), editedAt); err != nil {
 		return err
 	}
 
@@ -367,7 +472,7 @@ func (s *Service) EditMessage(ctx context.Context, actorUserID, messageID string
 			SenderUserID:      senderID,
 			SenderDeviceID:    senderDeviceID.String,
 			ContentType:       contentType,
-			Content:           content,
+			Content:           contentForStorage,
 			ClientGeneratedID: clientGeneratedID.String,
 			Transport:         transport,
 			ServerOrder:       serverOrder,
@@ -385,9 +490,28 @@ func (s *Service) EditMessage(ctx context.Context, actorUserID, messageID string
 
 type EditRecord struct {
 	EditedAt        string         `json:"edited_at"`
+	SentAt          string         `json:"sent_at,omitempty"`
+	DeliveredAt     string         `json:"delivered_at,omitempty"`
+	ReadAt          string         `json:"read_at,omitempty"`
 	PreviousContent map[string]any `json:"previous_content"`
 	NewContent      map[string]any `json:"new_content"`
 	EditedBy        string         `json:"edited_by"`
+}
+
+type ReactionHistoryRecord struct {
+	ActedAt     string `json:"acted_at"`
+	SentAt      string `json:"sent_at,omitempty"`
+	DeliveredAt string `json:"delivered_at,omitempty"`
+	ReadAt      string `json:"read_at,omitempty"`
+	Emoji       string `json:"emoji"`
+	Action      string `json:"action"`
+	ActedBy     string `json:"acted_by"`
+}
+
+type messageTimelineSnapshot struct {
+	SentAt      time.Time
+	DeliveredAt sql.NullTime
+	ReadAt      sql.NullTime
 }
 
 func (s *Service) GetMessageEditHistory(ctx context.Context, actorUserID, messageID string) ([]EditRecord, error) {
@@ -406,9 +530,33 @@ func (s *Service) GetMessageEditHistory(ctx context.Context, actorUserID, messag
 	}
 
 	rows, err := s.db.Query(ctx, `
-		SELECT edited_at, previous_content, new_content, COALESCE(edited_by::text, '') AS edited_by
-		FROM message_edits
-		WHERE message_id = $1::uuid
+		SELECT
+			me.edited_at,
+			COALESCE(me.sent_at, m.created_at) AS sent_at,
+			COALESCE(me.delivered_at, delivered_meta.delivered_at) AS delivered_at,
+			COALESCE(me.read_at, read_meta.read_at) AS read_at,
+			me.previous_content,
+			me.new_content,
+			COALESCE(me.edited_by::text, '') AS edited_by
+		FROM message_edits me
+		JOIN messages m ON m.id = me.message_id
+		LEFT JOIN LATERAL (
+			SELECT MAX(de.created_at) AS delivered_at
+			FROM domain_events de
+			WHERE de.conversation_id = m.conversation_id
+			  AND de.event_type = 'delivery_checkpoint_advanced'
+			  AND COALESCE((de.payload->>'through_server_order')::bigint, 0) >= m.server_order
+			  AND COALESCE(de.payload->>'user_id', '') <> m.sender_user_id::text
+		) delivered_meta ON TRUE
+		LEFT JOIN LATERAL (
+			SELECT MAX(other.last_read_at) AS read_at
+			FROM conversation_members other
+			WHERE other.conversation_id = m.conversation_id
+			  AND other.user_id <> m.sender_user_id
+			  AND other.last_read_server_order >= m.server_order
+			  AND other.last_read_at IS NOT NULL
+		) read_meta ON TRUE
+		WHERE me.message_id = $1::uuid
 		ORDER BY edited_at DESC
 	`, messageID)
 	if err != nil {
@@ -419,9 +567,23 @@ func (s *Service) GetMessageEditHistory(ctx context.Context, actorUserID, messag
 	var edits []EditRecord
 	for rows.Next() {
 		var edit EditRecord
+		var editedAt time.Time
+		var sentAt sql.NullTime
+		var deliveredAt sql.NullTime
+		var readAt sql.NullTime
 		var prevContentStr, newContentStr string
-		if err := rows.Scan(&edit.EditedAt, &prevContentStr, &newContentStr, &edit.EditedBy); err != nil {
+		if err := rows.Scan(&editedAt, &sentAt, &deliveredAt, &readAt, &prevContentStr, &newContentStr, &edit.EditedBy); err != nil {
 			return nil, err
+		}
+		edit.EditedAt = editedAt.UTC().Format(time.RFC3339Nano)
+		if sentAt.Valid {
+			edit.SentAt = sentAt.Time.UTC().Format(time.RFC3339Nano)
+		}
+		if deliveredAt.Valid {
+			edit.DeliveredAt = deliveredAt.Time.UTC().Format(time.RFC3339Nano)
+		}
+		if readAt.Valid {
+			edit.ReadAt = readAt.Time.UTC().Format(time.RFC3339Nano)
 		}
 		if err := json.Unmarshal([]byte(prevContentStr), &edit.PreviousContent); err != nil {
 			return nil, err
@@ -638,19 +800,17 @@ func (s *Service) AddReaction(ctx context.Context, actorUserID, messageID, emoji
 
 	var convID string
 	var serverOrder int64
+	var createdAt time.Time
 	var contentType string
 	var encryptionState string
 	var conversationType string
 	if err := tx.QueryRow(ctx, `
-		SELECT m.conversation_id::text, m.server_order, m.content_type, COALESCE(c.encryption_state, 'PLAINTEXT'), c.type
+		SELECT m.conversation_id::text, m.server_order, m.created_at, m.content_type, COALESCE(c.encryption_state, 'PLAINTEXT'), c.type
 		FROM messages m
 		JOIN conversations c ON c.id = m.conversation_id
 		WHERE m.id = $1
-	`, messageID).Scan(&convID, &serverOrder, &contentType, &encryptionState, &conversationType); err != nil {
+	`, messageID).Scan(&convID, &serverOrder, &createdAt, &contentType, &encryptionState, &conversationType); err != nil {
 		return err
-	}
-	if contentType == "encrypted" && strings.EqualFold(conversationType, "DM") && strings.EqualFold(encryptionState, "ENCRYPTED") {
-		return ErrEncryptedReactionBlocked
 	}
 	ok, err := s.hasMembership(ctx, tx, actorUserID, convID)
 	if err != nil {
@@ -670,6 +830,13 @@ func (s *Service) AddReaction(ctx context.Context, actorUserID, messageID, emoji
 	if tag.RowsAffected() == 0 {
 		return tx.Commit(ctx)
 	}
+	snapshot, err := s.loadMessageTimelineSnapshotTx(ctx, tx, actorUserID, convID, serverOrder, createdAt)
+	if err != nil {
+		return err
+	}
+	if err := s.appendReactionHistoryTx(ctx, tx, actorUserID, messageID, convID, emoji, "added", snapshot, time.Now().UTC()); err != nil {
+		return err
+	}
 	if err := s.appendReactionDomainEventTx(ctx, tx, actorUserID, messageID, convID, serverOrder); err != nil {
 		return err
 	}
@@ -685,19 +852,17 @@ func (s *Service) RemoveReaction(ctx context.Context, actorUserID, messageID, em
 
 	var convID string
 	var serverOrder int64
+	var createdAt time.Time
 	var contentType string
 	var encryptionState string
 	var conversationType string
 	if err := tx.QueryRow(ctx, `
-		SELECT m.conversation_id::text, m.server_order, m.content_type, COALESCE(c.encryption_state, 'PLAINTEXT'), c.type
+		SELECT m.conversation_id::text, m.server_order, m.created_at, m.content_type, COALESCE(c.encryption_state, 'PLAINTEXT'), c.type
 		FROM messages m
 		JOIN conversations c ON c.id = m.conversation_id
 		WHERE m.id = $1
-	`, messageID).Scan(&convID, &serverOrder, &contentType, &encryptionState, &conversationType); err != nil {
+	`, messageID).Scan(&convID, &serverOrder, &createdAt, &contentType, &encryptionState, &conversationType); err != nil {
 		return err
-	}
-	if contentType == "encrypted" && strings.EqualFold(conversationType, "DM") && strings.EqualFold(encryptionState, "ENCRYPTED") {
-		return ErrEncryptedReactionBlocked
 	}
 	ok, err := s.hasMembership(ctx, tx, actorUserID, convID)
 	if err != nil {
@@ -715,6 +880,13 @@ func (s *Service) RemoveReaction(ctx context.Context, actorUserID, messageID, em
 	if tag.RowsAffected() == 0 {
 		return tx.Commit(ctx)
 	}
+	snapshot, err := s.loadMessageTimelineSnapshotTx(ctx, tx, actorUserID, convID, serverOrder, createdAt)
+	if err != nil {
+		return err
+	}
+	if err := s.appendReactionHistoryTx(ctx, tx, actorUserID, messageID, convID, emoji, "removed", snapshot, time.Now().UTC()); err != nil {
+		return err
+	}
 	if err := s.appendReactionDomainEventTx(ctx, tx, actorUserID, messageID, convID, serverOrder); err != nil {
 		return err
 	}
@@ -723,6 +895,60 @@ func (s *Service) RemoveReaction(ctx context.Context, actorUserID, messageID, em
 
 func (s *Service) ListReactions(ctx context.Context, messageID string) (map[string]int64, error) {
 	return s.listReactionsWithQuery(ctx, s.db, messageID)
+}
+
+func (s *Service) GetMessageReactionHistory(ctx context.Context, actorUserID, messageID string) ([]ReactionHistoryRecord, error) {
+	var conversationID string
+	err := s.db.QueryRow(ctx, `SELECT conversation_id::text FROM messages WHERE id = $1::uuid`, messageID).Scan(&conversationID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("message_not_found")
+		}
+		return nil, err
+	}
+
+	ok, err := s.hasMembership(ctx, s.db, actorUserID, conversationID)
+	if err != nil || !ok {
+		return nil, ErrConversationAccess
+	}
+
+	rows, err := s.db.Query(ctx, `
+		SELECT acted_at, sent_at, delivered_at, read_at, emoji, action, COALESCE(acted_by::text, '') AS acted_by
+		FROM message_reaction_events
+		WHERE message_id = $1::uuid
+		ORDER BY acted_at DESC, id DESC
+	`, messageID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var history []ReactionHistoryRecord
+	for rows.Next() {
+		var item ReactionHistoryRecord
+		var actedAt time.Time
+		var sentAt sql.NullTime
+		var deliveredAt sql.NullTime
+		var readAt sql.NullTime
+		if err := rows.Scan(&actedAt, &sentAt, &deliveredAt, &readAt, &item.Emoji, &item.Action, &item.ActedBy); err != nil {
+			return nil, err
+		}
+		item.ActedAt = actedAt.UTC().Format(time.RFC3339Nano)
+		if sentAt.Valid {
+			item.SentAt = sentAt.Time.UTC().Format(time.RFC3339Nano)
+		}
+		if deliveredAt.Valid {
+			item.DeliveredAt = deliveredAt.Time.UTC().Format(time.RFC3339Nano)
+		}
+		if readAt.Valid {
+			item.ReadAt = readAt.Time.UTC().Format(time.RFC3339Nano)
+		}
+		history = append(history, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return history, nil
 }
 
 func (s *Service) latestPinState(ctx context.Context, q querier, messageID, conversationID string) (string, error) {
@@ -743,6 +969,49 @@ func (s *Service) latestPinState(ctx context.Context, q querier, messageID, conv
 		return "", err
 	}
 	return state, nil
+}
+
+func (s *Service) loadMessageTimelineSnapshotTx(ctx context.Context, tx pgx.Tx, actorUserID, conversationID string, serverOrder int64, sentAt time.Time) (messageTimelineSnapshot, error) {
+	var snapshot messageTimelineSnapshot
+	snapshot.SentAt = sentAt
+	err := tx.QueryRow(ctx, `
+		SELECT
+			(
+				SELECT MAX(de.created_at)
+				FROM domain_events de
+				WHERE de.conversation_id = $1::uuid
+				  AND de.event_type = 'delivery_checkpoint_advanced'
+				  AND COALESCE((de.payload->>'through_server_order')::bigint, 0) >= $2
+				  AND COALESCE(de.payload->>'user_id', '') <> $3::text
+			) AS delivered_at,
+			(
+				SELECT MAX(other.last_read_at)
+				FROM conversation_members other
+				WHERE other.conversation_id = $1::uuid
+				  AND other.user_id <> $3::uuid
+				  AND other.last_read_server_order >= $2
+				  AND other.last_read_at IS NOT NULL
+			) AS read_at
+	`, conversationID, serverOrder, actorUserID).Scan(&snapshot.DeliveredAt, &snapshot.ReadAt)
+	return snapshot, err
+}
+
+func (s *Service) appendReactionHistoryTx(ctx context.Context, tx pgx.Tx, actorUserID, messageID, conversationID, emoji, action string, snapshot messageTimelineSnapshot, actedAt time.Time) error {
+	_, err := tx.Exec(ctx, `
+		INSERT INTO message_reaction_events (
+			message_id,
+			conversation_id,
+			acted_by,
+			emoji,
+			action,
+			sent_at,
+			delivered_at,
+			read_at,
+			acted_at
+		)
+		VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8, $9)
+	`, messageID, conversationID, actorUserID, emoji, action, snapshot.SentAt, nullableTime(snapshot.DeliveredAt), nullableTime(snapshot.ReadAt), actedAt)
+	return err
 }
 
 func (s *Service) loadMessageViewByID(ctx context.Context, actorUserID, messageID string) (Message, error) {
@@ -896,6 +1165,31 @@ func cloneMessageContent(content map[string]any) map[string]any {
 	return out
 }
 
+func parseStoredMessageContent(raw string) map[string]any {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	var out map[string]any
+	if err := json.Unmarshal([]byte(raw), &out); err != nil {
+		return nil
+	}
+	return out
+}
+
+func encryptionSenderDeviceID(content map[string]any) string {
+	if content == nil {
+		return ""
+	}
+	encryption, _ := content["encryption"].(map[string]any)
+	return strings.TrimSpace(textValue(encryption["sender_device_id"]))
+}
+
+func textValue(value any) string {
+	text, _ := value.(string)
+	return text
+}
+
 func resolveReplyTarget(ctx context.Context, tx pgx.Tx, conversationID string, content map[string]any) (string, error) {
 	if content == nil {
 		return "", nil
@@ -977,6 +1271,13 @@ func nullableTimestamp(v string) any {
 		return nil
 	}
 	return v
+}
+
+func nullableTime(v sql.NullTime) any {
+	if !v.Valid {
+		return nil
+	}
+	return v.Time
 }
 
 func resolveMessageExpiration(ctx context.Context, q interface {
@@ -1082,15 +1383,15 @@ func (s *Service) ListDeliveries(ctx context.Context, messageID string) ([]Deliv
 }
 
 var (
-	ErrConversationAccess       = errors.New("conversation_access_denied")
-	ErrConversationBlocked      = errors.New("conversation_blocked")
-	ErrRateLimited              = errors.New("rate_limited")
-	ErrInvalidMessageEffectType = errors.New("invalid_message_effect_type")
-	ErrEncryptedMessageRequired = errors.New("encrypted_message_required")
-	ErrEncryptedMessageInvalid  = errors.New("encrypted_message_invalid")
-	ErrEncryptedReactionBlocked = errors.New("e2ee_reactions_not_supported")
-	ErrSenderDeviceRequired     = errors.New("sender_device_required")
-	ErrSenderDeviceInvalid      = errors.New("sender_device_invalid")
+	ErrConversationAccess          = errors.New("conversation_access_denied")
+	ErrConversationBlocked         = errors.New("conversation_blocked")
+	ErrRateLimited                 = errors.New("rate_limited")
+	ErrInvalidMessageEffectType    = errors.New("invalid_message_effect_type")
+	ErrEncryptedMessageRequired    = errors.New("encrypted_message_required")
+	ErrEncryptedMessageInvalid     = errors.New("encrypted_message_invalid")
+	ErrEncryptedEditDeviceMismatch = errors.New("encrypted_edit_requires_origin_device")
+	ErrSenderDeviceRequired        = errors.New("sender_device_required")
+	ErrSenderDeviceInvalid         = errors.New("sender_device_invalid")
 )
 
 type RateLimitError struct {

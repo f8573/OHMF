@@ -225,7 +225,7 @@ func main() {
 	discoveryHandler := discovery.NewHandler(pool, cfg.DiscoveryPepper)
 	convHandler := conversations.NewHandler(convSvc)
 	// removed: trivial constructor wrappers inlined
-	devHandler := devices.NewHandler(devSvc)
+	devHandler := devices.NewHandler(devSvc, deviceKeysSvc)
 	mediaHandler := media.NewHandler(mediaSvc)
 	carrierHandler := &carrier.Handler{DB: &pgxAdapter{p: pool}}
 	presenceHandler := presence.NewHandler(presenceSvc)
@@ -492,6 +492,7 @@ func main() {
 			protected.Delete("/messages/{id}", msgHandler.Delete)
 			protected.Get("/messages/{id}/deliveries", msgHandler.ListDeliveries)
 			protected.Get("/messages/{id}/edits", msgHandler.GetEditHistory)
+			protected.Get("/messages/{id}/reactions/history", msgHandler.GetReactionHistory)
 			protected.Post("/conversations/{id}/read", msgHandler.MarkRead)
 			protected.Get("/conversations/{id}/read-status", msgHandler.GetReadStatus)
 			protected.Post("/messages/{id}/redact", msgHandler.Redact)

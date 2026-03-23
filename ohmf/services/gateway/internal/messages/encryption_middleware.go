@@ -6,6 +6,9 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"sort"
+	"strconv"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"ohmf/services/gateway/internal/e2ee"
@@ -13,14 +16,14 @@ import (
 
 // EncryptedMessageMetadata represents extracted metadata from an encrypted message
 type EncryptedMessageMetadata struct {
-	IsEncrypted      bool
-	Scheme           string
-	SenderUserID     string
-	SenderDeviceID   string
-	SenderSignature  string
-	Recipients       []RecipientKeyInfo
-	Ciphertext       string
-	Nonce            string
+	IsEncrypted     bool
+	Scheme          string
+	SenderUserID    string
+	SenderDeviceID  string
+	SenderSignature string
+	Recipients      []RecipientKeyInfo
+	Ciphertext      string
+	Nonce           string
 }
 
 // RecipientKeyInfo represents recipient information from encrypted message
@@ -93,16 +96,6 @@ func ProcessEncryptedMessage(
 		return nil, fmt.Errorf("failed to query sender device: %w", err)
 	}
 
-	// Verify sender signature over ciphertext
-	valid, err := e2ee.VerifySignature(signingPublicKeyB64, []byte(ciphertext), senderSignature)
-	if err != nil {
-		return nil, fmt.Errorf("failed to verify signature: %w", err)
-	}
-
-	if !valid {
-		return nil, errors.New("invalid_sender_signature")
-	}
-
 	// Extract and validate recipients
 	recipientsRaw, ok := encryptionObj["recipients"].([]any)
 	if !ok || len(recipientsRaw) == 0 {
@@ -154,6 +147,22 @@ func ProcessEncryptedMessage(
 		})
 	}
 
+	signaturePayload := encryptedEnvelopeSignaturePayload(
+		scheme,
+		messageInt(encryptionObj["conversation_epoch"], 1),
+		nonce,
+		ciphertext,
+		recipientsRaw,
+	)
+	valid, err := e2ee.VerifySignature(signingPublicKeyB64, []byte(signaturePayload), senderSignature)
+	if err != nil {
+		return nil, fmt.Errorf("failed to verify signature: %w", err)
+	}
+
+	if !valid {
+		return nil, errors.New("invalid_sender_signature")
+	}
+
 	// Validate base64 encoding of ciphertext and nonce
 	if _, err := base64.StdEncoding.DecodeString(ciphertext); err != nil {
 		return nil, errors.New("invalid_ciphertext_encoding")
@@ -175,6 +184,69 @@ func ProcessEncryptedMessage(
 	}
 
 	return metadata, nil
+}
+
+func encryptedEnvelopeSignaturePayload(scheme string, conversationEpoch int64, nonce, ciphertext string, recipients []any) string {
+	return strings.Join([]string{
+		strings.TrimSpace(scheme),
+		strconv.FormatInt(defaultInt64(conversationEpoch, 1), 10),
+		strings.TrimSpace(nonce),
+		strings.TrimSpace(ciphertext),
+		recipientHeaderSummary(recipients),
+	}, "|")
+}
+
+func recipientHeaderSummary(recipients []any) string {
+	if len(recipients) == 0 {
+		return ""
+	}
+	summaries := make([]string, 0, len(recipients))
+	for _, raw := range recipients {
+		recipient, _ := raw.(map[string]any)
+		initialSession, _ := recipient["initial_session"].(map[string]any)
+		summaries = append(summaries, strings.Join([]string{
+			textField(recipient["user_id"]),
+			textField(recipient["device_id"]),
+			textField(recipient["ratchet_public_key"]),
+			strconv.FormatInt(messageInt(recipient["previous_chain_length"], 0), 10),
+			strconv.FormatInt(messageInt(recipient["message_number"], 0), 10),
+			textField(initialSession["sender_ephemeral_public_key"]),
+			strconv.FormatInt(messageInt(initialSession["signed_prekey_id"], 0), 10),
+			strconv.FormatInt(messageInt(initialSession["one_time_prekey_id"], 0), 10),
+		}, ":"))
+	}
+	sort.Strings(summaries)
+	return strings.Join(summaries, ";")
+}
+
+func textField(value any) string {
+	text, _ := value.(string)
+	return strings.TrimSpace(text)
+}
+
+func messageInt(value any, fallback int64) int64 {
+	switch v := value.(type) {
+	case int:
+		return int64(v)
+	case int64:
+		return v
+	case float64:
+		return int64(v)
+	case float32:
+		return int64(v)
+	case string:
+		if parsed, err := strconv.ParseInt(strings.TrimSpace(v), 10, 64); err == nil {
+			return parsed
+		}
+	}
+	return fallback
+}
+
+func defaultInt64(value, fallback int64) int64 {
+	if value == 0 {
+		return fallback
+	}
+	return value
 }
 
 // ValidateEncryptionSignature verifies Ed25519 signature (in isolation)

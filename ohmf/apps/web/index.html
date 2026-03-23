@@ -172,6 +172,21 @@
           </div>
         </section>
 
+        <section class="message-metadata-window hidden" id="message-metadata-window" aria-label="Message details" aria-modal="true" role="dialog">
+          <button type="button" class="message-metadata-backdrop" id="message-metadata-backdrop" aria-label="Close message details"></button>
+          <div class="message-metadata-modal">
+            <div class="miniapp-launcher-head">
+              <div>
+                <p class="miniapp-kicker">Message Details</p>
+                <h2 class="miniapp-title" id="message-metadata-title">Message details</h2>
+                <p class="miniapp-preview-subtitle" id="message-metadata-subtitle">Loading metadata.</p>
+              </div>
+              <button type="button" class="icon-btn miniapp-close-btn" id="message-metadata-close-btn" aria-label="Close message details">x</button>
+            </div>
+            <div class="message-metadata-body" id="message-metadata-body"></div>
+          </div>
+        </section>
+
         <form class="composer" id="composer">
           <div class="composer-reply hidden" id="composer-reply">
             <div class="composer-reply-copy">

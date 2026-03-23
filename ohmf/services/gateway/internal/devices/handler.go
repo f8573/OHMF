@@ -6,18 +6,20 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	"ohmf/services/gateway/internal/devicekeys"
 	"ohmf/services/gateway/internal/httpx"
 	"ohmf/services/gateway/internal/middleware"
 )
 
 // Handler handles HTTP requests for device management
 type Handler struct {
-	svc *Service
+	svc     *Service
+	keysSvc *devicekeys.Service
 }
 
 // NewHandler creates a handler for device operations
-func NewHandler(svc *Service) *Handler {
-	return &Handler{svc: svc}
+func NewHandler(svc *Service, keysSvc *devicekeys.Service) *Handler {
+	return &Handler{svc: svc, keysSvc: keysSvc}
 }
 
 // Register registers a new device for the user
@@ -37,6 +39,17 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, r, http.StatusInternalServerError, "register_failed", err.Error(), nil)
 		return
 	}
+
+	// Auto-generate and publish E2EE key bundle for the new device
+	if h.keysSvc != nil {
+		if err := h.keysSvc.GenerateAndPublishDefaultBundle(r.Context(), userID, id); err != nil {
+			// Log the error but don't fail the device registration
+			// The device is already created, but key generation failed
+			httpx.WriteError(w, r, http.StatusInternalServerError, "key_generation_failed", err.Error(), nil)
+			return
+		}
+	}
+
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{"device_id": id})
 }
 

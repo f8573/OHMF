@@ -494,7 +494,7 @@ func (h *Handler) ListBundlesForUser(ctx context.Context, userID string) ([]Bund
 func (h *Handler) ClaimBundles(ctx context.Context, userID string) ([]Bundle, error) {
 	tx, err := h.DB.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("begin_tx_failed: %w", err)
 	}
 	defer tx.Rollback(ctx)
 
@@ -522,7 +522,7 @@ func (h *Handler) ClaimBundles(ctx context.Context, userID string) ([]Bundle, er
 		FOR UPDATE
 	`, userID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("bundle_query_failed: %w", err)
 	}
 	defer rows.Close()
 
@@ -549,7 +549,7 @@ func (h *Handler) ClaimBundles(ctx context.Context, userID string) ([]Bundle, er
 			&publishedAt,
 			&updatedAt,
 		); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("bundle_scan_failed: %w", err)
 		}
 		bundle.PublishedAt = publishedAt.UTC().Format(time.RFC3339Nano)
 		bundle.UpdatedAt = updatedAt.UTC().Format(time.RFC3339Nano)
@@ -564,7 +564,14 @@ func (h *Handler) ClaimBundles(ctx context.Context, userID string) ([]Bundle, er
 			PublicKey: bundle.SignedPrekeyPublicKey,
 			Signature: bundle.SignedPrekeySignature,
 		}
+		out = append(out, bundle)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows_iteration_failed: %w", err)
+	}
+	rows.Close()
 
+	for index := range out {
 		var claimed OneTimePrekey
 		var consumedAt time.Time
 		err := tx.QueryRow(ctx, `
@@ -580,20 +587,18 @@ func (h *Handler) ClaimBundles(ctx context.Context, userID string) ([]Bundle, er
 				FOR UPDATE SKIP LOCKED
 			)
 			RETURNING prekey_id, public_key, consumed_at
-		`, bundle.DeviceID).Scan(&claimed.PrekeyID, &claimed.PublicKey, &consumedAt)
+		`, out[index].DeviceID).Scan(&claimed.PrekeyID, &claimed.PublicKey, &consumedAt)
 		if err == nil {
-			bundle.ClaimedOneTimePrekey = &claimed
-		} else if err != pgx.ErrNoRows {
-			return nil, err
+			out[index].ClaimedOneTimePrekey = &claimed
+			continue
 		}
-		out = append(out, bundle)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
+		if err != pgx.ErrNoRows {
+			return nil, fmt.Errorf("prekey_claim_failed: %w", err)
+		}
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("commit_failed: %w", err)
 	}
 	return out, nil
 }

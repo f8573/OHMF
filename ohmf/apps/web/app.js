@@ -79,6 +79,18 @@ const state = {
   remoteTypingByThread: {},
   replyTarget: null,
   openMessageMenu: null,
+  messageMetadata: {
+    open: false,
+    threadId: "",
+    messageId: "",
+    loading: false,
+    error: "",
+    edits: [],
+    reactions: [],
+    recipientDeliveryAt: "",
+    recipientReadAt: "",
+    requestToken: 0,
+  },
   miniapp: {
     drawerOpen: false,
     popupOpen: false,
@@ -123,6 +135,8 @@ let liveRefreshTimer = 0;
 let typingStopTimer = 0;
 let localTypingThreadId = "";
 let localTypingSent = false;
+const pendingDeliveredThroughByThread = Object.create(null);
+const pendingDeliveredFlushTimers = Object.create(null);
 
 const el = {
   authShell: document.getElementById("auth-shell"),
@@ -147,6 +161,12 @@ const el = {
   composerReplyCancel: document.getElementById("composer-reply-cancel"),
   composerInput: document.getElementById("composer-input"),
   emptyState: document.getElementById("empty-state"),
+  messageMetadataWindow: document.getElementById("message-metadata-window"),
+  messageMetadataBackdrop: document.getElementById("message-metadata-backdrop"),
+  messageMetadataCloseBtn: document.getElementById("message-metadata-close-btn"),
+  messageMetadataTitle: document.getElementById("message-metadata-title"),
+  messageMetadataSubtitle: document.getElementById("message-metadata-subtitle"),
+  messageMetadataBody: document.getElementById("message-metadata-body"),
   backBtn: document.getElementById("back-btn"),
   newChatBtn: document.getElementById("new-chat-btn"),
   newGroupBtn: document.getElementById("new-group-btn"),
@@ -189,6 +209,19 @@ function formatShortTime(value) {
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return "";
   return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
+
+function formatDateTime(value) {
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleString([], {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+  });
 }
 
 function messageSnippet(message, limit = 72) {
@@ -570,6 +603,16 @@ async function cryptoStoreSave(value) {
   }
 }
 
+function normalizeDecryptedMessageCache(cache) {
+  return cache && typeof cache === "object" ? cache : {};
+}
+
+async function hydrateCryptoClientState() {
+  const stored = await cryptoStoreLoad();
+  state.crypto.decryptedMessageCache = normalizeDecryptedMessageCache(stored?.decryptedMessageCache);
+  return stored;
+}
+
 function bytesToBase64(bytes) {
   const view = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
   let binary = "";
@@ -726,6 +769,7 @@ function persistCryptoDeviceState(device) {
     signalRatchetSessions: device?.signalRatchetSessions && typeof device.signalRatchetSessions === "object" ? device.signalRatchetSessions : {},
     trustPins: device?.trustPins && typeof device.trustPins === "object" ? device.trustPins : {},
     legacyRatchetSessions: device?.legacyRatchetSessions && typeof device.legacyRatchetSessions === "object" ? device.legacyRatchetSessions : {},
+    decryptedMessageCache: normalizeDecryptedMessageCache(state.crypto.decryptedMessageCache),
   };
   void cryptoStoreSave(next);
   state.crypto.device = next;
@@ -1070,7 +1114,7 @@ function cachedDecryptedMessage(messageOrFingerprint) {
 }
 
 function rememberDecryptedMessage(message) {
-  const fingerprint = encryptedEnvelopeFingerprint(message);
+  const fingerprint = sanitizeText(message?.encryptedEnvelopeFingerprint, 24000) || encryptedEnvelopeFingerprint(message);
   if (!fingerprint || sanitizeText(message?.decryptStatus, 24) !== "ok") return;
   const next = {
     ...(state.crypto.decryptedMessageCache || {}),
@@ -1092,6 +1136,7 @@ function rememberDecryptedMessage(message) {
       });
   }
   state.crypto.decryptedMessageCache = next;
+  if (state.crypto.device) persistCryptoDeviceState(state.crypto.device);
 }
 
 function cacheEncryptedMessagePlaintext(messageId, envelope, plainContentType, plainContent, fallbackText) {
@@ -1124,6 +1169,7 @@ function cacheEncryptedMessagePlaintext(messageId, envelope, plainContentType, p
       });
   }
   state.crypto.decryptedMessageCache = next;
+  if (state.crypto.device) persistCryptoDeviceState(state.crypto.device);
 }
 
 function queueCryptoDecrypt(task) {
@@ -1191,7 +1237,7 @@ async function ensureCryptoDeviceState() {
   }
   if (state.crypto.device?.deviceId === state.auth?.deviceId) return state.crypto.device;
 
-  const stored = await cryptoStoreLoad();
+  const stored = await hydrateCryptoClientState();
   if (stored?.agreementPublicKey && stored?.agreementPrivateKeyJwk && stored?.signingPublicKey && stored?.signingPrivateKeyJwk && stored?.signedPrekeyPublicKey && stored?.signedPrekeyPrivateKeyJwk) {
     const normalized = {
       ...stored,
@@ -1202,6 +1248,7 @@ async function ensureCryptoDeviceState() {
       trustPins: stored?.trustPins && typeof stored.trustPins === "object" ? stored.trustPins : {},
       oneTimePrekeys: stored?.oneTimePrekeys && typeof stored.oneTimePrekeys === "object" ? stored.oneTimePrekeys : {},
       nextPrekeyId: Number(stored?.nextPrekeyId || 1),
+      decryptedMessageCache: normalizeDecryptedMessageCache(stored?.decryptedMessageCache),
     };
     state.crypto.device = normalized;
     return normalized;
@@ -1656,11 +1703,12 @@ async function decryptConversationContent(message) {
       }
 
       const agreementPrivateKey = await signalImportAgreementPrivateKey(device.agreementPrivateKeyJwk);
-      let wrapKey;
+      let plaintext;
       const ratchetPublicKey = sanitizeText(recipient.ratchet_public_key, 4000);
       if (ratchetPublicKey && sanitizeText(encryption.sender_signature, 8000)) {
         const senderUserId = sanitizeText(encryption.sender_user_id, 80);
         const senderDeviceId = sanitizeText(encryption.sender_device_id, 80);
+        const initialSession = recipient.initial_session && typeof recipient.initial_session === "object" ? recipient.initial_session : null;
         const senderBundles = await refetchDeviceBundles(senderUserId);
         const senderBundle = senderBundles.find((item) => sanitizeText(item?.device_id, 80) === senderDeviceId);
         const signingPublicKeyValue = sanitizeText(senderBundle?.signing_public_key, 4000);
@@ -1678,85 +1726,115 @@ async function decryptConversationContent(message) {
           sanitizeText(encryption.sender_signature, 8000)
         );
         if (!valid) throw new Error("Invalid sender signature");
-
-        let session = getSignalRatchetSession(device, senderUserId, senderDeviceId) || normalizeSignalRatchetSession(null, device);
-        let messageKey = takeSkippedMessageKey(session, ratchetPublicKey, Number(recipient.message_number || 0));
-        if (!messageKey) {
-          if (session.remoteRatchetPublicKey !== ratchetPublicKey || !session.receiveChainKey) {
-            const initialSession = recipient.initial_session && typeof recipient.initial_session === "object" ? recipient.initial_session : null;
-            let localPrivateKey;
-            let rootBase = session.rootKey;
-            if (!session.receiveChainKey && initialSession?.sender_ephemeral_public_key) {
-              const senderIdentityPublicKey = await signalImportAgreementPublicKey(sanitizeText(encryption.sender_identity_public_key, 4000));
-              const senderEphemeralPublicKey = await signalImportAgreementPublicKey(sanitizeText(initialSession.sender_ephemeral_public_key, 4000));
-              const signedPrekeyPrivateKey = await signalImportAgreementPrivateKey(device.signedPrekeyPrivateKeyJwk);
-              const segments = [
-                await signalDeriveSharedSecretBytes(signedPrekeyPrivateKey, senderIdentityPublicKey),
-                await signalDeriveSharedSecretBytes(agreementPrivateKey, senderEphemeralPublicKey),
-                await signalDeriveSharedSecretBytes(signedPrekeyPrivateKey, senderEphemeralPublicKey),
-              ];
-              const oneTimePrekeyId = String(Number(initialSession.one_time_prekey_id || 0));
-              if (oneTimePrekeyId && device.oneTimePrekeys?.[oneTimePrekeyId]?.private_key_jwk) {
-                const oneTimePrivateKey = await signalImportAgreementPrivateKey(device.oneTimePrekeys[oneTimePrekeyId].private_key_jwk);
-                segments.push(await signalDeriveSharedSecretBytes(oneTimePrivateKey, senderEphemeralPublicKey));
-                device = persistCryptoDeviceState({
-                  ...device,
-                  oneTimePrekeys: {
-                    ...(device.oneTimePrekeys || {}),
+        const decryptWithSignalSession = async (useFreshSession = false) => {
+          const workingDevice = cloneJson(device || {});
+          let session = useFreshSession
+            ? normalizeSignalRatchetSession(null, workingDevice)
+            : (getSignalRatchetSession(workingDevice, senderUserId, senderDeviceId) || normalizeSignalRatchetSession(null, workingDevice));
+          let messageKey = takeSkippedMessageKey(session, ratchetPublicKey, Number(recipient.message_number || 0));
+          if (!messageKey) {
+            if (session.remoteRatchetPublicKey !== ratchetPublicKey || !session.receiveChainKey) {
+              let localPrivateKey;
+              let rootBase = session.rootKey;
+              if (!session.receiveChainKey && initialSession?.sender_ephemeral_public_key) {
+                const senderIdentityPublicKey = await signalImportAgreementPublicKey(sanitizeText(encryption.sender_identity_public_key, 4000));
+                const senderEphemeralPublicKey = await signalImportAgreementPublicKey(sanitizeText(initialSession.sender_ephemeral_public_key, 4000));
+                const signedPrekeyPrivateKey = await signalImportAgreementPrivateKey(workingDevice.signedPrekeyPrivateKeyJwk);
+                const segments = [
+                  await signalDeriveSharedSecretBytes(signedPrekeyPrivateKey, senderIdentityPublicKey),
+                  await signalDeriveSharedSecretBytes(agreementPrivateKey, senderEphemeralPublicKey),
+                  await signalDeriveSharedSecretBytes(signedPrekeyPrivateKey, senderEphemeralPublicKey),
+                ];
+                const oneTimePrekeyId = String(Number(initialSession.one_time_prekey_id || 0));
+                if (oneTimePrekeyId && workingDevice.oneTimePrekeys?.[oneTimePrekeyId]?.private_key_jwk) {
+                  const oneTimePrivateKey = await signalImportAgreementPrivateKey(workingDevice.oneTimePrekeys[oneTimePrekeyId].private_key_jwk);
+                  segments.push(await signalDeriveSharedSecretBytes(oneTimePrivateKey, senderEphemeralPublicKey));
+                  workingDevice.oneTimePrekeys = {
+                    ...(workingDevice.oneTimePrekeys || {}),
                     [oneTimePrekeyId]: {
-                      ...(device.oneTimePrekeys?.[oneTimePrekeyId] || {}),
+                      ...(workingDevice.oneTimePrekeys?.[oneTimePrekeyId] || {}),
                       consumed_at: nowISO(),
                     },
-                  },
-                });
+                  };
+                }
+                const rootMaterial = await hkdfExpand(concatBytes(...segments), new Uint8Array(32), "OHMF_SIGNAL_X3DH_V1", 32);
+                rootBase = bytesToBase64(rootMaterial);
+                localPrivateKey = signedPrekeyPrivateKey;
+              } else {
+                localPrivateKey = await signalImportAgreementPrivateKey(session.localRatchetPrivateKeyJwk || workingDevice.signedPrekeyPrivateKeyJwk);
               }
-              const rootMaterial = await hkdfExpand(concatBytes(...segments), new Uint8Array(32), "OHMF_SIGNAL_X3DH_V1", 32);
-              rootBase = bytesToBase64(rootMaterial);
-              localPrivateKey = signedPrekeyPrivateKey;
-            } else {
-              localPrivateKey = await signalImportAgreementPrivateKey(session.localRatchetPrivateKeyJwk || device.signedPrekeyPrivateKeyJwk);
+              const remotePublicKey = await signalImportAgreementPublicKey(ratchetPublicKey);
+              const sharedSecret = await signalDeriveSharedSecretBytes(localPrivateKey, remotePublicKey);
+              const next = await kdfRoot(rootBase, sharedSecret);
+              session.rootKey = next.rootKey;
+              session.receiveChainKey = next.chainKey;
+              session.receiveCount = 0;
+              session.remoteRatchetPublicKey = ratchetPublicKey;
+              session.pendingRatchet = true;
             }
-            const remotePublicKey = await signalImportAgreementPublicKey(ratchetPublicKey);
-            const sharedSecret = await signalDeriveSharedSecretBytes(localPrivateKey, remotePublicKey);
-            const next = await kdfRoot(rootBase, sharedSecret);
-            session.rootKey = next.rootKey;
-            session.receiveChainKey = next.chainKey;
-            session.receiveCount = 0;
-            session.remoteRatchetPublicKey = ratchetPublicKey;
-            session.pendingRatchet = true;
-          }
-          const targetNumber = Number(recipient.message_number || 0);
-          if (targetNumber < Number(session.receiveCount || 0)) {
-            throw new Error("Missing skipped message key");
-          }
-          while (Number(session.receiveCount || 0) < targetNumber) {
-            const skipped = await kdfChain(session.receiveChainKey);
-            stashSkippedMessageKey(session, ratchetPublicKey, session.receiveCount, skipped.messageKey);
-            session.receiveChainKey = skipped.nextChainKey;
+            const targetNumber = Number(recipient.message_number || 0);
+            if (targetNumber < Number(session.receiveCount || 0)) {
+              throw new Error("Missing skipped message key");
+            }
+            while (Number(session.receiveCount || 0) < targetNumber) {
+              const skipped = await kdfChain(session.receiveChainKey);
+              stashSkippedMessageKey(session, ratchetPublicKey, session.receiveCount, skipped.messageKey);
+              session.receiveChainKey = skipped.nextChainKey;
+              session.receiveCount = Number(session.receiveCount || 0) + 1;
+            }
+            const current = await kdfChain(session.receiveChainKey);
+            messageKey = current.messageKey;
+            session.receiveChainKey = current.nextChainKey;
             session.receiveCount = Number(session.receiveCount || 0) + 1;
           }
-          const current = await kdfChain(session.receiveChainKey);
-          messageKey = current.messageKey;
-          session.receiveChainKey = current.nextChainKey;
-          session.receiveCount = Number(session.receiveCount || 0) + 1;
+          const wrapKey = await importAESKey(base64ToBytes(messageKey), ["decrypt"]);
+          const contentKeyRaw = await window.crypto.subtle.decrypt(
+            { name: "AES-GCM", iv: base64ToBytes(recipient.wrap_nonce) },
+            wrapKey,
+            base64ToBytes(recipient.wrapped_key)
+          );
+          const contentKey = await importAESKey(new Uint8Array(contentKeyRaw), ["decrypt"]);
+          const decryptedPlaintext = await window.crypto.subtle.decrypt(
+            { name: "AES-GCM", iv: base64ToBytes(envelope.nonce) },
+            contentKey,
+            base64ToBytes(envelope.ciphertext)
+          );
+          workingDevice.signalRatchetSessions = {
+            ...(workingDevice.signalRatchetSessions || {}),
+            [signalRatchetSessionId(senderUserId, senderDeviceId)]: normalizeSignalRatchetSession(session, workingDevice),
+          };
+          return {
+            plaintext: decryptedPlaintext,
+            device: workingDevice,
+          };
+        };
+        let decryptedSignalPayload;
+        try {
+          decryptedSignalPayload = await decryptWithSignalSession(false);
+        } catch (error) {
+          const canRetryFreshSession = error?.name === "OperationError"
+            && Boolean(initialSession?.sender_ephemeral_public_key)
+            && Boolean(getSignalRatchetSession(device, senderUserId, senderDeviceId));
+          if (!canRetryFreshSession) throw error;
+          decryptedSignalPayload = await decryptWithSignalSession(true);
         }
-        device = setSignalRatchetSession(device, senderUserId, senderDeviceId, session);
-        wrapKey = await importAESKey(base64ToBytes(messageKey), ["decrypt"]);
+        plaintext = decryptedSignalPayload.plaintext;
+        device = persistCryptoDeviceState(decryptedSignalPayload.device);
       } else {
         const peerPublicKey = await signalImportAgreementPublicKey(device.agreementPublicKey);
-        wrapKey = await signalDeriveWrapKey(agreementPrivateKey, peerPublicKey);
+        const wrapKey = await signalDeriveWrapKey(agreementPrivateKey, peerPublicKey);
+        const contentKeyRaw = await window.crypto.subtle.decrypt(
+          { name: "AES-GCM", iv: base64ToBytes(recipient.wrap_nonce) },
+          wrapKey,
+          base64ToBytes(recipient.wrapped_key)
+        );
+        const contentKey = await importAESKey(new Uint8Array(contentKeyRaw), ["decrypt"]);
+        plaintext = await window.crypto.subtle.decrypt(
+          { name: "AES-GCM", iv: base64ToBytes(envelope.nonce) },
+          contentKey,
+          base64ToBytes(envelope.ciphertext)
+        );
       }
-      const contentKeyRaw = await window.crypto.subtle.decrypt(
-        { name: "AES-GCM", iv: base64ToBytes(recipient.wrap_nonce) },
-        wrapKey,
-        base64ToBytes(recipient.wrapped_key)
-      );
-      const contentKey = await importAESKey(new Uint8Array(contentKeyRaw), ["decrypt"]);
-      const plaintext = await window.crypto.subtle.decrypt(
-        { name: "AES-GCM", iv: base64ToBytes(envelope.nonce) },
-        contentKey,
-        base64ToBytes(envelope.ciphertext)
-      );
       const decoded = JSON.parse(new TextDecoder().decode(plaintext));
       const innerContentType = sanitizeText(decoded?.content_type, 40)
         || (decoded?.body && typeof decoded.body === "object" && decoded.body?.attachment_id ? CONTENT_TYPE_ATTACHMENT : "")
@@ -1805,6 +1883,63 @@ function saveConversationStore() {
       threads: state.threads,
     })
   );
+}
+
+function isForegroundThread(threadId) {
+  const conversationId = sanitizeText(threadId, 80);
+  return Boolean(
+    state.auth
+    && conversationId
+    && state.activeThreadId === conversationId
+    && !document.hidden
+    && typeof document.hasFocus === "function"
+    && document.hasFocus()
+  );
+}
+
+function queueConversationDelivered(threadId, throughServerOrder) {
+  const conversationId = sanitizeText(threadId, 80);
+  const through = Number(throughServerOrder || 0);
+  if (!state.auth || !conversationId || !through) return;
+  const thread = getThreadById(conversationId);
+  if (!thread || thread.kind === "draft_phone") return;
+  const currentThrough = Number(thread.deliveredThroughServerOrder || 0);
+  const pendingThrough = Number(pendingDeliveredThroughByThread[conversationId] || 0);
+  if (through <= currentThrough && through <= pendingThrough) return;
+  pendingDeliveredThroughByThread[conversationId] = Math.max(through, pendingThrough);
+  if (pendingDeliveredFlushTimers[conversationId]) return;
+  pendingDeliveredFlushTimers[conversationId] = window.setTimeout(() => {
+    pendingDeliveredFlushTimers[conversationId] = 0;
+    void flushConversationDelivered(conversationId);
+  }, 150);
+}
+
+async function flushConversationDelivered(threadId) {
+  const conversationId = sanitizeText(threadId, 80);
+  const through = Number(pendingDeliveredThroughByThread[conversationId] || 0);
+  delete pendingDeliveredThroughByThread[conversationId];
+  if (!state.auth || !conversationId || !through) return;
+  const thread = getThreadById(conversationId);
+  if (!thread || thread.kind === "draft_phone") return;
+  const currentThrough = Number(thread.deliveredThroughServerOrder || 0);
+  if (through <= currentThrough) return;
+  try {
+    await apiRequest(`/v2/conversations/${encodeURIComponent(conversationId)}/delivered`, {
+      method: "POST",
+      body: JSON.stringify({
+        through_server_order: through,
+        device_id: state.sync.deviceId,
+      }),
+    });
+    const refreshed = getThreadById(conversationId);
+    if (!refreshed) return;
+    upsertThread({
+      ...refreshed,
+      deliveredThroughServerOrder: Math.max(Number(refreshed.deliveredThroughServerOrder || 0), through),
+      deliveredStatusUpdatedAt: refreshed.deliveredStatusUpdatedAt || nowISO(),
+    });
+    saveConversationStore();
+  } catch {} // removed: descriptive catch comment
 }
 
 function loadConversationStore() {
@@ -2661,13 +2796,18 @@ function mapMessage(item) {
     })
     : "";
   const deleted = Boolean(item?.deleted) || Boolean(item?.deleted_at) || sanitizeText(item?.visibility_state, 40) === "SOFT_DELETED";
+  const genericFallbackText = contentType === CONTENT_TYPE_APP_EVENT
+    ? "App event"
+    : contentType === CONTENT_TYPE_ENCRYPTED
+    ? "[Encrypted message]"
+    : "Message";
   const fallbackText = deleted
     ? "Message deleted"
     : contentType === CONTENT_TYPE_APP_CARD
     ? sanitizeText(content.title || "Shared app", 1000)
     : contentType === CONTENT_TYPE_ATTACHMENT
     ? sanitizeText(content.file_name || content.attachment_id || "Attachment", 1000)
-    : sanitizeText(item?.content?.text || JSON.stringify(content || {}), 1000);
+    : sanitizeText(item?.content?.text, 1000) || (Object.keys(content || {}).length ? sanitizeText(JSON.stringify(content || {}), 1000) : genericFallbackText);
   return {
     id: sanitizeText(item?.message_id, 80),
     senderUserId: sanitizeText(item?.sender_user_id, 80),
@@ -2726,6 +2866,7 @@ function applyMessageReactions(payload) {
     updatedAt: payload?.acted_at || thread.updatedAt,
   });
   saveConversationStore();
+  refreshOpenMessageMetadata(conversationId, messageId);
   if (!found && thread.loadedMessages && state.activeThreadId === conversationId) {
     void loadMessagesForThread(conversationId).catch((error) => {
       console.error(error);
@@ -2847,6 +2988,325 @@ function clearMessageMenuWithoutRender() {
   if (!state.openMessageMenu) return;
   state.openMessageMenu = null;
 } // removed: boolean render flag split into named menu clearers
+
+function resetMessageMetadataState() {
+  state.messageMetadata = {
+    open: false,
+    threadId: "",
+    messageId: "",
+    loading: false,
+    error: "",
+    edits: [],
+    reactions: [],
+    recipientDeliveryAt: "",
+    recipientReadAt: "",
+    requestToken: 0,
+  };
+}
+
+function closeMessageMetadata() {
+  if (!state.messageMetadata.open) return;
+  state.messageMetadata.open = false;
+  renderAll();
+}
+
+function messageHistoryContentSummary(content) {
+  if (!content || typeof content !== "object") return sanitizeText(content, 180);
+  if (sanitizeText(content.text, 180)) return sanitizeText(content.text, 180);
+  if (sanitizeText(content.file_name || content.attachment_id, 180)) {
+    return `Attachment: ${sanitizeText(content.file_name || content.attachment_id, 160)}`;
+  }
+  if (sanitizeText(content.title, 180)) return sanitizeText(content.title, 180);
+  if (sanitizeText(content.ciphertext, 40) && content.encryption && typeof content.encryption === "object") {
+    return "[Encrypted payload]";
+  }
+  const raw = sanitizeText(JSON.stringify(content), 180);
+  return raw || "No content snapshot";
+}
+
+async function summarizeHistoricalMessageContent(messageId, content) {
+  if (!content || typeof content !== "object") return messageHistoryContentSummary(content);
+  const encryption = content.encryption && typeof content.encryption === "object" ? content.encryption : null;
+  if (!sanitizeText(content.ciphertext, 40) || !encryption) {
+    return messageHistoryContentSummary(content);
+  }
+  const historicalMessage = {
+    id: sanitizeText(messageId, 80),
+    senderUserId: sanitizeText(encryption.sender_user_id, 80),
+    direction: "out",
+    text: "[Encrypted payload]",
+    createdAt: nowISO(),
+    sentAt: "",
+    deliveredAt: "",
+    readAt: "",
+    serverOrder: 0,
+    status: "",
+    statusUpdatedAt: nowISO(),
+    transport: TRANSPORT_OHMF,
+    reactions: {},
+    editedAt: "",
+    deleted: false,
+    contentType: CONTENT_TYPE_ENCRYPTED,
+    content,
+    encryptedEnvelopeFingerprint: "",
+    decryptStatus: "",
+  };
+  const liveMessage = getMessageById(state.messageMetadata.threadId, messageId);
+  const historicalFingerprint = encryptedEnvelopeFingerprint(historicalMessage);
+  if (
+    liveMessage
+    && sanitizeText(liveMessage.decryptStatus, 24) === "ok"
+    && historicalFingerprint
+    && historicalFingerprint === sanitizeText(liveMessage.encryptedEnvelopeFingerprint, 24000)
+  ) {
+    return messageHistoryContentSummary(liveMessage.content);
+  }
+  const cached = cachedDecryptedMessage(historicalFingerprint || historicalMessage);
+  if (cached) {
+    return messageHistoryContentSummary(cached.content);
+  }
+  try {
+    const decrypted = await decryptConversationContent(historicalMessage);
+    if (sanitizeText(decrypted?.decryptStatus, 24) === "ok") {
+      return messageHistoryContentSummary(decrypted.content);
+    }
+  } catch (error) {
+    const message = sanitizeText(error?.message, 120);
+    if (message !== "Missing skipped message key") {
+      console.error(error);
+    }
+  }
+  return "[Encrypted payload]";
+}
+
+function recipientDeliveredAt(thread, message) {
+  if (!thread || !message || message.direction !== "in") return "";
+  if (sanitizeText(state.messageMetadata.recipientDeliveryAt, 80)) return state.messageMetadata.recipientDeliveryAt;
+  const through = Number(thread.deliveredThroughServerOrder || 0);
+  if (!through || Number(message.serverOrder || 0) > through) return "";
+  return thread.deliveredStatusUpdatedAt || "";
+}
+
+function recipientReadAt(thread, message) {
+  if (!thread || !message || message.direction !== "in") return "";
+  if (sanitizeText(state.messageMetadata.recipientReadAt, 80)) return state.messageMetadata.recipientReadAt;
+  const through = Number(thread.readThroughServerOrder || 0);
+  if (!through || Number(message.serverOrder || 0) > through) return "";
+  return thread.readStatusUpdatedAt || "";
+}
+
+async function openMessageMetadata(threadId, messageId) {
+  const thread = getThreadById(threadId);
+  const message = getMessageById(threadId, messageId);
+  if (!thread || !message) return;
+  const requestToken = Date.now();
+  state.messageMetadata = {
+    open: true,
+    threadId,
+    messageId,
+    loading: true,
+    error: "",
+    edits: [],
+    reactions: [],
+    recipientDeliveryAt: "",
+    recipientReadAt: "",
+    requestToken,
+  };
+  renderAll();
+  try {
+    const [editsPayload, reactionsPayload, readStatusPayload] = await Promise.all([
+      apiRequest(`/v1/messages/${encodeURIComponent(messageId)}/edits`),
+      apiRequest(`/v1/messages/${encodeURIComponent(messageId)}/reactions/history`),
+      apiRequest(`/v1/conversations/${encodeURIComponent(threadId)}/read-status`),
+    ]);
+    if (
+      !state.messageMetadata.open ||
+      state.messageMetadata.threadId !== threadId ||
+      state.messageMetadata.messageId !== messageId ||
+      state.messageMetadata.requestToken !== requestToken
+    ) {
+      return;
+    }
+    state.messageMetadata.loading = false;
+    const edits = Array.isArray(editsPayload?.edits) ? editsPayload.edits : [];
+    if (edits.length) {
+      const summarizedEdits = await Promise.all(edits.map(async (item, index) => {
+        const isLatestEdit = index === 0;
+        return {
+          ...item,
+          previous_summary: await summarizeHistoricalMessageContent(messageId, item?.previous_content),
+          new_summary: isLatestEdit && sanitizeText(message.decryptStatus, 24) === "ok"
+            ? messageHistoryContentSummary(message.content)
+            : await summarizeHistoricalMessageContent(messageId, item?.new_content),
+        };
+      }));
+      for (let index = 1; index < summarizedEdits.length; index += 1) {
+        const newerEdit = summarizedEdits[index - 1];
+        const newerBefore = sanitizeText(newerEdit?.previous_summary, 180);
+        if (newerBefore) {
+          summarizedEdits[index].new_summary = newerBefore;
+        }
+      }
+      state.messageMetadata.edits = summarizedEdits;
+    } else {
+      state.messageMetadata.edits = [];
+    }
+    state.messageMetadata.reactions = Array.isArray(reactionsPayload?.history) ? reactionsPayload.history : [];
+    const selfStatus = (Array.isArray(readStatusPayload?.members) ? readStatusPayload.members : [])
+      .find((item) => sanitizeText(item?.user_id, 80) === sanitizeText(state.auth?.userId, 80));
+    state.messageMetadata.recipientDeliveryAt = sanitizeText(selfStatus?.delivery_at, 80);
+    state.messageMetadata.recipientReadAt = sanitizeText(selfStatus?.read_at, 80);
+    renderAll();
+  } catch (error) {
+    console.error(error);
+    if (
+      !state.messageMetadata.open ||
+      state.messageMetadata.threadId !== threadId ||
+      state.messageMetadata.messageId !== messageId ||
+      state.messageMetadata.requestToken !== requestToken
+    ) {
+      return;
+    }
+    state.messageMetadata.loading = false;
+    state.messageMetadata.error = sanitizeText(error.message || "Unable to load message details.", 220);
+    renderAll();
+  }
+}
+
+function refreshOpenMessageMetadata(threadId, messageId) {
+  if (
+    !state.messageMetadata.open ||
+    state.messageMetadata.threadId !== threadId ||
+    state.messageMetadata.messageId !== messageId
+  ) {
+    return;
+  }
+  void openMessageMetadata(threadId, messageId);
+}
+
+function appendMetadataValueRow(container, label, value, valueClass = "") {
+  const row = document.createElement("div");
+  row.className = "message-metadata-row";
+
+  const labelEl = document.createElement("span");
+  labelEl.className = "message-metadata-label";
+  labelEl.textContent = label;
+
+  const valueEl = document.createElement("span");
+  valueEl.className = valueClass ? `message-metadata-value ${valueClass}` : "message-metadata-value";
+  valueEl.textContent = sanitizeText(value || "Not available", 4000) || "Not available";
+
+  row.append(labelEl, valueEl);
+  container.appendChild(row);
+}
+
+function buildMessageMetadataSection(title) {
+  const section = document.createElement("section");
+  section.className = "message-metadata-section";
+
+  const heading = document.createElement("h3");
+  heading.className = "message-metadata-section-title";
+  heading.textContent = title;
+  section.appendChild(heading);
+
+  return section;
+}
+
+function renderMessageMetadataWindow() {
+  const isOpen = Boolean(state.messageMetadata.open);
+  el.messageMetadataWindow.classList.toggle("hidden", !isOpen);
+  if (!isOpen) return;
+
+  const thread = getThreadById(state.messageMetadata.threadId);
+  const message = getMessageById(state.messageMetadata.threadId, state.messageMetadata.messageId);
+  el.messageMetadataTitle.textContent = message ? messageSnippet(message, 80) || "Message details" : "Message details";
+  el.messageMetadataSubtitle.textContent = thread
+    ? `${thread.title} - #${sanitizeText(state.messageMetadata.messageId, 12)}`
+    : sanitizeText(state.messageMetadata.messageId, 80);
+  el.messageMetadataBody.replaceChildren();
+
+  if (!thread || !message) {
+    const empty = document.createElement("p");
+    empty.className = "message-metadata-empty";
+    empty.textContent = "This message is no longer available in the current thread view.";
+    el.messageMetadataBody.appendChild(empty);
+    return;
+  }
+
+  const currentSection = buildMessageMetadataSection("Current State");
+  appendMetadataValueRow(currentSection, "Sent", formatDateTime(message.sentAt));
+  appendMetadataValueRow(currentSection, "Delivered", formatDateTime(message.direction === "out" ? message.deliveredAt : recipientDeliveredAt(thread, message)));
+  appendMetadataValueRow(currentSection, "Read", formatDateTime(message.direction === "out" ? message.readAt : recipientReadAt(thread, message)));
+  appendMetadataValueRow(currentSection, "Edited", formatDateTime(message.editedAt));
+  appendMetadataValueRow(currentSection, "Status", sanitizeText(message.status, 40));
+  appendMetadataValueRow(currentSection, "Transport", sanitizeText(message.transport, 40));
+  appendMetadataValueRow(currentSection, "Server order", message.serverOrder > 0 ? String(message.serverOrder) : "Pending");
+  el.messageMetadataBody.appendChild(currentSection);
+
+  if (state.messageMetadata.loading) {
+    const loading = document.createElement("p");
+    loading.className = "message-metadata-empty";
+    loading.textContent = "Loading edit and reaction history...";
+    el.messageMetadataBody.appendChild(loading);
+    return;
+  }
+
+  if (state.messageMetadata.error) {
+    const error = document.createElement("p");
+    error.className = "message-metadata-empty error";
+    error.textContent = state.messageMetadata.error;
+    el.messageMetadataBody.appendChild(error);
+  }
+
+  const editsSection = buildMessageMetadataSection("Edit History");
+  if (!state.messageMetadata.edits.length) {
+    const empty = document.createElement("p");
+    empty.className = "message-metadata-empty";
+    empty.textContent = "No edits recorded for this message.";
+    editsSection.appendChild(empty);
+  } else {
+    const list = document.createElement("div");
+    list.className = "message-metadata-history-list";
+    for (const item of state.messageMetadata.edits) {
+      const card = document.createElement("article");
+      card.className = "message-metadata-history-card";
+      appendMetadataValueRow(card, "Edited", formatDateTime(item?.edited_at));
+      appendMetadataValueRow(card, "By", sanitizeText(item?.edited_by, 80));
+      appendMetadataValueRow(card, "Sent", formatDateTime(item?.sent_at));
+      appendMetadataValueRow(card, "Delivered", formatDateTime(item?.delivered_at));
+      appendMetadataValueRow(card, "Read", formatDateTime(item?.read_at));
+      appendMetadataValueRow(card, "Before", sanitizeText(item?.previous_summary, 180) || messageHistoryContentSummary(item?.previous_content), "history");
+      appendMetadataValueRow(card, "After", sanitizeText(item?.new_summary, 180) || messageHistoryContentSummary(item?.new_content), "history");
+      list.appendChild(card);
+    }
+    editsSection.appendChild(list);
+  }
+  el.messageMetadataBody.appendChild(editsSection);
+
+  const reactionsSection = buildMessageMetadataSection("Reaction History");
+  if (!state.messageMetadata.reactions.length) {
+    const empty = document.createElement("p");
+    empty.className = "message-metadata-empty";
+    empty.textContent = "No reaction changes recorded for this message.";
+    reactionsSection.appendChild(empty);
+  } else {
+    const list = document.createElement("div");
+    list.className = "message-metadata-history-list";
+    for (const item of state.messageMetadata.reactions) {
+      const card = document.createElement("article");
+      card.className = "message-metadata-history-card";
+      appendMetadataValueRow(card, "Action", `${sanitizeText(item?.emoji, 8) || "Reaction"} ${sanitizeText(item?.action, 20)}`);
+      appendMetadataValueRow(card, "By", sanitizeText(item?.acted_by, 80));
+      appendMetadataValueRow(card, "Changed", formatDateTime(item?.acted_at));
+      appendMetadataValueRow(card, "Sent", formatDateTime(item?.sent_at));
+      appendMetadataValueRow(card, "Delivered", formatDateTime(item?.delivered_at));
+      appendMetadataValueRow(card, "Read", formatDateTime(item?.read_at));
+      list.appendChild(card);
+    }
+    reactionsSection.appendChild(list);
+  }
+  el.messageMetadataBody.appendChild(reactionsSection);
+}
 
 function setReplyTarget(thread, message) {
   state.replyTarget = {
@@ -3069,7 +3529,9 @@ async function loadMessagesForThread(threadId) {
   }
   const refreshedThread = getThreadById(threadId) || thread;
   await markConversationDelivered(refreshedThread);
-  await markConversationRead(refreshedThread);
+  if (isForegroundThread(threadId)) {
+    await markConversationRead(refreshedThread);
+  }
   saveConversationStore();
 }
 
@@ -3081,7 +3543,9 @@ async function syncThreadReceipts(threadId) {
   const thread = getThreadById(threadId);
   if (!thread || thread.kind === "draft_phone") return;
   await markConversationDelivered(thread);
-  await markConversationRead(thread);
+  if (isForegroundThread(threadId)) {
+    await markConversationRead(thread);
+  }
   saveConversationStore();
 }
 
@@ -3255,6 +3719,7 @@ function applyMessageDeleted(payload) {
     updatedAt: deletedAt || thread.updatedAt,
   });
   saveConversationStore();
+  refreshOpenMessageMetadata(conversationId, messageId);
 
   if (!found && thread.loadedMessages && state.activeThreadId === conversationId) {
     void loadMessagesForThread(conversationId).catch((error) => {
@@ -3301,6 +3766,7 @@ async function applyMessageEdited(payload) {
     updatedAt: editedAt || thread.updatedAt,
   });
   saveConversationStore();
+  refreshOpenMessageMetadata(conversationId, messageId);
 
   if (!found && thread.loadedMessages && state.activeThreadId === conversationId) {
     void loadMessagesForThread(conversationId).catch((error) => {
@@ -3323,11 +3789,12 @@ async function applyUserEvent(event) {
       state.activeThreadId = thread.id;
     }
     const refreshed = getThreadById(thread.id) || thread;
-    if (state.activeThreadId === thread.id && nextMessage.direction === "in") {
+    if (isForegroundThread(thread.id) && nextMessage.direction === "in") {
       void markConversationDelivered(refreshed);
       void markConversationRead(refreshed);
       upsertThread({ ...refreshed, unreadCount: 0, previewText: nextMessage.text });
     } else if (nextMessage.direction === "in") {
+      queueConversationDelivered(thread.id, nextMessage.serverOrder);
       upsertThread({ ...refreshed, unreadCount: Number(refreshed.unreadCount || 0) + 1, previewText: nextMessage.text });
     }
     return;
@@ -3350,6 +3817,16 @@ async function applyUserEvent(event) {
     const kind = sanitizeText(payload?.receipt_kind, 24).toUpperCase();
     if (!conversationId || !through || !kind) return;
     applyReceiptCheckpoint(kind, conversationId, through, payload?.status_updated_at || nowISO());
+    return;
+  }
+  if (eventType === "conversation_typing_updated") {
+    const conversationId = sanitizeText(payload?.conversation_id, 80);
+    const userId = sanitizeText(payload?.user_id, 80);
+    if (!conversationId || !userId) return;
+    setRemoteTyping(conversationId, userId, sanitizeText(payload?.state, 40) === "typing_started");
+    if (state.activeThreadId === conversationId) {
+      renderMessages();
+    }
     return;
   }
   if (eventType === "conversation_preview_updated") {
@@ -3453,9 +3930,6 @@ function scheduleLiveRefreshLoop(delayMs = LIVE_SYNC_INTERVAL_MS) {
     if (!state.auth) return;
     if (!document.hidden) {
       await refreshLiveState();
-    }
-    if (state.auth && !eventStreamAbort && !eventStreamDisabled) {
-      void startEventStream();
     }
     if (state.auth && !realtimeSocket) {
       startRealtimeSocket();
@@ -3573,22 +4047,9 @@ function applyDeliveryUpdate(payload) {
   const conversationId = sanitizeText(payload?.conversation_id, 80);
   const status = normalizeDeliveryStatus(TRANSPORT_OHMF, payload?.status || "");
   if (!conversationId || !status) return;
-  if (status === OHMF_DELIVERY_STATUSES.READ) {
-    const through = Number(payload?.through_server_order || 0);
-    const thread = getThreadById(conversationId);
-    if (!thread) return;
-    const nextMessages = (thread.messages || []).map((message) => {
-      if (message.direction !== "out" || Number(message.serverOrder || 0) > through) return message;
-      return {
-        ...message,
-        status: OHMF_DELIVERY_STATUSES.READ,
-        readAt: payload?.status_updated_at || nowISO(),
-        statusUpdatedAt: payload?.status_updated_at || nowISO(),
-      };
-    });
-    upsertThread({ ...thread, messages: nextMessages, updatedAt: payload?.status_updated_at || thread.updatedAt });
-    saveConversationStore();
-    renderAll();
+  const through = Number(payload?.through_server_order || 0);
+  if (through > 0 && (status === OHMF_DELIVERY_STATUSES.READ || status === OHMF_DELIVERY_STATUSES.DELIVERED)) {
+    applyReceiptCheckpoint(status, conversationId, through, payload?.status_updated_at || nowISO());
     return;
   }
 
@@ -3618,7 +4079,7 @@ function handleRealtimeEvent(eventName, payload) {
     void applyIncomingMessage(payload);
     return;
   }
-  if (eventName === "delivery_update") {
+  if (eventName === "delivery_update" || eventName === "read_receipt") {
     applyDeliveryUpdate(payload);
     return;
   }
@@ -3638,6 +4099,12 @@ async function applyIncomingMessage(payload) {
   }
   if (existingThread) {
     upsertThreadMessage(conversationId, nextMessage);
+    if (nextMessage.direction === "in") {
+      queueConversationDelivered(conversationId, nextMessage.serverOrder);
+    }
+    if (isForegroundThread(conversationId) && nextMessage.direction === "in") {
+      void markConversationRead(getThreadById(conversationId) || existingThread);
+    }
     if (state.activeThreadId === conversationId) {
       renderAll();
       void loadMessagesForThread(conversationId).catch((error) => {
@@ -3679,12 +4146,12 @@ async function startRealtimeSocket() {
     }));
   });
 
-  socket.addEventListener("message", (event) => {
+  socket.addEventListener("message", async (event) => {
     try {
       const message = JSON.parse(event.data);
       const eventName = sanitizeText(message?.event, 80);
       if (eventName === "event") {
-        applyUserEvent(message?.data);
+        await applyUserEvent(message?.data);
         const nextCursor = Number(message?.data?.user_event_id || 0);
         if (nextCursor > state.sync.lastUserCursor) {
           state.sync.lastUserCursor = nextCursor;
@@ -3730,6 +4197,7 @@ async function startRealtimeSocket() {
 }
 
 async function markConversationRead(thread) {
+  if (!isForegroundThread(thread?.id)) return;
   const lastIncoming = [...(thread.messages || [])].reverse().find((msg) => msg.direction === "in" && msg.serverOrder > 0);
   if (!lastIncoming) return;
   try {
@@ -3737,22 +4205,21 @@ async function markConversationRead(thread) {
       method: "POST",
       body: JSON.stringify({ through_server_order: lastIncoming.serverOrder }),
     });
-    upsertThread({ ...thread, unreadCount: 0 });
+    upsertThread({
+      ...thread,
+      unreadCount: 0,
+      readThroughServerOrder: Math.max(Number(thread.readThroughServerOrder || 0), Number(lastIncoming.serverOrder || 0)),
+      readStatusUpdatedAt: nowISO(),
+    });
+    saveConversationStore();
   } catch {} // removed: descriptive catch comment
 }
 
 async function markConversationDelivered(thread) {
   const lastIncoming = [...(thread.messages || [])].reverse().find((msg) => msg.direction === "in" && msg.serverOrder > 0);
   if (!lastIncoming) return;
-  try {
-    await apiRequest(`/v2/conversations/${encodeURIComponent(thread.id)}/delivered`, {
-      method: "POST",
-      body: JSON.stringify({
-        through_server_order: lastIncoming.serverOrder,
-        device_id: state.sync.deviceId,
-      }),
-    });
-  } catch {} // removed: descriptive catch comment
+  queueConversationDelivered(thread.id, lastIncoming.serverOrder);
+  await flushConversationDelivered(thread.id);
 }
 
 function buildThreadItem(thread) {
@@ -3851,9 +4318,19 @@ async function editMessage(threadId, messageId) {
       text: replyReference.text,
     };
   }
+  let payloadContent = nextContent;
+  let payloadContentType = CONTENT_TYPE_TEXT;
+  if (msg.isEncrypted) {
+    const encryptedEnvelope = await encryptConversationContent(thread, nextContent, CONTENT_TYPE_TEXT);
+    if (!encryptedEnvelope) {
+      throw new Error("Unable to encrypt edited message");
+    }
+    payloadContent = encryptedEnvelope;
+    payloadContentType = CONTENT_TYPE_ENCRYPTED;
+  }
   await apiRequest(`/v1/messages/${encodeURIComponent(messageId)}`, {
     method: "PATCH",
-    body: JSON.stringify({ content: nextContent }),
+    body: JSON.stringify({ content: payloadContent }),
   });
   void applyMessageEdited({
     conversation_id: threadId,
@@ -3862,8 +4339,9 @@ async function editMessage(threadId, messageId) {
       message_id: messageId,
       conversation_id: threadId,
       sender_user_id: state.auth?.userId || "",
-      content_type: CONTENT_TYPE_TEXT,
-      content: nextContent,
+      sender_device_id: state.auth?.deviceId || msg.senderDeviceId || "",
+      content_type: payloadContentType,
+      content: payloadContent,
       transport: msg.transport,
       server_order: msg.serverOrder,
       created_at: msg.createdAt,
@@ -3922,10 +4400,11 @@ function appendMessageMenuButton(menu, label, onClick, extraClass = "") {
 
 function buildMessageActionAnchor(thread, message) {
   const allowReply = !message.deleted;
-  const allowReact = !message.deleted && !message.isEncrypted;
-  const allowEdit = message.direction === "out" && !message.deleted && !isAppCardMessage(message) && !message.isEncrypted;
+  const allowReact = !message.deleted;
+  const allowEdit = message.direction === "out" && !message.deleted && !isAppCardMessage(message);
   const allowDelete = message.direction === "out" && !message.deleted && !isAppCardMessage(message);
-  if (!allowReply && !allowReact && !allowEdit && !allowDelete) return null;
+  const allowDetails = true;
+  if (!allowReply && !allowReact && !allowEdit && !allowDelete && !allowDetails) return null;
 
   const anchor = document.createElement("div");
   const menuOpen = Boolean(
@@ -3963,6 +4442,11 @@ function buildMessageActionAnchor(thread, message) {
   }
   if (allowReact) {
     appendMessageMenuButton(menu, "React", () => addReaction(thread.id, message.id));
+  }
+  if (allowDetails) {
+    appendMessageMenuButton(menu, "Details", () => {
+      void openMessageMetadata(thread.id, message.id);
+    });
   }
 
   if (allowEdit) {
@@ -4535,6 +5019,7 @@ function renderAll() {
   renderThreadList();
   renderMessages();
   renderMiniappWindow();
+  renderMessageMetadataWindow();
 }
 
 function openMobileThread() {
@@ -4972,6 +5457,7 @@ async function bootAfterAuth() {
   state.crypto = { device: null, published: false, bundleCache: {}, decryptedMessageCache: {} };
   eventStreamDisabled = false;
   ensureSyncDeviceId();
+  await hydrateCryptoClientState();
   loadConversationStore();
   loadSyncCursor();
   showAppShell();
@@ -4999,6 +5485,7 @@ async function bootAfterAuth() {
     stopRealtimeSocket();
     stopLiveRefreshLoop();
     startRealtimeSocket();
+    scheduleLiveRefreshLoop();
     renderAll();
   } catch (error) {
     console.error(error);
@@ -5085,6 +5572,7 @@ function logout() {
   state.remoteTypingByThread = {};
   state.replyTarget = null;
   state.openMessageMenu = null;
+  resetMessageMetadataState();
   state.miniapp.drawerOpen = false;
   state.miniapp.popupOpen = false;
   state.miniapp.selectedAppId = "";
@@ -5111,6 +5599,16 @@ document.addEventListener("visibilitychange", () => {
   void syncFromCursor();
   if (!realtimeSocket) {
     startRealtimeSocket();
+  }
+  if (state.activeThreadId) {
+    void syncThreadReceipts(state.activeThreadId);
+  }
+});
+
+window.addEventListener("focus", () => {
+  if (!state.auth) return;
+  if (state.activeThreadId) {
+    void syncThreadReceipts(state.activeThreadId);
   }
 });
 
@@ -5346,6 +5844,9 @@ el.closeThreadBtn.addEventListener("click", async () => {
   }
 });
 
+el.messageMetadataBackdrop.addEventListener("click", closeMessageMetadata);
+el.messageMetadataCloseBtn.addEventListener("click", closeMessageMetadata);
+
 el.phoneStartForm.addEventListener("submit", startPhoneAuth);
 el.phoneVerifyForm.addEventListener("submit", verifyPhoneAuth);
 el.phoneInput.addEventListener("input", updatePhonePreview);
@@ -5410,6 +5911,10 @@ if ("serviceWorker" in navigator) {
 
 document.addEventListener("keydown", async (event) => {
   if (event.key !== "Escape") return;
+  if (state.messageMetadata.open) {
+    closeMessageMetadata();
+    return;
+  }
   if (state.miniapp.popupOpen) {
     await closeMiniappWindow();
     renderAll();

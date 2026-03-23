@@ -2,13 +2,19 @@ package devicekeys
 
 import (
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"golang.org/x/crypto/curve25519"
+	"ohmf/services/gateway/internal/e2ee"
 	"ohmf/services/gateway/internal/securityaudit"
 )
 
@@ -52,6 +58,127 @@ func NewService(pool *pgxpool.Pool) *Service {
 func (s *Service) DB() *pgxpool.Pool {
 	return s.pool
 }
+
+// GenerateAndPublishDefaultBundle creates and publishes initial E2EE keys for a newly registered device
+func (s *Service) GenerateAndPublishDefaultBundle(ctx context.Context, userID, deviceID string) error {
+	// Generate X25519 identity keypair (ECDH)
+	_, identityPub, err := generateX25519Keypair()
+	if err != nil {
+		return fmt.Errorf("failed to generate identity keys: %w", err)
+	}
+
+	// Generate Ed25519 signing keypair
+	signingPub, signingPriv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		return fmt.Errorf("failed to generate signing keys: %w", err)
+	}
+
+	// Generate signed prekey (short-lived identity key + signature)
+	_, signedPrekeyPub, err := generateX25519Keypair()
+	if err != nil {
+		return fmt.Errorf("failed to generate signed prekey: %w", err)
+	}
+	// Sign the prekey public key with the Ed25519 signing key
+	signedPrekeySignatureBinary := ed25519.Sign(signingPriv, signedPrekeyPub[:])
+	signedPrekeySignature := base64.StdEncoding.EncodeToString(signedPrekeySignatureBinary)
+
+	// Encode keys to base64
+	identityPubB64 := base64.StdEncoding.EncodeToString(identityPub[:])
+	signingPubB64 := base64.StdEncoding.EncodeToString(signingPub[:])
+	signedPrekeyPubB64 := base64.StdEncoding.EncodeToString(signedPrekeyPub[:])
+
+	// Compute fingerprint for trust verification
+	fingerprint, err := e2ee.ComputeFingerprint(signingPubB64)
+	if err != nil {
+		return fmt.Errorf("failed to compute fingerprint: %w", err)
+	}
+
+	// Store in database as a transaction
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	// Insert device identity keys
+	_, err = tx.Exec(ctx, `
+		INSERT INTO device_identity_keys (
+			user_id, device_id, key_version,
+			identity_key_alg, identity_public_key,
+			agreement_identity_public_key,
+			signing_key_alg, signing_public_key,
+			signed_prekey_id, signed_prekey_public_key, signed_prekey_signature,
+			fingerprint, bundle_version,
+			published_at, updated_at
+		)
+		VALUES (
+			$1::uuid, $2::uuid, '1',
+			'X25519', $3,
+			$4,
+			'Ed25519', $5,
+			'0', $6, $7,
+			$8, 'OHMF_LEGACY_V0',
+			NOW(), NOW()
+		)
+		ON CONFLICT (user_id, device_id) DO UPDATE SET
+			identity_public_key = EXCLUDED.identity_public_key,
+			agreement_identity_public_key = EXCLUDED.agreement_identity_public_key,
+			signing_public_key = EXCLUDED.signing_public_key,
+			signed_prekey_id = EXCLUDED.signed_prekey_id,
+			signed_prekey_public_key = EXCLUDED.signed_prekey_public_key,
+			signed_prekey_signature = EXCLUDED.signed_prekey_signature,
+			fingerprint = EXCLUDED.fingerprint,
+			updated_at = NOW()
+	`, userID, deviceID, identityPubB64, identityPubB64, signingPubB64, signedPrekeyPubB64, signedPrekeySignature, fingerprint)
+	if err != nil {
+		return fmt.Errorf("failed to insert identity keys: %w", err)
+	}
+
+	// Generate and insert 5 one-time prekeys
+	for i := 0; i < 5; i++ {
+		_, otpPub, err := generateX25519Keypair()
+		if err != nil {
+			return fmt.Errorf("failed to generate one-time prekey %d: %w", i, err)
+		}
+		// Use a numeric prekey ID - for now just use a simple counter
+		// In production, this should use sequences or UUIDs
+		_, err = tx.Exec(ctx, `
+			INSERT INTO device_one_time_prekeys (
+				device_id, prekey_id, public_key, created_at
+			)
+			VALUES (
+				$1::uuid, (EXTRACT(EPOCH FROM now())::bigint * 100000 + $2), $3, NOW()
+			)
+		`, deviceID, i,
+			base64.StdEncoding.EncodeToString(otpPub[:]))
+		if err != nil {
+			return fmt.Errorf("failed to insert one-time prekey %d: %w", i, err)
+		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("failed to commit key generation transaction: %w", err)
+	}
+
+	return nil
+}
+
+// Helper function to generate X25519 keypair
+func generateX25519Keypair() ([32]byte, [32]byte, error) {
+	var privateKey [32]byte
+	_, err := rand.Read(privateKey[:])
+	if err != nil {
+		return [32]byte{}, [32]byte{}, err
+	}
+	publicKey, err := curve25519.X25519(privateKey[:], curve25519.Basepoint[:])
+	if err != nil {
+		return [32]byte{}, [32]byte{}, err
+	}
+	var pubKeyArray [32]byte
+	copy(pubKeyArray[:], publicKey)
+	return privateKey, pubKeyArray, nil
+}
+
 
 func (s *Service) PublishBundle(ctx context.Context, actorUserID, deviceID string, req PublishRequest) (Bundle, error) {
 	return (&Handler{DB: s.pool}).PublishBundle(ctx, actorUserID, deviceID, req)
