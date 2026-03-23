@@ -7,12 +7,14 @@ services:
       - ../../apps/web:/app:ro
     environment:
       CLIENT_PORT: ${CLIENT_PORT:-5173}
+      MINIAPP_SANDBOX_PORT: ${MINIAPP_SANDBOX_PORT:-5174}
     command:
       - sh
       - -c
       - python ./dev_server.py
     ports:
       - "${CLIENT_PORT:-5173}:${CLIENT_PORT:-5173}"
+      - "${MINIAPP_SANDBOX_PORT:-5174}:${MINIAPP_SANDBOX_PORT:-5174}"
     depends_on:
       api:
         condition: service_started

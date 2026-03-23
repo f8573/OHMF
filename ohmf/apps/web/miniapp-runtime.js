@@ -364,7 +364,13 @@ function validateManifest(manifest) {
 }
 
 async function fetchManifest(url) {
-  const response = await fetch(url, { cache: "no-store" });
+  // Convert relative URLs to absolute URLs from mini-app sandbox origin
+  let resolvedUrl = url;
+  if (!url.startsWith("http://") && !url.startsWith("https://")) {
+    const miniappSandboxUrl = window.OHMF_RUNTIME_CONFIG?.miniapp_sandbox_url || "http://localhost:5174";
+    resolvedUrl = new URL(url, miniappSandboxUrl + "/").toString();
+  }
+  const response = await fetch(resolvedUrl, { cache: "no-store" });
   if (!response.ok) {
     throw new Error(`Manifest request failed with ${response.status}.`);
   }
@@ -726,15 +732,16 @@ function handleReconnect() {
 }
 
 function buildFrameUrl() {
-  // P3.2: For isolated origins, use the app_origin if available (requires DNS/infra setup)
-  // For local dev without isolated origin infrastructure, fall back to manifest entrypoint
+  // Use mini-app sandbox origin (separate from main app)
+  // This ensures the mini-app runs in an isolated security context
+  const miniappSandboxUrl = window.OHMF_RUNTIME_CONFIG?.miniapp_sandbox_url || "http://localhost:5174";
   let baseUrl = state.manifest.entrypoint.url;
 
   // In production with isolated origin infrastructure, the app_origin would be used as:
   // const protocol = new URL(state.manifest.entrypoint.url).protocol;
   // baseUrl = `${protocol}//${state.appOrigin}` if state.appOrigin exists
 
-  const url = new URL(baseUrl, window.location.href);
+  const url = new URL(baseUrl, miniappSandboxUrl + "/");
   url.searchParams.set("channel", state.channelId);
   url.searchParams.set("parent_origin", window.location.origin);
   url.searchParams.set("app_id", state.manifest.app_id);

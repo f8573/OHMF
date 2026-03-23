@@ -57,5 +57,4 @@ CREATE INDEX IF NOT EXISTS idx_miniapp_cache_invalidation_events_app_id
   ON miniapp_cache_invalidation_events (app_id, invalidated_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_miniapp_cache_invalidation_events_recent
-  ON miniapp_cache_invalidation_events (invalidated_at DESC)
-  WHERE invalidated_at > now() - interval '7 days';
+  ON miniapp_cache_invalidation_events (invalidated_at DESC);

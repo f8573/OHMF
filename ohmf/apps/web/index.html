@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self' http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:*; object-src 'none'; base-uri 'none'; form-action 'self'" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: http://localhost:5174; font-src 'self'; connect-src 'self' http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:* https: http:; frame-src http://localhost:5174; object-src 'none'; base-uri 'none'; form-action 'self'" />
     <meta name="referrer" content="no-referrer" />
     <meta http-equiv="Permissions-Policy" content="camera=(), microphone=(), geolocation=()" />
     <meta name="theme-color" content="#111111" />
@@ -167,7 +167,7 @@
               <button type="button" class="icon-btn miniapp-close-btn" id="miniapp-window-close-btn" aria-label="Close app window">x</button>
             </div>
             <div class="miniapp-frame-wrap miniapp-window-frame-wrap">
-              <iframe id="miniapp-frame" title="Embedded mini-app" sandbox="allow-scripts allow-same-origin"></iframe>
+              <iframe id="miniapp-frame" title="Embedded mini-app" sandbox="allow-scripts" referrerpolicy="no-referrer"></iframe>
             </div>
           </div>
         </section>

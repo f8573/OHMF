@@ -2168,7 +2168,13 @@ async function ensureMiniappConsent(manifest, entry) {
 }
 
 async function fetchMiniappManifest(manifestUrl) {
-  const response = await fetch(manifestUrl, { cache: "no-store" });
+  // Convert relative URLs to absolute URLs from mini-app sandbox origin
+  let resolvedUrl = manifestUrl;
+  if (!manifestUrl.startsWith("http://") && !manifestUrl.startsWith("https://")) {
+    const miniappSandboxUrl = window.OHMF_RUNTIME_CONFIG?.miniapp_sandbox_url || "http://localhost:5174";
+    resolvedUrl = new URL(manifestUrl, miniappSandboxUrl + "/").toString();
+  }
+  const response = await fetch(resolvedUrl, { cache: "no-store" });
   if (!response.ok) throw new Error(`Manifest request failed with ${response.status}`);
   const manifest = await response.json();
   if (!manifest?.app_id || !manifest?.entrypoint?.url) throw new Error("invalid_manifest");
@@ -2433,7 +2439,9 @@ function appendProjectedMiniappMessage(text, contentType = "app_event", content 
 }
 
 function buildMiniappFrameURL() {
-  const url = new URL(state.miniapp.manifest.entrypoint.url, window.location.href);
+  // Build URL relative to mini-app sandbox origin (separate from main app)
+  const miniappSandboxUrl = window.OHMF_RUNTIME_CONFIG?.miniapp_sandbox_url || "http://localhost:5174";
+  const url = new URL(state.miniapp.manifest.entrypoint.url, miniappSandboxUrl + "/");
   state.miniapp.channelId = randomId("chan");
   url.searchParams.set("channel", state.miniapp.channelId);
   url.searchParams.set("parent_origin", window.location.origin);
