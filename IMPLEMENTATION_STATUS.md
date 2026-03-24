@@ -1,6 +1,6 @@
 # OHMF Implementation Status Report
 
-**Generated:** 2026-03-21
+**Generated:** 2026-03-23
 **Scope:** Complete feature inventory of OHMF platform against specification and iMessage parity
 **Format:** Features marked as **[IMPLEMENTED]**, **[PARTIAL]**, or **[UNIMPLEMENTED]**
 
@@ -751,24 +751,44 @@ Server-side states implemented; Android execution incomplete.
 ## 14. End-to-End Encryption
 
 ### E2EE Status
-- **E2EE implementation**: **[UNIMPLEMENTED]**
-  - Explicitly OUT OF SCOPE for v1.0 specification
-  - Phase 5 roadmap item only
+- **Direct-message E2EE**: **[IMPLEMENTED]**
+  - Web client publishes Signal-compatible device bundles
+  - `encrypted` message content with per-device recipient headers supported
+  - Gateway validates sender device ownership and encrypted envelope signatures
+
+- **Group E2EE (MLS-backed, web-first)**: **[IMPLEMENTED]**
+  - New group conversations default to `ENCRYPTED`
+  - Gateway tracks `mls_epoch`, ratchet-tree state, and per-group tree hashes
+  - Sender encrypts content once with an MLS epoch secret and distributes that secret to current member devices
+  - Gateway enforces current `conversation_epoch`, `mls_epoch`, tree hash, and exact device coverage when epoch secrets are rotated
+  - Membership changes and secure-device key changes bump group epochs and fan out conversation state updates
+  - Read/delivered lifecycle continues to work on encrypted group messages
+
+- **Production MLS protocol**: **[IMPLEMENTED]**
+  - `OHMF_MLS_V1` is now the active production group messaging scheme
+  - MLS epoch secrets are distributed over the existing Signal-compatible device sessions
+  - Full external RFC MLS interoperability is still future work
 
 ### E2EE Infrastructure (Partial)
 - **Device key storage**: **[IMPLEMENTED]**
   - Ed25519 public keys stored per device
   - `device_identity_keys` table exists
-  - Signal protocol key bundles partially supported
+  - Signal protocol key bundles supported for web secure messaging
 
 - **Key backups**: **[PARTIAL]**
   - `device_key_backups` table exists
   - Encrypted backup support in schema
   - Client encryption/backup logic unclear
 
-- **Planned Signal Protocol**: **[DOCUMENTED ONLY]**
-  - Mentioned in roadmap
-  - No implementation
+- **Signal protocol session management**: **[IMPLEMENTED]**
+  - Web client maintains per-device ratchet state
+  - One-time prekey claiming supported through gateway endpoints
+  - Group MLS epoch-secret distribution reuses the existing Signal-style device sessions
+
+- **Remaining E2EE work**: **[PARTIAL]**
+  - Android secure messaging client not implemented
+  - Group encryption UX is web-first
+  - Full RFC MLS interoperability/export path remains future work
 
 ---
 
@@ -780,6 +800,10 @@ Server-side states implemented; Android execution incomplete.
 - **OTT core functionality**: **[PARTIAL]**
   - SDK framework exists (empty scaffolding)
   - Full implementation missing
+
+- **Android E2EE client**: **[UNIMPLEMENTED]**
+  - No Android Signal session or encrypted group client implementation yet
+  - Current secure messaging rollout is web-first
 
 #### Android Default SMS Handler Mode
 - **Native SMS/MMS support**: **[UNIMPLEMENTED]**
@@ -810,6 +834,11 @@ Server-side states implemented; Android execution incomplete.
   - Mobile thread-only view implemented
   - State management minimal/vanilla JS
   - No offline capability yet
+
+- **Web secure messaging (DM + group)**: **[IMPLEMENTED]**
+  - DM encrypted messaging working with Signal-style device bundles
+  - Group encrypted messaging working with explicit enablement and epoch-based rekey validation
+  - Group readiness surfaced to UI via `e2ee_ready` and `e2ee_blocked_member_ids`
 
 #### Web Relay Capability
 - **Relay job UI**: **[PARTIAL]**

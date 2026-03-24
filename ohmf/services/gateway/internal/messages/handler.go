@@ -46,8 +46,9 @@ func validateSendContent(contentType string, content map[string]any) error {
 		if !ok {
 			return errors.New("encrypted messages require encryption metadata")
 		}
-		if scheme, _ := encryption["scheme"].(string); scheme != "OHMF_SIGNAL_V1" {
-			return errors.New("encrypted messages require scheme OHMF_SIGNAL_V1")
+		scheme, _ := encryption["scheme"].(string)
+		if scheme != SignalEncryptionScheme && scheme != MLSEncryptionScheme {
+			return errors.New("encrypted messages require a supported encryption scheme")
 		}
 		if _, ok := encryption["sender_user_id"].(string); !ok {
 			return errors.New("encrypted messages require sender_user_id")
@@ -58,9 +59,19 @@ func validateSendContent(contentType string, content map[string]any) error {
 		if _, ok := encryption["sender_signature"].(string); !ok {
 			return errors.New("encrypted messages require sender_signature")
 		}
-		recipients, ok := encryption["recipients"].([]any)
-		if !ok || len(recipients) == 0 {
-			return errors.New("encrypted messages require recipients")
+		if scheme == SignalEncryptionScheme {
+			recipients, ok := encryption["recipients"].([]any)
+			if !ok || len(recipients) == 0 {
+				return errors.New("encrypted messages require recipients")
+			}
+		}
+		if scheme == MLSEncryptionScheme {
+			if strings.TrimSpace(textField(encryption["tree_hash"])) == "" {
+				return errors.New("encrypted MLS messages require tree_hash")
+			}
+			if strings.TrimSpace(textField(encryption["epoch_secret_digest"])) == "" {
+				return errors.New("encrypted MLS messages require epoch_secret_digest")
+			}
 		}
 	case "attachment":
 		if _, ok := content["attachment_id"].(string); !ok {
@@ -319,6 +330,10 @@ func (h *Handler) Send(w http.ResponseWriter, r *http.Request) {
 			httpx.WriteError(w, r, http.StatusForbidden, "blocked", "conversation is blocked", nil)
 			return
 		}
+		if errors.Is(err, ErrEncryptedConversationStateChanged) {
+			httpx.WriteError(w, r, http.StatusConflict, "encrypted_conversation_state_changed", err.Error(), nil)
+			return
+		}
 		if errors.Is(err, ErrEncryptedMessageRequired) || errors.Is(err, ErrEncryptedMessageInvalid) || errors.Is(err, ErrSenderDeviceRequired) || errors.Is(err, ErrSenderDeviceInvalid) {
 			httpx.WriteError(w, r, http.StatusConflict, "invalid_encrypted_message", err.Error(), nil)
 			return
@@ -428,6 +443,10 @@ func (h *Handler) SendToPhone(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if errors.Is(err, ErrConversationBlocked) {
 			httpx.WriteError(w, r, http.StatusForbidden, "blocked", "conversation is blocked", nil)
+			return
+		}
+		if errors.Is(err, ErrEncryptedConversationStateChanged) {
+			httpx.WriteError(w, r, http.StatusConflict, "encrypted_conversation_state_changed", err.Error(), nil)
 			return
 		}
 		if errors.Is(err, ErrEncryptedMessageInvalid) || errors.Is(err, ErrSenderDeviceRequired) || errors.Is(err, ErrSenderDeviceInvalid) {
@@ -696,6 +715,10 @@ func (h *Handler) Edit(w http.ResponseWriter, r *http.Request) {
 		var invalidEditErr *invalidEditContentError
 		if errors.As(err, &invalidEditErr) {
 			httpx.WriteError(w, r, http.StatusBadRequest, "invalid_request", invalidEditErr.Error(), nil)
+			return
+		}
+		if errors.Is(err, ErrEncryptedConversationStateChanged) {
+			httpx.WriteError(w, r, http.StatusConflict, "encrypted_conversation_state_changed", err.Error(), nil)
 			return
 		}
 		if errors.Is(err, ErrEncryptedMessageInvalid) || errors.Is(err, ErrSenderDeviceRequired) || errors.Is(err, ErrSenderDeviceInvalid) {
@@ -1239,6 +1262,8 @@ func (h *Handler) Forward(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, ErrConversationBlocked):
 			httpx.WriteError(w, r, http.StatusForbidden, "blocked", "conversation is blocked", nil)
 			return
+		case errors.Is(err, ErrEncryptedConversationStateChanged):
+			httpx.WriteError(w, r, http.StatusConflict, "encrypted_conversation_state_changed", err.Error(), nil)
 		case errors.Is(err, ErrEncryptedMessageRequired), errors.Is(err, ErrEncryptedMessageInvalid), errors.Is(err, ErrSenderDeviceRequired), errors.Is(err, ErrSenderDeviceInvalid):
 			httpx.WriteError(w, r, http.StatusConflict, "invalid_encrypted_message", err.Error(), nil)
 			return

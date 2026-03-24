@@ -32,7 +32,9 @@ const CONTENT_TYPE_ATTACHMENT = "attachment";
 const CONTENT_TYPE_APP_CARD = "app_card";
 const CONTENT_TYPE_APP_EVENT = "app_event";
 const CONTENT_TYPE_ENCRYPTED = "encrypted";
-const ENCRYPTION_SCHEME = "OHMF_SIGNAL_V1";
+const SIGNAL_ENCRYPTION_SCHEME = "OHMF_SIGNAL_V1";
+const MLS_ENCRYPTION_SCHEME = "OHMF_MLS_V1";
+const ENCRYPTION_SCHEME = SIGNAL_ENCRYPTION_SCHEME;
 const LEGACY_ENCRYPTION_SCHEME = "OHMF_DOUBLE_RATCHET_P256_AESGCM_V3";
 const ATTACHMENT_ENCRYPTION_SCHEME = "OHMF_ATTACHMENT_AESGCM_V1";
 const SIGNAL_PREKEY_BATCH_SIZE = 100;
@@ -175,6 +177,7 @@ const el = {
   newCountryCodeSelect: document.getElementById("new-country-code-select"),
   newPhoneInput: document.getElementById("new-phone-input"),
   nicknameBtn: document.getElementById("nickname-btn"),
+  groupEncryptionBtn: document.getElementById("group-encryption-btn"),
   blockBtn: document.getElementById("block-btn"),
   closeThreadBtn: document.getElementById("close-thread-btn"),
   attachBtn: document.getElementById("attach-btn"),
@@ -703,6 +706,10 @@ async function hmacSHA256(keyBytes, dataBytes) {
   return new Uint8Array(await window.crypto.subtle.sign("HMAC", key, dataBytes));
 }
 
+async function sha256Base64(dataBytes) {
+  return bytesToBase64(new Uint8Array(await window.crypto.subtle.digest("SHA-256", dataBytes)));
+}
+
 async function hkdfExpand(ikmBytes, saltBytes, info, length) {
   const salt = saltBytes?.length ? saltBytes : new Uint8Array(32);
   const prk = await hmacSHA256(salt, ikmBytes);
@@ -767,6 +774,7 @@ function persistCryptoDeviceState(device) {
     ...device,
     ratchetSessions: device?.ratchetSessions && typeof device.ratchetSessions === "object" ? device.ratchetSessions : {},
     signalRatchetSessions: device?.signalRatchetSessions && typeof device.signalRatchetSessions === "object" ? device.signalRatchetSessions : {},
+    mlsEpochSecrets: device?.mlsEpochSecrets && typeof device.mlsEpochSecrets === "object" ? device.mlsEpochSecrets : {},
     trustPins: device?.trustPins && typeof device.trustPins === "object" ? device.trustPins : {},
     legacyRatchetSessions: device?.legacyRatchetSessions && typeof device.legacyRatchetSessions === "object" ? device.legacyRatchetSessions : {},
     decryptedMessageCache: normalizeDecryptedMessageCache(state.crypto.decryptedMessageCache),
@@ -788,6 +796,41 @@ function setRatchetSession(device, userId, deviceId, session) {
     ratchetSessions: {
       ...(device?.ratchetSessions || {}),
       [ratchetSessionId(userId, deviceId)]: normalizeRatchetSession(session, device),
+    },
+  };
+  return persistCryptoDeviceState(next);
+}
+
+function mlsEpochSecretId(conversationId, epoch) {
+  return `${sanitizeText(conversationId, 80)}:${Number(epoch || 0)}`;
+}
+
+function normalizeMLSEpochSecret(secret) {
+  return {
+    epoch: Number(secret?.epoch || 0),
+    digest: sanitizeText(secret?.digest, 200),
+    treeHash: sanitizeText(secret?.treeHash, 512),
+    secretKey: sanitizeText(secret?.secretKey, 4000),
+    updatedAt: sanitizeText(secret?.updatedAt, 80) || nowISO(),
+  };
+}
+
+function getMLSEpochSecret(device, conversationId, epoch, digest = "") {
+  if (!device) return null;
+  const stored = device.mlsEpochSecrets?.[mlsEpochSecretId(conversationId, epoch)];
+  if (!stored) return null;
+  const normalized = normalizeMLSEpochSecret(stored);
+  if (sanitizeText(digest, 200) && normalized.digest !== sanitizeText(digest, 200)) return null;
+  return normalized.secretKey ? normalized : null;
+}
+
+function setMLSEpochSecret(device, conversationId, secret) {
+  const normalized = normalizeMLSEpochSecret(secret);
+  const next = {
+    ...device,
+    mlsEpochSecrets: {
+      ...(device?.mlsEpochSecrets || {}),
+      [mlsEpochSecretId(conversationId, normalized.epoch)]: normalized,
     },
   };
   return persistCryptoDeviceState(next);
@@ -1070,11 +1113,27 @@ function encryptedRecipientCacheKey(recipient) {
   ].join(":");
 }
 
+function mlsEpochPackageCacheKey(pkg) {
+  return [
+    sanitizeText(pkg?.user_id, 80),
+    sanitizeText(pkg?.device_id, 80),
+    sanitizeText(pkg?.wrap_nonce, 4000),
+    sanitizeText(pkg?.wrapped_key, 12000),
+    sanitizeText(pkg?.ratchet_public_key, 4000),
+    String(Number(pkg?.previous_chain_length || 0)),
+    String(Number(pkg?.message_number || 0)),
+    sanitizeText(pkg?.initial_session?.sender_ephemeral_public_key, 4000),
+    String(Number(pkg?.initial_session?.signed_prekey_id || 0)),
+    String(Number(pkg?.initial_session?.one_time_prekey_id || 0)),
+  ].join(":");
+}
+
 function encryptedEnvelopeFingerprint(message) {
   if (sanitizeText(message?.contentType, 40) !== CONTENT_TYPE_ENCRYPTED) return "";
   const envelope = message?.content && typeof message.content === "object" ? message.content : {};
   const encryption = envelope.encryption && typeof envelope.encryption === "object" ? envelope.encryption : {};
   const recipients = Array.isArray(encryption.recipients) ? encryption.recipients : [];
+  const epochSecretBoxes = Array.isArray(encryption.epoch_secret_boxes) ? encryption.epoch_secret_boxes : [];
   return [
     sanitizeText(message?.id, 80),
     sanitizeText(encryption.scheme, 120),
@@ -1082,9 +1141,13 @@ function encryptedEnvelopeFingerprint(message) {
     sanitizeText(encryption.sender_device_id, 80),
     sanitizeText(encryption.sender_signature, 8000),
     String(Number(encryption.conversation_epoch || 1)),
+    String(Number(encryption.mls_epoch || 0)),
+    sanitizeText(encryption.tree_hash, 512),
+    sanitizeText(encryption.epoch_secret_digest, 200),
     sanitizeText(envelope.nonce, 4000),
     sanitizeText(envelope.ciphertext, 16000),
     recipients.map(encryptedRecipientCacheKey).sort().join(";"),
+    epochSecretBoxes.map(mlsEpochPackageCacheKey).sort().join(";"),
   ].join("|");
 }
 
@@ -1198,6 +1261,19 @@ function ratchetSignaturePayloadForEnvelope({ scheme, conversationEpoch, nonce, 
     String(nonce || ""),
     String(ciphertext || ""),
     recipientHeaderSummary(recipients),
+  ].join("|");
+}
+
+function mlsSignaturePayloadForEnvelope({ scheme, conversationEpoch, mlsEpoch, treeHash, epochSecretDigest, nonce, ciphertext, epochSecretBoxes }) {
+  return [
+    sanitizeText(scheme, 120),
+    String(Number(conversationEpoch || 1)),
+    String(Number(mlsEpoch || conversationEpoch || 1)),
+    sanitizeText(treeHash, 512),
+    sanitizeText(epochSecretDigest, 200),
+    sanitizeText(nonce, 4000),
+    sanitizeText(ciphertext, 16000),
+    recipientHeaderSummary(epochSecretBoxes),
   ].join("|");
 }
 
@@ -1360,20 +1436,68 @@ async function refetchDeviceBundles(userId) {
   return fetchDeviceBundles(cacheKey);
 } // removed: boolean cache bypass replaced with named refresh helper
 
+function participantUserIdsForThread(thread) {
+  const selfUserId = sanitizeText(state.auth?.userId, 80);
+  const seen = new Set();
+  const ordered = [];
+  for (const userId of [selfUserId, ...(Array.isArray(thread?.participants) ? thread.participants : [])]) {
+    const normalized = sanitizeText(userId, 80);
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    ordered.push(normalized);
+  }
+  return ordered;
+}
+
+function remoteParticipantUserIdsForThread(thread) {
+  const selfUserId = sanitizeText(state.auth?.userId, 80);
+  return participantUserIdsForThread(thread).filter((userId) => userId !== selfUserId);
+}
+
+function buildEncryptedGroupNotReadyError(thread, fallbackMessage = "Encrypted group is not ready yet.") {
+  const blocked = Array.isArray(thread?.e2eeBlockedMemberIds) ? thread.e2eeBlockedMemberIds : [];
+  const labels = blocked
+    .map((userId) => displayNameForUser(userId) || (userId ? `User ${userId.slice(0, 8)}` : ""))
+    .filter(Boolean);
+  const error = new Error(labels.length ? `Encrypted group is waiting on ${labels.join(", ")}.` : fallbackMessage);
+  error.code = "encrypted_group_not_ready";
+  return error;
+}
+
 async function ensureEncryptedConversation(thread) {
-  if (!thread || thread.kind !== "dm") return null;
-  const otherUserId = otherUserIdForThread(thread);
-  if (!otherUserId) return null;
+  if (!thread || thread.kind === "phone" || thread.kind === "draft_phone") return null;
+  const selfUserId = sanitizeText(state.auth?.userId, 80);
+  const remoteUserIds = remoteParticipantUserIdsForThread(thread);
+  if (!selfUserId || !remoteUserIds.length) return null;
   let device = await publishCryptoBundle();
-  const [selfBundles, recipientBundles] = await Promise.all([
-    refetchDeviceBundles(state.auth.userId),
-    refetchDeviceBundles(otherUserId),
-  ]);
-  const signalSelfBundles = selfBundles.filter(signalBundleSupported);
-  const signalRecipientBundles = recipientBundles.filter(signalBundleSupported);
-  if (!signalRecipientBundles.length) return null;
+  const participantUserIds = participantUserIdsForThread(thread);
+  const bundlesByUser = Object.fromEntries(await Promise.all(
+    participantUserIds.map(async (userId) => [
+      userId,
+      (await refetchDeviceBundles(userId)).filter(signalBundleSupported),
+    ])
+  ));
+  const signalSelfBundles = bundlesByUser[selfUserId] || [];
+  const signalRecipientBundles = remoteUserIds.flatMap((userId) => bundlesByUser[userId] || []);
+  if (!signalRecipientBundles.length) {
+    if (thread.kind === "group" && sanitizeText(thread.encryptionState, 40) === "ENCRYPTED") {
+      throw buildEncryptedGroupNotReadyError(thread);
+    }
+    return null;
+  }
   device = confirmTrustedRemoteBundles(device, signalRecipientBundles);
-  if (sanitizeText(thread.encryptionState, 40) !== "ENCRYPTED") {
+  if (thread.kind === "group") {
+    if (sanitizeText(thread.encryptionState, 40) !== "ENCRYPTED") return null;
+    if (!thread.e2eeReady) {
+      throw buildEncryptedGroupNotReadyError(thread);
+    }
+    for (const userId of remoteUserIds) {
+      if ((bundlesByUser[userId] || []).length === 0) {
+        throw buildEncryptedGroupNotReadyError(thread, "Encrypted group members must publish secure messaging keys first.");
+      }
+    }
+  }
+  if (thread.kind === "dm" && sanitizeText(thread.encryptionState, 40) !== "ENCRYPTED") {
     const updated = await apiRequest(`/v1/conversations/${encodeURIComponent(thread.id)}/metadata`, {
       method: "PATCH",
       body: JSON.stringify({ encryption_state: "ENCRYPTED" }),
@@ -1386,7 +1510,15 @@ async function ensureEncryptedConversation(thread) {
     device,
     selfBundles: signalSelfBundles,
     recipientBundles: signalRecipientBundles,
+    recipientUserIds: remoteUserIds,
+    bundlesByUser,
   };
+}
+
+function threadUsesMLS(thread) {
+  return thread?.kind === "group"
+    && sanitizeText(thread?.encryptionState, 40) === "ENCRYPTED"
+    && Boolean(thread?.mlsEnabled);
 }
 
 async function signalDeriveX3DHRoot(device, bundle, claimedBundle) {
@@ -1485,14 +1617,128 @@ async function advanceSignalSendingRatchet(device, bundle, claimedBundle = null)
   };
 }
 
+async function buildMLSEpochSecretBoxes(encryptionContext, device, epochSecretBytes) {
+  const remoteClaimedBundles = (await Promise.all(
+    (Array.isArray(encryptionContext.recipientUserIds) ? encryptionContext.recipientUserIds : [])
+      .map((userId) => claimDeviceBundles(userId).catch(() => []))
+  )).flat();
+  const claimedByDevice = Object.fromEntries(
+    remoteClaimedBundles
+      .filter(signalBundleSupported)
+      .map((item) => [sanitizeText(item?.device_id, 80), item])
+  );
+  const epochSecretBoxes = [];
+  const recipients = [
+    ...encryptionContext.selfBundles.filter((item) => sanitizeText(item?.device_id, 80) !== sanitizeText(state.auth.deviceId, 80)),
+    ...encryptionContext.recipientBundles,
+  ];
+  let workingDevice = device;
+  for (const bundle of recipients) {
+    const claimedBundle = sanitizeText(bundle.user_id, 80) === sanitizeText(state.auth.userId, 80)
+      ? null
+      : claimedByDevice[sanitizeText(bundle.device_id, 80)] || null;
+    const advanced = await advanceSignalSendingRatchet(workingDevice, bundle, claimedBundle);
+    workingDevice = advanced.device;
+    const wrapNonce = window.crypto.getRandomValues(new Uint8Array(12));
+    const wrapKey = await importAESKey(base64ToBytes(advanced.messageKey), ["encrypt"]);
+    const wrappedKey = await window.crypto.subtle.encrypt({ name: "AES-GCM", iv: wrapNonce }, wrapKey, epochSecretBytes);
+    epochSecretBoxes.push({
+      user_id: sanitizeText(bundle.user_id, 80),
+      device_id: sanitizeText(bundle.device_id, 80),
+      wrapped_key: bytesToBase64(wrappedKey),
+      wrap_nonce: bytesToBase64(wrapNonce),
+      ratchet_public_key: advanced.header.ratchet_public_key,
+      previous_chain_length: advanced.header.previous_chain_length,
+      message_number: advanced.header.message_number,
+      ...(advanced.header.initial_session ? { initial_session: advanced.header.initial_session } : {}),
+    });
+  }
+  const selfPrivateKey = await signalImportAgreementPrivateKey(workingDevice.agreementPrivateKeyJwk);
+  const selfPublicKey = await signalImportAgreementPublicKey(workingDevice.agreementPublicKey);
+  const selfWrapKey = await signalDeriveWrapKey(selfPrivateKey, selfPublicKey);
+  const selfWrapNonce = window.crypto.getRandomValues(new Uint8Array(12));
+  const selfWrappedKey = await window.crypto.subtle.encrypt({ name: "AES-GCM", iv: selfWrapNonce }, selfWrapKey, epochSecretBytes);
+  epochSecretBoxes.push({
+    user_id: sanitizeText(state.auth.userId, 80),
+    device_id: sanitizeText(state.auth.deviceId, 80),
+    wrapped_key: bytesToBase64(selfWrappedKey),
+    wrap_nonce: bytesToBase64(selfWrapNonce),
+  });
+  return { device: workingDevice, epochSecretBoxes };
+}
+
+async function encryptMLSConversationContent(thread, plainContent, innerContentType, encryptionContext) {
+  let device = confirmTrustedRemoteBundles(encryptionContext.device, encryptionContext.recipientBundles);
+  const signingPrivateKey = await signalImportSigningPrivateKey(device.signingPrivateKeyJwk);
+  const conversationEpoch = Number(thread.encryptionEpoch || 1);
+  const mlsEpoch = Number(thread.mlsEpoch || conversationEpoch || 1);
+  const plaintext = new TextEncoder().encode(JSON.stringify({
+    content_type: sanitizeText(innerContentType, 40) || CONTENT_TYPE_TEXT,
+    body: plainContent,
+  }));
+  let epochSecret = getMLSEpochSecret(device, thread.id, mlsEpoch);
+  let epochSecretBoxes = [];
+  if (!epochSecret || epochSecret.treeHash !== sanitizeText(thread.mlsTreeHash, 512)) {
+    const epochSecretBytes = window.crypto.getRandomValues(new Uint8Array(32));
+    const built = await buildMLSEpochSecretBoxes(encryptionContext, device, epochSecretBytes);
+    device = built.device;
+    epochSecretBoxes = built.epochSecretBoxes;
+    epochSecret = {
+      epoch: mlsEpoch,
+      digest: await sha256Base64(epochSecretBytes),
+      treeHash: sanitizeText(thread.mlsTreeHash, 512),
+      secretKey: bytesToBase64(epochSecretBytes),
+      updatedAt: nowISO(),
+    };
+    device = setMLSEpochSecret(device, thread.id, epochSecret);
+  }
+  const contentNonce = window.crypto.getRandomValues(new Uint8Array(12));
+  const epochSecretKey = await importAESKey(base64ToBytes(epochSecret.secretKey), ["encrypt"]);
+  const ciphertext = await window.crypto.subtle.encrypt({ name: "AES-GCM", iv: contentNonce }, epochSecretKey, plaintext);
+  const ciphertextB64 = bytesToBase64(ciphertext);
+  const nonceB64 = bytesToBase64(contentNonce);
+  const senderSignature = await signalSignDetached(signingPrivateKey, mlsSignaturePayloadForEnvelope({
+    scheme: MLS_ENCRYPTION_SCHEME,
+    conversationEpoch,
+    mlsEpoch,
+    treeHash: sanitizeText(thread.mlsTreeHash, 512),
+    epochSecretDigest: epochSecret.digest,
+    nonce: nonceB64,
+    ciphertext: ciphertextB64,
+    epochSecretBoxes,
+  }));
+  return {
+    ciphertext: ciphertextB64,
+    nonce: nonceB64,
+    encryption: {
+      scheme: MLS_ENCRYPTION_SCHEME,
+      sender_device_id: sanitizeText(state.auth.deviceId, 80),
+      sender_user_id: sanitizeText(state.auth.userId, 80),
+      sender_signature: senderSignature,
+      signature_alg: "Ed25519",
+      sender_identity_public_key: device.agreementPublicKey,
+      conversation_epoch: conversationEpoch,
+      mls_epoch: mlsEpoch,
+      tree_hash: sanitizeText(thread.mlsTreeHash, 512),
+      epoch_secret_digest: epochSecret.digest,
+      ...(epochSecretBoxes.length ? { epoch_secret_boxes: epochSecretBoxes } : {}),
+    },
+  };
+}
+
 async function encryptConversationContent(thread, plainContent, innerContentType = CONTENT_TYPE_TEXT) {
   const encryptionContext = await ensureEncryptedConversation(thread);
   if (!encryptionContext?.device) return null;
+  if (threadUsesMLS(thread)) {
+    return encryptMLSConversationContent(thread, plainContent, innerContentType, encryptionContext);
+  }
   let device = encryptionContext.device;
   device = confirmTrustedRemoteBundles(device, encryptionContext.recipientBundles);
   const signingPrivateKey = await signalImportSigningPrivateKey(device.signingPrivateKeyJwk);
-  const otherUserId = otherUserIdForThread(thread);
-  const remoteClaimedBundles = otherUserId ? await claimDeviceBundles(otherUserId).catch(() => []) : [];
+  const remoteClaimedBundles = (await Promise.all(
+    (Array.isArray(encryptionContext.recipientUserIds) ? encryptionContext.recipientUserIds : [])
+      .map((userId) => claimDeviceBundles(userId).catch(() => []))
+  )).flat();
   const claimedByDevice = Object.fromEntries(
     remoteClaimedBundles
       .filter(signalBundleSupported)
@@ -1573,15 +1819,124 @@ async function encryptConversationContent(thread, plainContent, innerContentType
   };
 }
 
+async function unwrapSignalWrappedKey(device, recipient, encryption) {
+  const agreementPrivateKey = await signalImportAgreementPrivateKey(device.agreementPrivateKeyJwk);
+  const ratchetPublicKey = sanitizeText(recipient?.ratchet_public_key, 4000);
+  if (ratchetPublicKey && sanitizeText(encryption?.sender_signature, 8000)) {
+    const senderUserId = sanitizeText(encryption?.sender_user_id, 80);
+    const senderDeviceId = sanitizeText(encryption?.sender_device_id, 80);
+    const initialSession = recipient?.initial_session && typeof recipient.initial_session === "object" ? recipient.initial_session : null;
+    const decryptWithSignalSession = async (useFreshSession = false) => {
+      const workingDevice = cloneJson(device || {});
+      let session = useFreshSession
+        ? normalizeSignalRatchetSession(null, workingDevice)
+        : (getSignalRatchetSession(workingDevice, senderUserId, senderDeviceId) || normalizeSignalRatchetSession(null, workingDevice));
+      let messageKey = takeSkippedMessageKey(session, ratchetPublicKey, Number(recipient?.message_number || 0));
+      if (!messageKey) {
+        if (session.remoteRatchetPublicKey !== ratchetPublicKey || !session.receiveChainKey) {
+          let localPrivateKey;
+          let rootBase = session.rootKey;
+          if (!session.receiveChainKey && initialSession?.sender_ephemeral_public_key) {
+            const senderIdentityPublicKey = await signalImportAgreementPublicKey(sanitizeText(encryption?.sender_identity_public_key, 4000));
+            const senderEphemeralPublicKey = await signalImportAgreementPublicKey(sanitizeText(initialSession.sender_ephemeral_public_key, 4000));
+            const signedPrekeyPrivateKey = await signalImportAgreementPrivateKey(workingDevice.signedPrekeyPrivateKeyJwk);
+            const segments = [
+              await signalDeriveSharedSecretBytes(signedPrekeyPrivateKey, senderIdentityPublicKey),
+              await signalDeriveSharedSecretBytes(agreementPrivateKey, senderEphemeralPublicKey),
+              await signalDeriveSharedSecretBytes(signedPrekeyPrivateKey, senderEphemeralPublicKey),
+            ];
+            const oneTimePrekeyId = String(Number(initialSession.one_time_prekey_id || 0));
+            if (oneTimePrekeyId && workingDevice.oneTimePrekeys?.[oneTimePrekeyId]?.private_key_jwk) {
+              const oneTimePrivateKey = await signalImportAgreementPrivateKey(workingDevice.oneTimePrekeys[oneTimePrekeyId].private_key_jwk);
+              segments.push(await signalDeriveSharedSecretBytes(oneTimePrivateKey, senderEphemeralPublicKey));
+              workingDevice.oneTimePrekeys = {
+                ...(workingDevice.oneTimePrekeys || {}),
+                [oneTimePrekeyId]: {
+                  ...(workingDevice.oneTimePrekeys?.[oneTimePrekeyId] || {}),
+                  consumed_at: nowISO(),
+                },
+              };
+            }
+            const rootMaterial = await hkdfExpand(concatBytes(...segments), new Uint8Array(32), "OHMF_SIGNAL_X3DH_V1", 32);
+            rootBase = bytesToBase64(rootMaterial);
+            localPrivateKey = signedPrekeyPrivateKey;
+          } else {
+            localPrivateKey = await signalImportAgreementPrivateKey(session.localRatchetPrivateKeyJwk || workingDevice.signedPrekeyPrivateKeyJwk);
+          }
+          const remotePublicKey = await signalImportAgreementPublicKey(ratchetPublicKey);
+          const sharedSecret = await signalDeriveSharedSecretBytes(localPrivateKey, remotePublicKey);
+          const next = await kdfRoot(rootBase, sharedSecret);
+          session.rootKey = next.rootKey;
+          session.receiveChainKey = next.chainKey;
+          session.receiveCount = 0;
+          session.remoteRatchetPublicKey = ratchetPublicKey;
+          session.pendingRatchet = true;
+        }
+        const targetNumber = Number(recipient?.message_number || 0);
+        if (targetNumber < Number(session.receiveCount || 0)) {
+          throw new Error("Missing skipped message key");
+        }
+        while (Number(session.receiveCount || 0) < targetNumber) {
+          const skipped = await kdfChain(session.receiveChainKey);
+          stashSkippedMessageKey(session, ratchetPublicKey, session.receiveCount, skipped.messageKey);
+          session.receiveChainKey = skipped.nextChainKey;
+          session.receiveCount = Number(session.receiveCount || 0) + 1;
+        }
+        const current = await kdfChain(session.receiveChainKey);
+        messageKey = current.messageKey;
+        session.receiveChainKey = current.nextChainKey;
+        session.receiveCount = Number(session.receiveCount || 0) + 1;
+      }
+      const wrapKey = await importAESKey(base64ToBytes(messageKey), ["decrypt"]);
+      const wrappedKeyBytes = await window.crypto.subtle.decrypt(
+        { name: "AES-GCM", iv: base64ToBytes(recipient.wrap_nonce) },
+        wrapKey,
+        base64ToBytes(recipient.wrapped_key)
+      );
+      workingDevice.signalRatchetSessions = {
+        ...(workingDevice.signalRatchetSessions || {}),
+        [signalRatchetSessionId(senderUserId, senderDeviceId)]: normalizeSignalRatchetSession(session, workingDevice),
+      };
+      return {
+        keyBytes: new Uint8Array(wrappedKeyBytes),
+        device: workingDevice,
+      };
+    };
+    try {
+      return await decryptWithSignalSession(false);
+    } catch (error) {
+      const canRetryFreshSession = error?.name === "OperationError"
+        && Boolean(initialSession?.sender_ephemeral_public_key)
+        && Boolean(getSignalRatchetSession(device, senderUserId, senderDeviceId));
+      if (!canRetryFreshSession) throw error;
+      return decryptWithSignalSession(true);
+    }
+  }
+  const peerPublicKey = await signalImportAgreementPublicKey(device.agreementPublicKey);
+  const wrapKey = await signalDeriveWrapKey(agreementPrivateKey, peerPublicKey);
+  const wrappedKeyBytes = await window.crypto.subtle.decrypt(
+    { name: "AES-GCM", iv: base64ToBytes(recipient.wrap_nonce) },
+    wrapKey,
+    base64ToBytes(recipient.wrapped_key)
+  );
+  return {
+    keyBytes: new Uint8Array(wrappedKeyBytes),
+    device,
+  };
+}
+
 async function decryptConversationContent(message) {
   if (sanitizeText(message?.contentType, 40) !== CONTENT_TYPE_ENCRYPTED) return message;
   const cached = cachedDecryptedMessage(message);
   if (cached) return applyDecryptedMessageView(message, cached);
   const envelope = message.content && typeof message.content === "object" ? message.content : {};
   const encryption = envelope.encryption && typeof envelope.encryption === "object" ? envelope.encryption : {};
+  const scheme = sanitizeText(encryption.scheme || ENCRYPTION_SCHEME, 120);
   const recipients = Array.isArray(encryption.recipients) ? encryption.recipients : [];
-  const recipient = recipients.find((item) => sanitizeText(item?.device_id, 80) === sanitizeText(state.auth?.deviceId, 80));
-  if (!recipient) {
+  const epochSecretBoxes = Array.isArray(encryption.epoch_secret_boxes) ? encryption.epoch_secret_boxes : [];
+  const recipientEntries = scheme === MLS_ENCRYPTION_SCHEME ? epochSecretBoxes : recipients;
+  const recipient = recipientEntries.find((item) => sanitizeText(item?.device_id, 80) === sanitizeText(state.auth?.deviceId, 80));
+  if (!recipient && scheme !== MLS_ENCRYPTION_SCHEME) {
     return {
       ...message,
       text: "[Encrypted message for another device]",
@@ -1594,7 +1949,93 @@ async function decryptConversationContent(message) {
   return queueCryptoDecrypt(async () => {
     try {
       let device = await ensureCryptoDeviceState();
-      const scheme = sanitizeText(encryption.scheme || ENCRYPTION_SCHEME, 120);
+      if (scheme === MLS_ENCRYPTION_SCHEME) {
+        const senderUserId = sanitizeText(encryption.sender_user_id, 80);
+        const senderDeviceId = sanitizeText(encryption.sender_device_id, 80);
+        const senderBundles = await refetchDeviceBundles(senderUserId);
+        const senderBundle = senderBundles.find((item) => sanitizeText(item?.device_id, 80) === senderDeviceId);
+        const signingPublicKeyValue = sanitizeText(senderBundle?.signing_public_key, 4000);
+        if (!signingPublicKeyValue) throw new Error("Missing MLS sender signing key");
+        const signingPublicKey = await signalImportSigningPublicKey(signingPublicKeyValue);
+        const valid = await signalVerifyDetached(
+          signingPublicKey,
+          mlsSignaturePayloadForEnvelope({
+            scheme,
+            conversationEpoch: Number(encryption.conversation_epoch || 1),
+            mlsEpoch: Number(encryption.mls_epoch || encryption.conversation_epoch || 1),
+            treeHash: sanitizeText(encryption.tree_hash, 512),
+            epochSecretDigest: sanitizeText(encryption.epoch_secret_digest, 200),
+            nonce: String(envelope.nonce || ""),
+            ciphertext: String(envelope.ciphertext || ""),
+            epochSecretBoxes,
+          }),
+          sanitizeText(encryption.sender_signature, 8000)
+        );
+        if (!valid) throw new Error("Invalid MLS sender signature");
+        let epochSecret = getMLSEpochSecret(
+          device,
+          sanitizeText(message?.conversationId, 80),
+          Number(encryption.mls_epoch || encryption.conversation_epoch || 1),
+          sanitizeText(encryption.epoch_secret_digest, 200)
+        );
+        if (!epochSecret) {
+          if (!recipient) {
+            return {
+              ...message,
+              text: "[Encrypted message for another device]",
+              content: { text: "[Encrypted message for another device]" },
+              isEncrypted: true,
+              decryptStatus: "other_device",
+            };
+          }
+          const unwrapped = await unwrapSignalWrappedKey(device, recipient, encryption);
+          device = setMLSEpochSecret(unwrapped.device, sanitizeText(message?.conversationId, 80), {
+            epoch: Number(encryption.mls_epoch || encryption.conversation_epoch || 1),
+            digest: sanitizeText(encryption.epoch_secret_digest, 200),
+            treeHash: sanitizeText(encryption.tree_hash, 512),
+            secretKey: bytesToBase64(unwrapped.keyBytes),
+            updatedAt: nowISO(),
+          });
+          epochSecret = getMLSEpochSecret(
+            device,
+            sanitizeText(message?.conversationId, 80),
+            Number(encryption.mls_epoch || encryption.conversation_epoch || 1),
+            sanitizeText(encryption.epoch_secret_digest, 200)
+          );
+        }
+        if (!epochSecret?.secretKey) throw new Error("Missing MLS epoch secret");
+        const epochSecretKey = await importAESKey(base64ToBytes(epochSecret.secretKey), ["decrypt"]);
+        const plaintext = await window.crypto.subtle.decrypt(
+          { name: "AES-GCM", iv: base64ToBytes(envelope.nonce) },
+          epochSecretKey,
+          base64ToBytes(envelope.ciphertext)
+        );
+        const decoded = JSON.parse(new TextDecoder().decode(plaintext));
+        const innerContentType = sanitizeText(decoded?.content_type, 40)
+          || (decoded?.body && typeof decoded.body === "object" && decoded.body?.attachment_id ? CONTENT_TYPE_ATTACHMENT : "")
+          || (decoded && typeof decoded === "object" && decoded?.attachment_id ? CONTENT_TYPE_ATTACHMENT : "")
+          || CONTENT_TYPE_TEXT;
+        const innerContent = decoded && typeof decoded.body === "object"
+          ? decoded.body
+          : decoded?.body !== undefined
+          ? decoded.body
+          : decoded && typeof decoded === "object"
+          ? decoded
+          : { text: sanitizeText(decoded, 1000) };
+        const fallbackText = innerContentType === CONTENT_TYPE_ATTACHMENT
+          ? sanitizeText(innerContent?.file_name || innerContent?.attachment_id || "Attachment", 1000)
+          : sanitizeText(innerContent?.text || "[Encrypted message]", 1000);
+        const decrypted = {
+          ...message,
+          text: fallbackText,
+          contentType: innerContentType,
+          content: innerContent && typeof innerContent === "object" ? innerContent : { text: sanitizeText(innerContent, 1000) },
+          isEncrypted: true,
+          decryptStatus: "ok",
+        };
+        rememberDecryptedMessage(decrypted);
+        return decrypted;
+      }
       if (scheme === LEGACY_ENCRYPTION_SCHEME) {
         if (!device.legacyAgreementPrivateKeyJwk) throw new Error("Missing legacy key material");
         const legacyDevice = {
@@ -1957,6 +2398,8 @@ function loadConversationStore() {
       nickname: sanitizeText(thread.nickname, 80),
       encryptionState: sanitizeText(thread.encryptionState, 40),
       encryptionEpoch: Number(thread.encryptionEpoch || 1),
+      e2eeReady: Boolean(thread.e2eeReady),
+      e2eeBlockedMemberIds: Array.isArray(thread.e2eeBlockedMemberIds) ? thread.e2eeBlockedMemberIds.map((id) => sanitizeText(id, 80)).filter(Boolean) : [],
       blockedByViewer: Boolean(thread.blockedByViewer),
       blockedByOther: Boolean(thread.blockedByOther),
       updatedAt: thread.updatedAt || nowISO(),
@@ -2733,6 +3176,10 @@ function pickSubtitle(conversation) {
   if (conversation.blockedByViewer) return "Blocked by you";
   if (conversation.blockedByOther) return "Blocked";
   if (conversation.kind === "phone") return "Phone conversation (OTT preferred)";
+  if (conversation.kind === "group" && sanitizeText(conversation.encryptionState, 40) === "ENCRYPTED" && !conversation.e2eeReady) {
+    const blockedCount = Array.isArray(conversation.e2eeBlockedMemberIds) ? conversation.e2eeBlockedMemberIds.length : 0;
+    return blockedCount > 0 ? `Encrypted group waiting on ${blockedCount} member${blockedCount === 1 ? "" : "s"}` : "Encrypted group syncing";
+  }
   if (sanitizeText(conversation.encryptionState, 40) === "ENCRYPTED") return "Encrypted conversation";
   if (conversation.kind === "group") {
     const total = Array.isArray(conversation.participants) ? conversation.participants.length : 0;
@@ -2759,6 +3206,11 @@ function mapConversation(item) {
     nickname: sanitizeText(item.nickname, 80),
     encryptionState: sanitizeText(item.encryption_state, 40),
     encryptionEpoch: Number(item.encryption_epoch || 1),
+    mlsEnabled: Boolean(item.mls_enabled),
+    mlsEpoch: Number(item.mls_epoch || 0),
+    mlsTreeHash: sanitizeText(item.mls_tree_hash, 512),
+    e2eeReady: Boolean(item.e2ee_ready),
+    e2eeBlockedMemberIds: Array.isArray(item.e2ee_blocked_member_ids) ? item.e2ee_blocked_member_ids.map((v) => sanitizeText(v, 80)).filter(Boolean) : [],
     updatedAt: item.updated_at || nowISO(),
     blockedByViewer,
     blockedByOther,
@@ -3568,6 +4020,11 @@ function ensureThreadFromEvent(payload) {
   const mapped = mapConversation({
     conversation_id: conversationId,
     type: sanitizeText(payload?.conversation_type, 24) || "DM",
+    title: sanitizeText(payload?.title, 80),
+    encryption_state: sanitizeText(payload?.encryption_state, 40),
+    encryption_epoch: Number(payload?.encryption_epoch || 0),
+    e2ee_ready: Boolean(payload?.e2ee_ready),
+    e2ee_blocked_member_ids: Array.isArray(payload?.e2ee_blocked_member_ids) ? payload.e2ee_blocked_member_ids : [],
     updated_at: payload?.message?.created_at || payload?.status_updated_at || nowISO(),
     participants: Array.isArray(payload?.participants) ? payload.participants : [],
     external_phones: Array.isArray(payload?.external_phones) ? payload.external_phones : [],
@@ -3596,8 +4053,21 @@ function applyConversationStateUpdate(payload) {
     : Boolean(thread.blockedByOther);
   const next = {
     ...thread,
+    serverTitle: payload?.title !== undefined ? sanitizeText(payload.title, 80) : thread.serverTitle,
     nickname: payload?.nickname !== undefined ? sanitizeText(payload.nickname, 80) : thread.nickname,
     closed: payload?.closed !== undefined ? Boolean(payload.closed) : thread.closed,
+    encryptionState: payload?.encryption_state !== undefined ? sanitizeText(payload.encryption_state, 40) : thread.encryptionState,
+    encryptionEpoch: payload?.encryption_epoch !== undefined ? Number(payload.encryption_epoch || 0) : thread.encryptionEpoch,
+    e2eeReady: payload?.e2ee_ready !== undefined ? Boolean(payload.e2ee_ready) : Boolean(thread.e2eeReady),
+    e2eeBlockedMemberIds: Array.isArray(payload?.e2ee_blocked_member_ids)
+      ? payload.e2ee_blocked_member_ids.map((id) => sanitizeText(id, 80)).filter(Boolean)
+      : (Array.isArray(thread.e2eeBlockedMemberIds) ? thread.e2eeBlockedMemberIds : []),
+    participants: Array.isArray(payload?.participants)
+      ? payload.participants.map((id) => sanitizeText(id, 80)).filter(Boolean)
+      : (Array.isArray(thread.participants) ? thread.participants : []),
+    externalPhones: Array.isArray(payload?.external_phones)
+      ? payload.external_phones.map((phone) => sanitizeText(phone, 32)).filter(Boolean)
+      : (Array.isArray(thread.externalPhones) ? thread.externalPhones : []),
     blockedByViewer,
     blockedByOther,
     blocked: payload?.blocked !== undefined
@@ -4915,13 +5385,24 @@ function buildTextBubble(thread, message) {
 function renderMessages() {
   const thread = getActiveThread();
   const blocked = Boolean(thread?.blocked);
+  const encryptedGroupPending = Boolean(
+    thread
+    && thread.kind === "group"
+    && sanitizeText(thread.encryptionState, 40) === "ENCRYPTED"
+    && !thread.e2eeReady
+  );
   const targetUserId = otherUserIdForThread(thread);
   if (thread && state.openMessageMenu && state.openMessageMenu.threadId !== thread.id) {
     state.openMessageMenu = null;
   }
   el.nicknameBtn.disabled = !thread || thread?.kind === "draft_phone";
+  el.groupEncryptionBtn.disabled = !thread || thread.kind !== "group" || sanitizeText(thread.encryptionState, 40) === "ENCRYPTED";
+  el.groupEncryptionBtn.textContent = thread?.kind === "group"
+    ? (sanitizeText(thread?.encryptionState, 40) === "ENCRYPTED" ? "On" : "Lock")
+    : "Lock";
   el.blockBtn.disabled = !thread || !targetUserId;
   el.closeThreadBtn.disabled = !thread || thread?.kind === "draft_phone";
+  el.attachBtn.disabled = !thread || blocked || encryptedGroupPending;
   el.blockBtn.textContent = thread?.blockedByViewer ? "Unblock" : "Block";
   renderComposerReply(thread);
 
@@ -4940,11 +5421,13 @@ function renderMessages() {
 
   el.title.textContent = thread.title;
   el.subtitle.textContent = thread.subtitle;
-  el.composerInput.disabled = blocked;
+  el.composerInput.disabled = blocked || encryptedGroupPending;
   el.composerInput.placeholder = thread.blockedByOther
     ? "Messaging unavailable in this conversation"
     : blocked
     ? "Unblock this user to send messages"
+    : encryptedGroupPending
+    ? "Waiting for all members to publish secure messaging keys"
     : "Message";
   renderMiniappLauncher();
   el.messageList.replaceChildren();
@@ -5114,7 +5597,7 @@ async function createGroupConversation(title, participantPhones) {
       type: "GROUP",
       title: sanitizeText(title, 80),
       participant_phones: participantPhones,
-      encryption_state: "PLAINTEXT",
+      encryption_state: "ENCRYPTED",
     }),
   });
   await resolveProfilesForUsers(payload?.participants || []);
@@ -5154,6 +5637,54 @@ async function updateConversationPreferences(threadId, patch) {
   }
   saveConversationStore();
   return getThreadById(threadId) || mapped;
+}
+
+async function refreshConversationThread(threadId) {
+  const payload = await apiRequest(`/v1/conversations/${encodeURIComponent(threadId)}`, { method: "GET" });
+  const mapped = mapConversation(payload || {});
+  const existing = getThreadById(threadId);
+  if (existing) {
+    upsertThread({
+      ...existing,
+      ...mapped,
+      messages: existing.messages,
+      loadedMessages: existing.loadedMessages,
+    });
+  } else if (mapped.id) {
+    upsertThread(mapped);
+  }
+  saveConversationStore();
+  return getThreadById(threadId) || mapped;
+}
+
+async function updateConversationMetadata(threadId, patch) {
+  const payload = await apiRequest(`/v1/conversations/${encodeURIComponent(threadId)}/metadata`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+  const mapped = mapConversation(payload || {});
+  const existing = getThreadById(threadId);
+  if (existing) {
+    upsertThread({
+      ...existing,
+      ...mapped,
+      messages: existing.messages,
+      loadedMessages: existing.loadedMessages,
+    });
+  } else if (mapped.id) {
+    upsertThread(mapped);
+  }
+  saveConversationStore();
+  return getThreadById(threadId) || mapped;
+}
+
+async function enableGroupEncryption(thread) {
+  if (!thread || thread.kind !== "group") return thread;
+  if (sanitizeText(thread.encryptionState, 40) === "ENCRYPTED") return thread;
+  if (!thread.e2eeReady) {
+    throw buildEncryptedGroupNotReadyError(thread);
+  }
+  return updateConversationMetadata(thread.id, { encryption_state: "ENCRYPTED" });
 }
 
 function moveDraftToConversation(draftId, conversationId, phone) {
@@ -5203,16 +5734,49 @@ async function sendSMS(phone, content, contentType = CONTENT_TYPE_TEXT) {
   });
 }
 
+async function sendEncryptedConversationPayload(thread, plainContent, innerContentType, encryptedEnvelope) {
+  let envelope = encryptedEnvelope;
+  let workingThread = getThreadById(thread.id) || thread;
+  try {
+    const payload = await sendOTT(workingThread.id, envelope, CONTENT_TYPE_ENCRYPTED);
+    return { payload, envelope, thread: workingThread };
+  } catch (error) {
+    if (error?.code !== "encrypted_conversation_state_changed") throw error;
+    workingThread = await refreshConversationThread(thread.id);
+    envelope = await encryptConversationContent(workingThread, plainContent, innerContentType);
+    if (!envelope) throw error;
+    const payload = await sendOTT(workingThread.id, envelope, CONTENT_TYPE_ENCRYPTED);
+    return { payload, envelope, thread: workingThread };
+  }
+}
+
 async function sendInConversation(thread, content) {
-  const encryptedEnvelope = thread.kind === "dm" ? await encryptConversationContent(thread, content, CONTENT_TYPE_TEXT).catch((error) => {
-    console.error(error);
-    return null;
-  }) : null;
+  const shouldEncrypt = thread.kind === "dm" || (thread.kind === "group" && sanitizeText(thread.encryptionState, 40) === "ENCRYPTED");
+  let encryptedEnvelope = null;
+  if (shouldEncrypt) {
+    try {
+      encryptedEnvelope = await encryptConversationContent(thread, content, CONTENT_TYPE_TEXT);
+    } catch (error) {
+      if (thread.kind === "dm") {
+        console.error(error);
+        encryptedEnvelope = null;
+      } else {
+        throw error;
+      }
+    }
+  }
   const effectiveContentType = encryptedEnvelope ? CONTENT_TYPE_ENCRYPTED : CONTENT_TYPE_TEXT;
   const pendingId = pushPendingMessage(thread.id, content, TRANSPORT_OHMF, effectiveContentType);
   renderAll();
   try {
-    const payload = await sendOTT(thread.id, encryptedEnvelope || content, effectiveContentType);
+    let payload;
+    if (encryptedEnvelope) {
+      const encryptedSend = await sendEncryptedConversationPayload(thread, content, CONTENT_TYPE_TEXT, encryptedEnvelope);
+      encryptedEnvelope = encryptedSend.envelope;
+      payload = encryptedSend.payload;
+    } else {
+      payload = await sendOTT(thread.id, content, effectiveContentType);
+    }
     const finalMessageId = sanitizeText(payload.message_id, 80) || pendingId;
     if (encryptedEnvelope) {
       cacheEncryptedMessagePlaintext(finalMessageId, encryptedEnvelope, CONTENT_TYPE_TEXT, content, sanitizeText(content?.text, 1000));
@@ -5272,14 +5836,18 @@ async function sendAttachmentInConversation(thread, attachment) {
   const pendingId = pushPendingMessage(thread.id, content, TRANSPORT_OHMF, CONTENT_TYPE_ATTACHMENT);
   renderAll();
   try {
-    const encryptedEnvelope = thread.kind === "dm" && content.encrypted
+    const shouldEncrypt = content.encrypted && (thread.kind === "dm" || (thread.kind === "group" && sanitizeText(thread.encryptionState, 40) === "ENCRYPTED"));
+    let encryptedEnvelope = shouldEncrypt
       ? await encryptConversationContent(thread, content, CONTENT_TYPE_ATTACHMENT)
       : null;
-    const payload = await sendOTT(
-      thread.id,
-      encryptedEnvelope || content,
-      encryptedEnvelope ? CONTENT_TYPE_ENCRYPTED : CONTENT_TYPE_ATTACHMENT
-    );
+    let payload;
+    if (encryptedEnvelope) {
+      const encryptedSend = await sendEncryptedConversationPayload(thread, content, CONTENT_TYPE_ATTACHMENT, encryptedEnvelope);
+      encryptedEnvelope = encryptedSend.envelope;
+      payload = encryptedSend.payload;
+    } else {
+      payload = await sendOTT(thread.id, content, CONTENT_TYPE_ATTACHMENT);
+    }
     if (encryptedEnvelope) {
       cacheEncryptedMessagePlaintext(
         sanitizeText(payload.message_id, 80) || pendingId,
@@ -5626,6 +6194,7 @@ el.searchInput.addEventListener("input", (event) => {
 });
 
 el.attachBtn.addEventListener("click", async () => {
+  if (el.attachBtn.disabled) return;
   state.miniapp.drawerOpen = !state.miniapp.drawerOpen;
   if (state.miniapp.drawerOpen && !state.miniapp.catalogLoaded) {
     await loadMiniappCatalog().catch((error) => {
@@ -5726,6 +6295,7 @@ el.composer.addEventListener("submit", async (event) => {
     clearReplyTargetWithoutRender();
   } catch (error) {
     console.error(error);
+    window.alert(sanitizeText(error.message || "Unable to send message.", 180));
   }
   renderAll();
 }); // removed: single-use composer send helper inlined into submit handler
@@ -5796,6 +6366,20 @@ el.nicknameBtn.addEventListener("click", async () => {
   } catch (error) {
     console.error(error);
     window.alert(sanitizeText(error.message || "Unable to update nickname.", 160));
+  }
+});
+
+el.groupEncryptionBtn.addEventListener("click", async () => {
+  const thread = getActiveThread();
+  if (!thread || thread.kind !== "group" || sanitizeText(thread.encryptionState, 40) === "ENCRYPTED") return;
+  const confirmed = window.confirm("Enable end-to-end encryption for this group? All members must have secure messaging keys published.");
+  if (!confirmed) return;
+  try {
+    await enableGroupEncryption(thread);
+    renderAll();
+  } catch (error) {
+    console.error(error);
+    window.alert(sanitizeText(error.message || "Unable to enable group encryption.", 180));
   }
 });
 

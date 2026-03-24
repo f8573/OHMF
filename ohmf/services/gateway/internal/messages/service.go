@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/redis/go-redis/v9"
+	"ohmf/services/gateway/internal/e2ee"
 	"ohmf/services/gateway/internal/limit"
 	"ohmf/services/gateway/internal/middleware"
 	"ohmf/services/gateway/internal/replication"
@@ -404,6 +405,9 @@ func (s *Service) EditMessage(ctx context.Context, actorUserID, actorDeviceID, m
 		encryptedMetadata, err := ProcessEncryptedMessage(ctx, tx, actorUserID, currentDeviceID, contentForStorage)
 		if err != nil {
 			return &invalidEditContentError{err: err}
+		}
+		if err := s.validateEncryptedConversationEnvelope(ctx, tx, convID, encryptedMetadata); err != nil {
+			return err
 		}
 		encryptionScheme = encryptedMetadata.Scheme
 		senderDeviceID.String = originDeviceID
@@ -1383,15 +1387,16 @@ func (s *Service) ListDeliveries(ctx context.Context, messageID string) ([]Deliv
 }
 
 var (
-	ErrConversationAccess          = errors.New("conversation_access_denied")
-	ErrConversationBlocked         = errors.New("conversation_blocked")
-	ErrRateLimited                 = errors.New("rate_limited")
-	ErrInvalidMessageEffectType    = errors.New("invalid_message_effect_type")
-	ErrEncryptedMessageRequired    = errors.New("encrypted_message_required")
-	ErrEncryptedMessageInvalid     = errors.New("encrypted_message_invalid")
-	ErrEncryptedEditDeviceMismatch = errors.New("encrypted_edit_requires_origin_device")
-	ErrSenderDeviceRequired        = errors.New("sender_device_required")
-	ErrSenderDeviceInvalid         = errors.New("sender_device_invalid")
+	ErrConversationAccess                = errors.New("conversation_access_denied")
+	ErrConversationBlocked               = errors.New("conversation_blocked")
+	ErrRateLimited                       = errors.New("rate_limited")
+	ErrInvalidMessageEffectType          = errors.New("invalid_message_effect_type")
+	ErrEncryptedMessageRequired          = errors.New("encrypted_message_required")
+	ErrEncryptedMessageInvalid           = errors.New("encrypted_message_invalid")
+	ErrEncryptedConversationStateChanged = errors.New("encrypted_conversation_state_changed")
+	ErrEncryptedEditDeviceMismatch       = errors.New("encrypted_edit_requires_origin_device")
+	ErrSenderDeviceRequired              = errors.New("sender_device_required")
+	ErrSenderDeviceInvalid               = errors.New("sender_device_invalid")
 )
 
 type RateLimitError struct {
@@ -1441,6 +1446,7 @@ func NewService(db DB, opts Options) *Service {
 type conversationPolicy struct {
 	ConversationType string
 	EncryptionState  string
+	MLSEnabled       bool
 }
 
 func (s *Service) loadConversationPolicy(ctx context.Context, q interface {
@@ -1448,10 +1454,10 @@ func (s *Service) loadConversationPolicy(ctx context.Context, q interface {
 }, conversationID string) (conversationPolicy, error) {
 	var policy conversationPolicy
 	err := q.QueryRow(ctx, `
-		SELECT type, COALESCE(encryption_state, 'PLAINTEXT')
+		SELECT type, COALESCE(encryption_state, 'PLAINTEXT'), COALESCE(is_mls_encrypted, false)
 		FROM conversations
 		WHERE id = $1::uuid
-	`, conversationID).Scan(&policy.ConversationType, &policy.EncryptionState)
+	`, conversationID).Scan(&policy.ConversationType, &policy.EncryptionState, &policy.MLSEnabled)
 	return policy, err
 }
 
@@ -1472,9 +1478,199 @@ func (s *Service) senderOwnsDevice(ctx context.Context, q interface {
 	return exists, nil
 }
 
-func encryptedOTTDM(policy conversationPolicy) bool {
-	return strings.EqualFold(strings.TrimSpace(policy.ConversationType), "DM") &&
+func encryptedOTTConversation(policy conversationPolicy) bool {
+	return (strings.EqualFold(strings.TrimSpace(policy.ConversationType), "DM") ||
+		strings.EqualFold(strings.TrimSpace(policy.ConversationType), "GROUP")) &&
 		strings.EqualFold(strings.TrimSpace(policy.EncryptionState), "ENCRYPTED")
+}
+
+func (s *Service) validateEncryptedConversationEnvelope(ctx context.Context, q interface {
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+}, conversationID string, metadata *EncryptedMessageMetadata) error {
+	if metadata == nil {
+		return ErrEncryptedMessageInvalid
+	}
+
+	var policy conversationPolicy
+	var encryptionEpoch int64
+	var mlsEpoch int64
+	if err := q.QueryRow(ctx, `
+		SELECT type,
+		       COALESCE(encryption_state, 'PLAINTEXT'),
+		       COALESCE(is_mls_encrypted, false),
+		       COALESCE(encryption_epoch, 0),
+		       COALESCE(mls_epoch, 0)
+		FROM conversations
+		WHERE id = $1::uuid
+	`, conversationID).Scan(&policy.ConversationType, &policy.EncryptionState, &policy.MLSEnabled, &encryptionEpoch, &mlsEpoch); err != nil {
+		return err
+	}
+	if metadata.ConversationEpoch != encryptionEpoch {
+		return ErrEncryptedConversationStateChanged
+	}
+
+	memberIDs, err := loadEncryptedConversationMemberIDs(ctx, q, conversationID)
+	if err != nil {
+		return err
+	}
+	if len(memberIDs) == 0 {
+		return ErrEncryptedMessageInvalid
+	}
+
+	tree, err := e2ee.BuildConversationMLSTree(ctx, q, conversationID, mlsEpoch)
+	if err != nil {
+		return err
+	}
+	expectedRecipients := make(map[string]struct{}, len(tree.GetGroupMembers()))
+	readyMembers := make(map[string]struct{}, len(memberIDs))
+	for _, leaf := range tree.GetGroupMembers() {
+		readyMembers[leaf.UserID] = struct{}{}
+		expectedRecipients[leaf.UserID+":"+leaf.DeviceID] = struct{}{}
+	}
+	for _, userID := range memberIDs {
+		if _, ok := readyMembers[userID]; !ok {
+			return ErrEncryptedConversationStateChanged
+		}
+	}
+
+	if policy.MLSEnabled {
+		if metadata.Scheme != MLSEncryptionScheme {
+			return ErrEncryptedConversationStateChanged
+		}
+		return validateMLSEncryptedConversationEnvelope(ctx, q, conversationID, metadata, mlsEpoch, tree, expectedRecipients)
+	}
+	if metadata.Scheme != SignalEncryptionScheme {
+		return ErrEncryptedConversationStateChanged
+	}
+	return validateSignalEncryptedConversationEnvelope(metadata, expectedRecipients)
+}
+
+func loadEncryptedConversationMemberIDs(ctx context.Context, q interface {
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+}, conversationID string) ([]string, error) {
+	memberRows, err := q.Query(ctx, `
+		SELECT user_id::text
+		FROM conversation_members
+		WHERE conversation_id = $1::uuid
+	`, conversationID)
+	if err != nil {
+		return nil, err
+	}
+	defer memberRows.Close()
+	memberIDs := make([]string, 0, 8)
+	for memberRows.Next() {
+		var userID string
+		if err := memberRows.Scan(&userID); err != nil {
+			return nil, err
+		}
+		memberIDs = append(memberIDs, userID)
+	}
+	return memberIDs, memberRows.Err()
+}
+
+func validateSignalEncryptedConversationEnvelope(metadata *EncryptedMessageMetadata, expectedRecipients map[string]struct{}) error {
+	actualRecipients := make(map[string]struct{}, len(metadata.Recipients))
+	for _, recipient := range metadata.Recipients {
+		key := recipient.UserID + ":" + recipient.DeviceID
+		if _, exists := actualRecipients[key]; exists {
+			return ErrEncryptedMessageInvalid
+		}
+		actualRecipients[key] = struct{}{}
+	}
+	if len(actualRecipients) != len(expectedRecipients) {
+		return ErrEncryptedConversationStateChanged
+	}
+	for key := range expectedRecipients {
+		if _, ok := actualRecipients[key]; !ok {
+			return ErrEncryptedConversationStateChanged
+		}
+	}
+	for key := range actualRecipients {
+		if _, ok := expectedRecipients[key]; !ok {
+			return ErrEncryptedConversationStateChanged
+		}
+	}
+	return nil
+}
+
+func validateMLSEncryptedConversationEnvelope(ctx context.Context, q interface {
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+}, conversationID string, metadata *EncryptedMessageMetadata, expectedMLSEpoch int64, tree *e2ee.MLSRatchetTree, expectedRecipients map[string]struct{}) error {
+	if metadata.MLSEpoch != expectedMLSEpoch {
+		return ErrEncryptedConversationStateChanged
+	}
+	if strings.TrimSpace(metadata.MLSTreeHash) == "" || metadata.MLSTreeHash != tree.ComputeTreeHash() {
+		return ErrEncryptedConversationStateChanged
+	}
+	if strings.TrimSpace(metadata.EpochSecretDigest) == "" {
+		return ErrEncryptedMessageInvalid
+	}
+	if len(metadata.EpochSecretBoxes) == 0 {
+		var storedDigest []byte
+		if err := q.QueryRow(ctx, `
+			SELECT group_secret
+			FROM group_epochs
+			WHERE group_id = $1::uuid AND epoch = $2
+		`, conversationID, expectedMLSEpoch).Scan(&storedDigest); err != nil {
+			return ErrEncryptedConversationStateChanged
+		}
+		if string(storedDigest) != metadata.EpochSecretDigest {
+			return ErrEncryptedConversationStateChanged
+		}
+		return nil
+	}
+
+	actualRecipients := make(map[string]struct{}, len(metadata.EpochSecretBoxes))
+	for _, recipient := range metadata.EpochSecretBoxes {
+		key := recipient.UserID + ":" + recipient.DeviceID
+		if _, exists := actualRecipients[key]; exists {
+			return ErrEncryptedMessageInvalid
+		}
+		actualRecipients[key] = struct{}{}
+	}
+	if len(actualRecipients) != len(expectedRecipients) {
+		return ErrEncryptedConversationStateChanged
+	}
+	for key := range expectedRecipients {
+		if _, ok := actualRecipients[key]; !ok {
+			return ErrEncryptedConversationStateChanged
+		}
+	}
+
+	if _, err := q.Exec(ctx, `
+		INSERT INTO group_epochs (group_id, epoch, group_secret)
+		VALUES ($1::uuid, $2, $3)
+		ON CONFLICT (group_id, epoch) DO UPDATE
+		SET group_secret = EXCLUDED.group_secret,
+		    updated_at = NOW()
+	`, conversationID, expectedMLSEpoch, []byte(metadata.EpochSecretDigest)); err != nil {
+		return err
+	}
+	for _, recipient := range metadata.EpochSecretBoxes {
+		sessionBytes, err := json.Marshal(map[string]any{
+			"user_id":     recipient.UserID,
+			"device_id":   recipient.DeviceID,
+			"wrapped_key": recipient.WrappedKey,
+			"wrap_nonce":  recipient.WrapNonce,
+		})
+		if err != nil {
+			return err
+		}
+		if _, err := q.Exec(ctx, `
+			INSERT INTO group_sessions (group_id, user_id, device_id, epoch, session_key_bytes)
+			VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5)
+			ON CONFLICT (group_id, user_id, device_id, epoch) DO UPDATE
+			SET session_key_bytes = EXCLUDED.session_key_bytes,
+			    updated_at = NOW()
+		`, conversationID, recipient.UserID, recipient.DeviceID, expectedMLSEpoch, sessionBytes); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 type receiptEvent struct {
@@ -2648,7 +2844,7 @@ func (s *Service) sendSyncWithEndpoint(ctx context.Context, userID, senderDevice
 	if err != nil {
 		return Message{}, err
 	}
-	if contentType == "encrypted" || encryptedOTTDM(policy) {
+	if contentType == "encrypted" || encryptedOTTConversation(policy) {
 		if strings.TrimSpace(senderDeviceID) == "" {
 			return Message{}, ErrSenderDeviceRequired
 		}
@@ -2660,7 +2856,7 @@ func (s *Service) sendSyncWithEndpoint(ctx context.Context, userID, senderDevice
 			return Message{}, ErrSenderDeviceInvalid
 		}
 	}
-	if encryptedOTTDM(policy) && contentType != "encrypted" {
+	if encryptedOTTConversation(policy) && contentType != "encrypted" {
 		return Message{}, ErrEncryptedMessageRequired
 	}
 
@@ -2700,7 +2896,7 @@ func (s *Service) sendSyncWithEndpoint(ctx context.Context, userID, senderDevice
 	if err != nil {
 		return Message{}, err
 	}
-	if encryptedOTTDM(policy) {
+	if encryptedOTTConversation(policy) {
 		if chosenTransport != "OTT" {
 			return Message{}, ErrEncryptedMessageInvalid
 		}
@@ -2708,7 +2904,7 @@ func (s *Service) sendSyncWithEndpoint(ctx context.Context, userID, senderDevice
 			return Message{}, ErrEncryptedMessageRequired
 		}
 	}
-	if contentType == "encrypted" && !encryptedOTTDM(policy) {
+	if contentType == "encrypted" && !encryptedOTTConversation(policy) {
 		return Message{}, ErrEncryptedMessageInvalid
 	}
 
@@ -2716,8 +2912,11 @@ func (s *Service) sendSyncWithEndpoint(ctx context.Context, userID, senderDevice
 	var isEncrypted bool
 	var encryptionScheme string
 	if strings.EqualFold(contentType, "encrypted") {
-		encryptedMetadata, err := ProcessEncryptedMessage(ctx, s.db, userID, senderDeviceID, contentForStorage)
+		encryptedMetadata, err := ProcessEncryptedMessage(ctx, tx, userID, senderDeviceID, contentForStorage)
 		if err != nil {
+			return Message{}, err
+		}
+		if err := s.validateEncryptedConversationEnvelope(ctx, tx, conversationID, encryptedMetadata); err != nil {
 			return Message{}, err
 		}
 		isEncrypted = true

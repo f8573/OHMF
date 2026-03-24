@@ -8,8 +8,162 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	pgxmock "github.com/pashagolub/pgxmock/v4"
+	"ohmf/services/gateway/internal/e2ee"
 	"ohmf/services/gateway/internal/replication"
 )
+
+func TestValidateEncryptedConversationEnvelopeRejectsEpochMismatch(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mock.Close()
+
+	svc := &Service{db: mock}
+	mock.ExpectQuery(`SELECT type,\s+COALESCE\(encryption_state, 'PLAINTEXT'\),\s+COALESCE\(is_mls_encrypted, false\),\s+COALESCE\(encryption_epoch, 0\),\s+COALESCE\(mls_epoch, 0\)`).
+		WithArgs("conversation-1").
+		WillReturnRows(pgxmock.NewRows([]string{"type", "encryption_state", "is_mls_encrypted", "encryption_epoch", "mls_epoch"}).AddRow("GROUP", "ENCRYPTED", false, int64(7), int64(0)))
+
+	err = svc.validateEncryptedConversationEnvelope(context.Background(), mock, "conversation-1", &EncryptedMessageMetadata{
+		ConversationEpoch: 6,
+		Recipients: []RecipientKeyInfo{
+			{UserID: "user-1", DeviceID: "device-1"},
+		},
+	})
+	if !errors.Is(err, ErrEncryptedConversationStateChanged) {
+		t.Fatalf("expected ErrEncryptedConversationStateChanged, got %v", err)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
+	}
+}
+
+func TestValidateEncryptedConversationEnvelopeRejectsRecipientMismatch(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mock.Close()
+
+	svc := &Service{db: mock}
+	mock.ExpectQuery(`SELECT type,\s+COALESCE\(encryption_state, 'PLAINTEXT'\),\s+COALESCE\(is_mls_encrypted, false\),\s+COALESCE\(encryption_epoch, 0\),\s+COALESCE\(mls_epoch, 0\)`).
+		WithArgs("conversation-1").
+		WillReturnRows(pgxmock.NewRows([]string{"type", "encryption_state", "is_mls_encrypted", "encryption_epoch", "mls_epoch"}).AddRow("GROUP", "ENCRYPTED", false, int64(3), int64(0)))
+	mock.ExpectQuery(`SELECT user_id::text FROM conversation_members WHERE conversation_id = \$1::uuid`).
+		WithArgs("conversation-1").
+		WillReturnRows(pgxmock.NewRows([]string{"user_id"}).AddRow("user-1").AddRow("user-2"))
+	mock.ExpectQuery(`SELECT cm.user_id::text, d.id::text, COALESCE\(dik.agreement_identity_public_key, ''\)`).
+		WithArgs("conversation-1").
+		WillReturnRows(pgxmock.NewRows([]string{"user_id", "device_id", "agreement_identity_public_key"}).
+			AddRow("user-1", "device-1", "pub-1").
+			AddRow("user-2", "device-2", "pub-2"))
+
+	err = svc.validateEncryptedConversationEnvelope(context.Background(), mock, "conversation-1", &EncryptedMessageMetadata{
+		Scheme:            SignalEncryptionScheme,
+		ConversationEpoch: 3,
+		Recipients: []RecipientKeyInfo{
+			{UserID: "user-1", DeviceID: "device-1"},
+		},
+	})
+	if !errors.Is(err, ErrEncryptedConversationStateChanged) {
+		t.Fatalf("expected ErrEncryptedConversationStateChanged, got %v", err)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
+	}
+}
+
+func TestValidateEncryptedConversationEnvelopeAcceptsExactRecipientSet(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mock.Close()
+
+	svc := &Service{db: mock}
+	mock.ExpectQuery(`SELECT type,\s+COALESCE\(encryption_state, 'PLAINTEXT'\),\s+COALESCE\(is_mls_encrypted, false\),\s+COALESCE\(encryption_epoch, 0\),\s+COALESCE\(mls_epoch, 0\)`).
+		WithArgs("conversation-1").
+		WillReturnRows(pgxmock.NewRows([]string{"type", "encryption_state", "is_mls_encrypted", "encryption_epoch", "mls_epoch"}).AddRow("GROUP", "ENCRYPTED", false, int64(5), int64(0)))
+	mock.ExpectQuery(`SELECT user_id::text FROM conversation_members WHERE conversation_id = \$1::uuid`).
+		WithArgs("conversation-1").
+		WillReturnRows(pgxmock.NewRows([]string{"user_id"}).AddRow("user-1").AddRow("user-2"))
+	mock.ExpectQuery(`SELECT cm.user_id::text, d.id::text, COALESCE\(dik.agreement_identity_public_key, ''\)`).
+		WithArgs("conversation-1").
+		WillReturnRows(pgxmock.NewRows([]string{"user_id", "device_id", "agreement_identity_public_key"}).
+			AddRow("user-1", "device-1", "pub-1").
+			AddRow("user-2", "device-2", "pub-2"))
+
+	err = svc.validateEncryptedConversationEnvelope(context.Background(), mock, "conversation-1", &EncryptedMessageMetadata{
+		Scheme:            SignalEncryptionScheme,
+		ConversationEpoch: 5,
+		Recipients: []RecipientKeyInfo{
+			{UserID: "user-1", DeviceID: "device-1"},
+			{UserID: "user-2", DeviceID: "device-2"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("validateEncryptedConversationEnvelope failed: %v", err)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
+	}
+}
+
+func TestValidateEncryptedConversationEnvelopeAcceptsMLSBoxes(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mock.Close()
+
+	svc := &Service{db: mock}
+	treeHash := e2ee.BuildMLSTree("conversation-mls", 4, []e2ee.TreeLeaf{
+		{UserID: "user-1", DeviceID: "device-1", PublicKey: []byte("pub-1")},
+		{UserID: "user-2", DeviceID: "device-2", PublicKey: []byte("pub-2")},
+	}).ComputeTreeHash()
+
+	mock.ExpectQuery(`SELECT type,\s+COALESCE\(encryption_state, 'PLAINTEXT'\),\s+COALESCE\(is_mls_encrypted, false\),\s+COALESCE\(encryption_epoch, 0\),\s+COALESCE\(mls_epoch, 0\)`).
+		WithArgs("conversation-mls").
+		WillReturnRows(pgxmock.NewRows([]string{"type", "encryption_state", "is_mls_encrypted", "encryption_epoch", "mls_epoch"}).AddRow("GROUP", "ENCRYPTED", true, int64(4), int64(4)))
+	mock.ExpectQuery(`SELECT user_id::text FROM conversation_members WHERE conversation_id = \$1::uuid`).
+		WithArgs("conversation-mls").
+		WillReturnRows(pgxmock.NewRows([]string{"user_id"}).AddRow("user-1").AddRow("user-2"))
+	mock.ExpectQuery(`SELECT cm.user_id::text, d.id::text, COALESCE\(dik.agreement_identity_public_key, ''\)`).
+		WithArgs("conversation-mls").
+		WillReturnRows(pgxmock.NewRows([]string{"user_id", "device_id", "agreement_identity_public_key"}).
+			AddRow("user-1", "device-1", "pub-1").
+			AddRow("user-2", "device-2", "pub-2"))
+	mock.ExpectExec(`INSERT INTO group_epochs`).
+		WithArgs("conversation-mls", int64(4), []byte("digest-1")).
+		WillReturnResult(pgxmock.NewResult("INSERT", 1))
+	mock.ExpectExec(`INSERT INTO group_sessions`).
+		WithArgs("conversation-mls", "user-1", "device-1", int64(4), pgxmock.AnyArg()).
+		WillReturnResult(pgxmock.NewResult("INSERT", 1))
+	mock.ExpectExec(`INSERT INTO group_sessions`).
+		WithArgs("conversation-mls", "user-2", "device-2", int64(4), pgxmock.AnyArg()).
+		WillReturnResult(pgxmock.NewResult("INSERT", 1))
+
+	err = svc.validateEncryptedConversationEnvelope(context.Background(), mock, "conversation-mls", &EncryptedMessageMetadata{
+		Scheme:            MLSEncryptionScheme,
+		ConversationEpoch: 4,
+		MLSEpoch:          4,
+		MLSTreeHash:       treeHash,
+		EpochSecretDigest: "digest-1",
+		EpochSecretBoxes: []RecipientKeyInfo{
+			{UserID: "user-1", DeviceID: "device-1", WrappedKey: "wk-1", WrapNonce: "wn-1"},
+			{UserID: "user-2", DeviceID: "device-2", WrappedKey: "wk-2", WrapNonce: "wn-2"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("validateEncryptedConversationEnvelope failed: %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
+	}
+}
 
 func TestTriggerEffectPersistsAndAppendsDomainEvent(t *testing.T) {
 	mock, err := pgxmock.NewPool()
@@ -264,9 +418,9 @@ func TestForwardMessageCopiesSourceMetadata(t *testing.T) {
 	mock.ExpectQuery(`SELECT response_payload FROM idempotency_keys WHERE actor_user_id = \$1::uuid AND endpoint = \$2 AND key = \$3 AND expires_at > now\(\)`).
 		WithArgs("user-1", "/v1/messages/forward", "idem-forward-1").
 		WillReturnError(pgx.ErrNoRows)
-	mock.ExpectQuery(`SELECT type, COALESCE\(encryption_state, 'PLAINTEXT'\) FROM conversations WHERE id = \$1::uuid`).
+	mock.ExpectQuery(`SELECT type, COALESCE\(encryption_state, 'PLAINTEXT'\), COALESCE\(is_mls_encrypted, false\) FROM conversations WHERE id = \$1::uuid`).
 		WithArgs("conversation-target").
-		WillReturnRows(pgxmock.NewRows([]string{"type", "encryption_state"}).AddRow("GROUP", "PLAINTEXT"))
+		WillReturnRows(pgxmock.NewRows([]string{"type", "encryption_state", "is_mls_encrypted"}).AddRow("GROUP", "PLAINTEXT", false))
 	mock.ExpectQuery(`UPDATE conversation_counters`).
 		WithArgs("conversation-target").
 		WillReturnRows(pgxmock.NewRows([]string{"next_server_order"}).AddRow(int64(22)))
@@ -279,8 +433,8 @@ func TestForwardMessageCopiesSourceMetadata(t *testing.T) {
 	mock.ExpectQuery(`SELECT COUNT\(1\) FROM conversation_members WHERE conversation_id = \$1::uuid AND user_id <> \$2::uuid`).
 		WithArgs("conversation-target", "user-1").
 		WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(1))
-	mock.ExpectQuery(`INSERT INTO messages \(conversation_id, sender_user_id, sender_device_id, reply_to_message_id, content_type, content, client_generated_id, transport, server_order, expires_at\)`).
-		WithArgs("conversation-target", "user-1", "device-1", "", "text", pgxmock.AnyArg(), "client-forwarded", "OTT", int64(22), pgxmock.AnyArg()).
+	mock.ExpectQuery(`INSERT INTO messages \(conversation_id, sender_user_id, sender_device_id, reply_to_message_id, content_type, content, client_generated_id, transport, server_order, expires_at, is_encrypted, encryption_scheme\)`).
+		WithArgs("conversation-target", "user-1", "device-1", "", "text", pgxmock.AnyArg(), "client-forwarded", "OTT", int64(22), pgxmock.AnyArg(), false, "").
 		WillReturnRows(pgxmock.NewRows([]string{"id", "created_at"}).AddRow("message-forwarded", forwardedAt))
 	mock.ExpectExec(`UPDATE conversations SET last_message_id = \$2::uuid, updated_at = now\(\) WHERE id = \$1::uuid`).
 		WithArgs("conversation-target", "message-forwarded").

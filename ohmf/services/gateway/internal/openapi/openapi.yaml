@@ -209,6 +209,10 @@ components:
         creator_user_id: { type: string }
         encryption_state: { type: string }
         encryption_epoch: { type: integer }
+        e2ee_ready: { type: boolean }
+        e2ee_blocked_member_ids:
+          type: array
+          items: { type: string }
         participants:
           type: array
           items: { type: string }

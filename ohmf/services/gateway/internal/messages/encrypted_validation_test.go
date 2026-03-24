@@ -6,7 +6,7 @@ func TestValidateSendContentRejectsMalformedEncryptedEnvelope(t *testing.T) {
 	err := validateSendContent("encrypted", map[string]any{
 		"ciphertext": "abc",
 		"encryption": map[string]any{
-			"scheme":           "OHMF_SIGNAL_V1",
+			"scheme":           SignalEncryptionScheme,
 			"sender_user_id":   "user",
 			"sender_device_id": "device",
 			"sender_signature": "sig",
@@ -23,7 +23,7 @@ func TestValidateSendContentAcceptsSignalEnvelope(t *testing.T) {
 		"ciphertext": "cipher",
 		"nonce":      "nonce",
 		"encryption": map[string]any{
-			"scheme":           "OHMF_SIGNAL_V1",
+			"scheme":           SignalEncryptionScheme,
 			"sender_user_id":   "user",
 			"sender_device_id": "device",
 			"sender_signature": "sig",
@@ -39,6 +39,24 @@ func TestValidateSendContentAcceptsSignalEnvelope(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("expected valid signal envelope, got %v", err)
+	}
+}
+
+func TestValidateSendContentAcceptsMLSEnvelope(t *testing.T) {
+	err := validateSendContent("encrypted", map[string]any{
+		"ciphertext": "cipher",
+		"nonce":      "nonce",
+		"encryption": map[string]any{
+			"scheme":              MLSEncryptionScheme,
+			"sender_user_id":      "user",
+			"sender_device_id":    "device",
+			"sender_signature":    "sig",
+			"tree_hash":           "tree-hash",
+			"epoch_secret_digest": "digest",
+		},
+	})
+	if err != nil {
+		t.Fatalf("expected valid MLS envelope, got %v", err)
 	}
 }
 

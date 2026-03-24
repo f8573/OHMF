@@ -6,7 +6,58 @@ import (
 	"time"
 
 	pgxmock "github.com/pashagolub/pgxmock/v4"
+	"ohmf/services/gateway/internal/devicekeys"
 )
+
+func TestNormalizeCreateEncryptionStateForGroupDefaultsToEncrypted(t *testing.T) {
+	if got := normalizeCreateEncryptionState("GROUP", "ENCRYPTED"); got != "ENCRYPTED" {
+		t.Fatalf("expected ENCRYPTED, got %q", got)
+	}
+	if got := normalizeCreateEncryptionState("GROUP", "PENDING_E2EE"); got != "ENCRYPTED" {
+		t.Fatalf("expected ENCRYPTED, got %q", got)
+	}
+	if got := normalizeCreateEncryptionState("GROUP", "PLAINTEXT"); got != "ENCRYPTED" {
+		t.Fatalf("expected ENCRYPTED, got %q", got)
+	}
+	if got := normalizeCreateEncryptionState("DM", "ENCRYPTED"); got != "ENCRYPTED" {
+		t.Fatalf("expected ENCRYPTED, got %q", got)
+	}
+}
+
+func TestEncryptionReadyForConversationQueryReportsBlockedMembers(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mock.Close()
+
+	svc := NewService(mock, nil, nil)
+
+	mock.ExpectQuery(`SELECT user_id::text FROM conversation_members WHERE conversation_id = \$1::uuid ORDER BY joined_at ASC`).
+		WithArgs("conversation-1").
+		WillReturnRows(pgxmock.NewRows([]string{"user_id"}).AddRow("user-1").AddRow("user-2"))
+	mock.ExpectQuery(`SELECT EXISTS\(`).
+		WithArgs("user-1", devicekeys.BundleVersionSignalV1, []string{devicekeys.RequiredDeviceCapability}).
+		WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(true))
+	mock.ExpectQuery(`SELECT EXISTS\(`).
+		WithArgs("user-2", devicekeys.BundleVersionSignalV1, []string{devicekeys.RequiredDeviceCapability}).
+		WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(false))
+
+	ready, blocked, err := svc.encryptionReadyForConversationQuery(context.Background(), mock, "conversation-1")
+	if err != nil {
+		t.Fatalf("encryptionReadyForConversationQuery failed: %v", err)
+	}
+	if ready {
+		t.Fatalf("expected readiness to be false")
+	}
+	if len(blocked) != 1 || blocked[0] != "user-2" {
+		t.Fatalf("unexpected blocked members: %#v", blocked)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
+	}
+}
 
 func TestUpdateEffectPolicyOwnerCanToggleEffects(t *testing.T) {
 	mock, err := pgxmock.NewPool()

@@ -16,14 +16,19 @@ import (
 
 // EncryptedMessageMetadata represents extracted metadata from an encrypted message
 type EncryptedMessageMetadata struct {
-	IsEncrypted     bool
-	Scheme          string
-	SenderUserID    string
-	SenderDeviceID  string
-	SenderSignature string
-	Recipients      []RecipientKeyInfo
-	Ciphertext      string
-	Nonce           string
+	IsEncrypted       bool
+	Scheme            string
+	SenderUserID      string
+	SenderDeviceID    string
+	SenderSignature   string
+	ConversationEpoch int64
+	MLSEpoch          int64
+	MLSTreeHash       string
+	EpochSecretDigest string
+	Recipients        []RecipientKeyInfo
+	EpochSecretBoxes  []RecipientKeyInfo
+	Ciphertext        string
+	Nonce             string
 }
 
 // RecipientKeyInfo represents recipient information from encrypted message
@@ -38,6 +43,11 @@ type RecipientKeyInfo struct {
 type EncryptedMessageQuerier interface {
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }
+
+const (
+	SignalEncryptionScheme = "OHMF_SIGNAL_V1"
+	MLSEncryptionScheme    = "OHMF_MLS_V1"
+)
 
 // ProcessEncryptedMessage validates and extracts metadata from encrypted message content
 func ProcessEncryptedMessage(
@@ -64,7 +74,7 @@ func ProcessEncryptedMessage(
 	}
 
 	scheme, _ := encryptionObj["scheme"].(string)
-	if scheme != "OHMF_SIGNAL_V1" {
+	if scheme != SignalEncryptionScheme && scheme != MLSEncryptionScheme {
 		return nil, errors.New("invalid_encryption_scheme")
 	}
 
@@ -96,64 +106,57 @@ func ProcessEncryptedMessage(
 		return nil, fmt.Errorf("failed to query sender device: %w", err)
 	}
 
-	// Extract and validate recipients
-	recipientsRaw, ok := encryptionObj["recipients"].([]any)
-	if !ok || len(recipientsRaw) == 0 {
-		return nil, errors.New("no_recipients_specified")
-	}
-
-	recipients := make([]RecipientKeyInfo, 0, len(recipientsRaw))
-	for i, recipientRaw := range recipientsRaw {
-		recipientObj, ok := recipientRaw.(map[string]any)
-		if !ok {
-			return nil, fmt.Errorf("invalid recipient at index %d", i)
+	var recipients []RecipientKeyInfo
+	var epochSecretBoxes []RecipientKeyInfo
+	var recipientsRaw []any
+	var epochSecretBoxesRaw []any
+	var signaturePayload string
+	conversationEpoch := messageInt(encryptionObj["conversation_epoch"], 1)
+	mlsEpoch := messageInt(encryptionObj["mls_epoch"], conversationEpoch)
+	switch scheme {
+	case SignalEncryptionScheme:
+		recipientsRaw, ok = encryptionObj["recipients"].([]any)
+		if !ok || len(recipientsRaw) == 0 {
+			return nil, errors.New("no_recipients_specified")
 		}
-
-		recipientUserID, _ := recipientObj["user_id"].(string)
-		recipientDeviceID, _ := recipientObj["device_id"].(string)
-		wrappedKey, _ := recipientObj["wrapped_key"].(string)
-		wrapNonce, _ := recipientObj["wrap_nonce"].(string)
-
-		if recipientUserID == "" || recipientDeviceID == "" {
-			return nil, fmt.Errorf("invalid recipient user/device ID at index %d", i)
-		}
-
-		if wrappedKey == "" || wrapNonce == "" {
-			return nil, fmt.Errorf("invalid recipient encryption keys at index %d", i)
-		}
-
-		// Verify recipient device exists
-		var exists bool
-		err := querier.QueryRow(ctx, `
-			SELECT EXISTS(
-				SELECT 1 FROM devices
-				WHERE id = $1 AND user_id = $2
-			)
-		`, recipientDeviceID, recipientUserID).Scan(&exists)
-
+		parsedRecipients, err := parseRecipientEntries(ctx, querier, recipientsRaw)
 		if err != nil {
-			return nil, fmt.Errorf("failed to verify recipient device: %w", err)
+			return nil, err
 		}
-
-		if !exists {
-			return nil, fmt.Errorf("recipient device not found: %s", recipientDeviceID)
+		recipients = parsedRecipients
+		signaturePayload = encryptedEnvelopeSignaturePayload(
+			scheme,
+			conversationEpoch,
+			nonce,
+			ciphertext,
+			recipientsRaw,
+		)
+	case MLSEncryptionScheme:
+		if strings.TrimSpace(textField(encryptionObj["tree_hash"])) == "" {
+			return nil, errors.New("missing_mls_tree_hash")
 		}
-
-		recipients = append(recipients, RecipientKeyInfo{
-			UserID:     recipientUserID,
-			DeviceID:   recipientDeviceID,
-			WrappedKey: wrappedKey,
-			WrapNonce:  wrapNonce,
-		})
+		if strings.TrimSpace(textField(encryptionObj["epoch_secret_digest"])) == "" {
+			return nil, errors.New("missing_mls_epoch_secret_digest")
+		}
+		epochSecretBoxesRaw, _ = encryptionObj["epoch_secret_boxes"].([]any)
+		if len(epochSecretBoxesRaw) > 0 {
+			parsedBoxes, err := parseRecipientEntries(ctx, querier, epochSecretBoxesRaw)
+			if err != nil {
+				return nil, err
+			}
+			epochSecretBoxes = parsedBoxes
+		}
+		signaturePayload = mlsEnvelopeSignaturePayload(
+			scheme,
+			conversationEpoch,
+			mlsEpoch,
+			textField(encryptionObj["tree_hash"]),
+			textField(encryptionObj["epoch_secret_digest"]),
+			nonce,
+			ciphertext,
+			epochSecretBoxesRaw,
+		)
 	}
-
-	signaturePayload := encryptedEnvelopeSignaturePayload(
-		scheme,
-		messageInt(encryptionObj["conversation_epoch"], 1),
-		nonce,
-		ciphertext,
-		recipientsRaw,
-	)
 	valid, err := e2ee.VerifySignature(signingPublicKeyB64, []byte(signaturePayload), senderSignature)
 	if err != nil {
 		return nil, fmt.Errorf("failed to verify signature: %w", err)
@@ -173,14 +176,19 @@ func ProcessEncryptedMessage(
 	}
 
 	metadata := &EncryptedMessageMetadata{
-		IsEncrypted:     true,
-		Scheme:          scheme,
-		SenderUserID:    metadataSenderUserID,
-		SenderDeviceID:  metadataSenderDeviceID,
-		SenderSignature: senderSignature,
-		Recipients:      recipients,
-		Ciphertext:      ciphertext,
-		Nonce:           nonce,
+		IsEncrypted:       true,
+		Scheme:            scheme,
+		SenderUserID:      metadataSenderUserID,
+		SenderDeviceID:    metadataSenderDeviceID,
+		SenderSignature:   senderSignature,
+		ConversationEpoch: conversationEpoch,
+		MLSEpoch:          mlsEpoch,
+		MLSTreeHash:       textField(encryptionObj["tree_hash"]),
+		EpochSecretDigest: textField(encryptionObj["epoch_secret_digest"]),
+		Recipients:        recipients,
+		EpochSecretBoxes:  epochSecretBoxes,
+		Ciphertext:        ciphertext,
+		Nonce:             nonce,
 	}
 
 	return metadata, nil
@@ -194,6 +202,63 @@ func encryptedEnvelopeSignaturePayload(scheme string, conversationEpoch int64, n
 		strings.TrimSpace(ciphertext),
 		recipientHeaderSummary(recipients),
 	}, "|")
+}
+
+func mlsEnvelopeSignaturePayload(scheme string, conversationEpoch, mlsEpoch int64, treeHash, epochSecretDigest, nonce, ciphertext string, epochSecretBoxes []any) string {
+	return strings.Join([]string{
+		strings.TrimSpace(scheme),
+		strconv.FormatInt(defaultInt64(conversationEpoch, 1), 10),
+		strconv.FormatInt(defaultInt64(mlsEpoch, defaultInt64(conversationEpoch, 1)), 10),
+		strings.TrimSpace(treeHash),
+		strings.TrimSpace(epochSecretDigest),
+		strings.TrimSpace(nonce),
+		strings.TrimSpace(ciphertext),
+		recipientHeaderSummary(epochSecretBoxes),
+	}, "|")
+}
+
+func parseRecipientEntries(ctx context.Context, querier EncryptedMessageQuerier, recipientsRaw []any) ([]RecipientKeyInfo, error) {
+	recipients := make([]RecipientKeyInfo, 0, len(recipientsRaw))
+	for i, recipientRaw := range recipientsRaw {
+		recipientObj, ok := recipientRaw.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("invalid recipient at index %d", i)
+		}
+
+		recipientUserID, _ := recipientObj["user_id"].(string)
+		recipientDeviceID, _ := recipientObj["device_id"].(string)
+		wrappedKey, _ := recipientObj["wrapped_key"].(string)
+		wrapNonce, _ := recipientObj["wrap_nonce"].(string)
+
+		if recipientUserID == "" || recipientDeviceID == "" {
+			return nil, fmt.Errorf("invalid recipient user/device ID at index %d", i)
+		}
+		if wrappedKey == "" || wrapNonce == "" {
+			return nil, fmt.Errorf("invalid recipient encryption keys at index %d", i)
+		}
+
+		var exists bool
+		err := querier.QueryRow(ctx, `
+			SELECT EXISTS(
+				SELECT 1 FROM devices
+				WHERE id = $1 AND user_id = $2
+			)
+		`, recipientDeviceID, recipientUserID).Scan(&exists)
+		if err != nil {
+			return nil, fmt.Errorf("failed to verify recipient device: %w", err)
+		}
+		if !exists {
+			return nil, fmt.Errorf("recipient device not found: %s", recipientDeviceID)
+		}
+
+		recipients = append(recipients, RecipientKeyInfo{
+			UserID:     recipientUserID,
+			DeviceID:   recipientDeviceID,
+			WrappedKey: wrappedKey,
+			WrapNonce:  wrapNonce,
+		})
+	}
+	return recipients, nil
 }
 
 func recipientHeaderSummary(recipients []any) string {

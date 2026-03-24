@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"net/http"
+	"ohmf/services/gateway/internal/e2ee"
 	"ohmf/services/gateway/internal/httpx"
 	"ohmf/services/gateway/internal/middleware"
 	"strings"
@@ -364,13 +365,18 @@ func (h *Handler) PublishBundle(ctx context.Context, actorUserID, deviceID strin
 			return Bundle{}, err
 		}
 	}
-	if priorFingerprint != "" && priorFingerprint != fingerprint {
+	if priorFingerprint == "" || priorFingerprint != fingerprint {
 		if _, err := tx.Exec(ctx, `
 			UPDATE conversations c
 			SET encryption_epoch = encryption_epoch + 1,
+			    mls_epoch = CASE
+			      WHEN c.type = 'GROUP' AND COALESCE(c.is_mls_encrypted, false) THEN COALESCE(c.mls_epoch, 0) + 1
+			      ELSE COALESCE(c.mls_epoch, 0)
+			    END,
+			    settings_version = COALESCE(c.settings_version, 1) + 1,
+			    settings_updated_at = now(),
 			    updated_at = now()
-			WHERE c.type = 'DM'
-			  AND c.encryption_state = 'ENCRYPTED'
+			WHERE COALESCE(c.encryption_state, 'PLAINTEXT') = 'ENCRYPTED'
 			  AND EXISTS (
 			    SELECT 1
 			    FROM conversation_members cm
@@ -378,6 +384,36 @@ func (h *Handler) PublishBundle(ctx context.Context, actorUserID, deviceID strin
 			      AND cm.user_id = $1::uuid
 			  )
 		`, actorUserID); err != nil {
+			return Bundle{}, err
+		}
+		groupRows, err := tx.Query(ctx, `
+			SELECT c.id::text, COALESCE(c.mls_epoch, 0)
+			FROM conversations c
+			JOIN conversation_members cm ON cm.conversation_id = c.id
+			WHERE cm.user_id = $1::uuid
+			  AND c.type = 'GROUP'
+			  AND COALESCE(c.encryption_state, 'PLAINTEXT') = 'ENCRYPTED'
+			  AND COALESCE(c.is_mls_encrypted, false)
+		`, actorUserID)
+		if err != nil {
+			return Bundle{}, err
+		}
+		defer groupRows.Close()
+		for groupRows.Next() {
+			var groupID string
+			var mlsEpoch int64
+			if err := groupRows.Scan(&groupID, &mlsEpoch); err != nil {
+				return Bundle{}, err
+			}
+			tree, err := e2ee.BuildConversationMLSTree(ctx, tx, groupID, mlsEpoch)
+			if err != nil {
+				return Bundle{}, err
+			}
+			if err := e2ee.PersistConversationMLSTree(ctx, tx, tree); err != nil {
+				return Bundle{}, err
+			}
+		}
+		if err := groupRows.Err(); err != nil {
 			return Bundle{}, err
 		}
 	}

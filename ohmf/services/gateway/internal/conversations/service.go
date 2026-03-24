@@ -20,35 +20,40 @@ import (
 )
 
 type Conversation struct {
-	ConversationID      string              `json:"conversation_id"`
-	Type                string              `json:"type"`
-	Title               string              `json:"title,omitempty"`
-	AvatarURL           string              `json:"avatar_url,omitempty"`
-	Description         string              `json:"description,omitempty"`
-	CreatorUserID       string              `json:"creator_user_id,omitempty"`
-	EncryptionState     string              `json:"encryption_state,omitempty"`
-	EncryptionEpoch     int                 `json:"encryption_epoch,omitempty"`
-	Participants        []string            `json:"participants"`
-	ExternalPhones      []string            `json:"external_phones,omitempty"`
-	UpdatedAt           string              `json:"updated_at"`
-	LastMessagePreview  string              `json:"last_message_preview,omitempty"`
-	UnreadCount         int64               `json:"unread_count,omitempty"`
-	Nickname            string              `json:"nickname,omitempty"`
-	ViewerRole          string              `json:"viewer_role,omitempty"`
-	Closed              bool                `json:"closed,omitempty"`
-	Archived            bool                `json:"archived,omitempty"`
-	Pinned              bool                `json:"pinned,omitempty"`
-	MutedUntil          string              `json:"muted_until,omitempty"`
-	Blocked             bool                `json:"blocked,omitempty"`
-	BlockedByViewer     bool                `json:"blocked_by_viewer,omitempty"`
-	BlockedByOther      bool                `json:"blocked_by_other,omitempty"`
-	AllowMessageEffects bool                `json:"allow_message_effects,omitempty"`
-	Theme               string              `json:"theme,omitempty"`
-	RetentionSeconds    int64               `json:"retention_seconds,omitempty"`
-	ExpiresAt           string              `json:"expires_at,omitempty"`
-	SettingsVersion     int64               `json:"settings_version,omitempty"`
-	SettingsUpdatedAt   string              `json:"settings_updated_at,omitempty"`
-	ThreadKeys          []map[string]string `json:"thread_keys,omitempty"`
+	ConversationID       string              `json:"conversation_id"`
+	Type                 string              `json:"type"`
+	Title                string              `json:"title,omitempty"`
+	AvatarURL            string              `json:"avatar_url,omitempty"`
+	Description          string              `json:"description,omitempty"`
+	CreatorUserID        string              `json:"creator_user_id,omitempty"`
+	EncryptionState      string              `json:"encryption_state,omitempty"`
+	EncryptionEpoch      int                 `json:"encryption_epoch,omitempty"`
+	MLSEnabled           bool                `json:"mls_enabled,omitempty"`
+	MLSEpoch             int                 `json:"mls_epoch,omitempty"`
+	MLSTreeHash          string              `json:"mls_tree_hash,omitempty"`
+	E2EEReady            bool                `json:"e2ee_ready,omitempty"`
+	E2EEBlockedMemberIDs []string            `json:"e2ee_blocked_member_ids,omitempty"`
+	Participants         []string            `json:"participants"`
+	ExternalPhones       []string            `json:"external_phones,omitempty"`
+	UpdatedAt            string              `json:"updated_at"`
+	LastMessagePreview   string              `json:"last_message_preview,omitempty"`
+	UnreadCount          int64               `json:"unread_count,omitempty"`
+	Nickname             string              `json:"nickname,omitempty"`
+	ViewerRole           string              `json:"viewer_role,omitempty"`
+	Closed               bool                `json:"closed,omitempty"`
+	Archived             bool                `json:"archived,omitempty"`
+	Pinned               bool                `json:"pinned,omitempty"`
+	MutedUntil           string              `json:"muted_until,omitempty"`
+	Blocked              bool                `json:"blocked,omitempty"`
+	BlockedByViewer      bool                `json:"blocked_by_viewer,omitempty"`
+	BlockedByOther       bool                `json:"blocked_by_other,omitempty"`
+	AllowMessageEffects  bool                `json:"allow_message_effects,omitempty"`
+	Theme                string              `json:"theme,omitempty"`
+	RetentionSeconds     int64               `json:"retention_seconds,omitempty"`
+	ExpiresAt            string              `json:"expires_at,omitempty"`
+	SettingsVersion      int64               `json:"settings_version,omitempty"`
+	SettingsUpdatedAt    string              `json:"settings_updated_at,omitempty"`
+	ThreadKeys           []map[string]string `json:"thread_keys,omitempty"`
 }
 
 type Invite struct {
@@ -106,7 +111,9 @@ func (s *Service) CreateConversation(ctx context.Context, actor string, req Crea
 	if err != nil {
 		return Conversation{}, err
 	}
-	encryptionState := normalizeEncryptionState(t, req.EncryptionState)
+	encryptionState := normalizeCreateEncryptionState(t, req.EncryptionState)
+	mlsEnabled := useMLSForConversation(t, encryptionState)
+	mlsEpoch := encryptionEpochForState(encryptionState)
 	tx, err := s.db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return Conversation{}, err
@@ -115,10 +122,10 @@ func (s *Service) CreateConversation(ctx context.Context, actor string, req Crea
 
 	var id string
 	err = tx.QueryRow(ctx, `
-		INSERT INTO conversations (type, transport_policy, title, avatar_url, created_by_user_id, encryption_state, encryption_epoch)
-		VALUES ($1, 'AUTO', NULLIF($2, ''), NULLIF($3, ''), $4::uuid, $5, $6)
+		INSERT INTO conversations (type, transport_policy, title, avatar_url, created_by_user_id, encryption_state, encryption_epoch, is_mls_encrypted, mls_epoch)
+		VALUES ($1, 'AUTO', NULLIF($2, ''), NULLIF($3, ''), $4::uuid, $5, $6, $7, $8)
 		RETURNING id::text
-	`, t, strings.TrimSpace(req.Title), strings.TrimSpace(req.AvatarURL), actor, encryptionState, encryptionEpochForState(encryptionState)).Scan(&id)
+	`, t, strings.TrimSpace(req.Title), strings.TrimSpace(req.AvatarURL), actor, encryptionState, encryptionEpochForState(encryptionState), mlsEnabled, mlsEpoch).Scan(&id)
 	if err != nil {
 		return Conversation{}, err
 	}
@@ -139,6 +146,11 @@ func (s *Service) CreateConversation(ctx context.Context, actor string, req Crea
 			ON CONFLICT (conversation_id, user_id) DO NOTHING
 		`, id, u, role)
 		if err != nil {
+			return Conversation{}, err
+		}
+	}
+	if mlsEnabled {
+		if err := s.syncConversationMLSTx(ctx, tx, id, int64(mlsEpoch)); err != nil {
 			return Conversation{}, err
 		}
 	}
@@ -284,6 +296,8 @@ func (s *Service) ListProjected(ctx context.Context, actor string, limit int) ([
 			COALESCE(c.created_by_user_id::text, '') AS creator_user_id,
 			COALESCE(c.encryption_state, 'PLAINTEXT') AS encryption_state,
 			COALESCE(c.encryption_epoch, 0) AS encryption_epoch,
+			COALESCE(c.is_mls_encrypted, FALSE) AS is_mls_encrypted,
+			COALESCE(c.mls_epoch, 0) AS mls_epoch,
 			COALESCE(c.allow_message_effects, TRUE) AS allow_message_effects,
 			COALESCE(c.theme, '') AS theme,
 			COALESCE(c.retention_seconds, 0) AS retention_seconds,
@@ -347,6 +361,8 @@ func (s *Service) ListProjected(ctx context.Context, actor string, limit int) ([
 			&item.CreatorUserID,
 			&item.EncryptionState,
 			&item.EncryptionEpoch,
+			&item.MLSEnabled,
+			&item.MLSEpoch,
 			&item.AllowMessageEffects,
 			&item.Theme,
 			&item.RetentionSeconds,
@@ -380,6 +396,13 @@ func (s *Service) ListProjected(ctx context.Context, actor string, limit int) ([
 		item.ThreadKeys = tkeys
 		item.UpdatedAt = updated.UTC().Format(time.RFC3339)
 		item.SettingsUpdatedAt = settingsUpdatedAt.UTC().Format(time.RFC3339Nano)
+		if item.MLSEnabled {
+			treeHash, err := s.conversationMLSTreeHash(ctx, item.ConversationID, int64(item.MLSEpoch))
+			if err != nil {
+				return nil, "", err
+			}
+			item.MLSTreeHash = treeHash
+		}
 		if mutedUntil.Valid {
 			item.MutedUntil = mutedUntil.Time.UTC().Format(time.RFC3339Nano)
 		}
@@ -387,6 +410,9 @@ func (s *Service) ListProjected(ctx context.Context, actor string, limit int) ([
 			item.ExpiresAt = expiresAt.Time.UTC().Format(time.RFC3339Nano)
 		}
 		item.Blocked = item.BlockedByViewer || item.BlockedByOther
+		if err := s.populateConversationE2EEReadiness(ctx, &item); err != nil {
+			return nil, "", err
+		}
 		out = append(out, item)
 	}
 	if err := rows.Err(); err != nil {
@@ -415,6 +441,8 @@ func (s *Service) Get(ctx context.Context, actor, id string) (Conversation, erro
 			COALESCE(c.created_by_user_id::text, '') AS creator_user_id,
 			COALESCE(c.encryption_state, 'PLAINTEXT') AS encryption_state,
 			COALESCE(c.encryption_epoch, 0) AS encryption_epoch,
+			COALESCE(c.is_mls_encrypted, FALSE) AS is_mls_encrypted,
+			COALESCE(c.mls_epoch, 0) AS mls_epoch,
 			COALESCE(c.allow_message_effects, TRUE) AS allow_message_effects,
 			COALESCE(c.theme, '') AS theme,
 			COALESCE(c.retention_seconds, 0) AS retention_seconds,
@@ -462,6 +490,8 @@ func (s *Service) Get(ctx context.Context, actor, id string) (Conversation, erro
 		&out.CreatorUserID,
 		&out.EncryptionState,
 		&out.EncryptionEpoch,
+		&out.MLSEnabled,
+		&out.MLSEpoch,
 		&out.AllowMessageEffects,
 		&out.Theme,
 		&out.RetentionSeconds,
@@ -500,6 +530,13 @@ func (s *Service) Get(ctx context.Context, actor, id string) (Conversation, erro
 	out.ThreadKeys = tkeys
 	out.UpdatedAt = updated.UTC().Format(time.RFC3339)
 	out.SettingsUpdatedAt = settingsUpdatedAt.UTC().Format(time.RFC3339Nano)
+	if out.MLSEnabled {
+		treeHash, err := s.conversationMLSTreeHash(ctx, id, int64(out.MLSEpoch))
+		if err != nil {
+			return Conversation{}, err
+		}
+		out.MLSTreeHash = treeHash
+	}
 	if mutedUntil.Valid {
 		out.MutedUntil = mutedUntil.Time.UTC().Format(time.RFC3339Nano)
 	}
@@ -507,6 +544,9 @@ func (s *Service) Get(ctx context.Context, actor, id string) (Conversation, erro
 		out.ExpiresAt = expiresAt.Time.UTC().Format(time.RFC3339Nano)
 	}
 	out.Blocked = out.BlockedByViewer || out.BlockedByOther
+	if err := s.populateConversationE2EEReadiness(ctx, &out); err != nil {
+		return Conversation{}, err
+	}
 	return out, nil
 }
 
@@ -706,13 +746,14 @@ func (s *Service) UpdateMetadata(ctx context.Context, actor, conversationID stri
 
 	encryptionArg := ""
 	bumpEpoch := false
+	disableMLS := false
 	if encryptionState != nil {
 		encryptionArg = normalizeEncryptionState(conversationType, *encryptionState)
 		if encryptionArg == "ENCRYPTED" {
-			if strings.ToUpper(strings.TrimSpace(conversationType)) != "DM" {
+			if !supportsConversationE2EE(conversationType) {
 				return Conversation{}, ErrEncryptedConversationNotReady
 			}
-			ready, err := s.encryptionReadyForDM(ctx, tx, conversationID)
+			ready, _, err := s.encryptionReadyForConversation(ctx, tx, conversationID)
 			if err != nil {
 				return Conversation{}, err
 			}
@@ -720,10 +761,15 @@ func (s *Service) UpdateMetadata(ctx context.Context, actor, conversationID stri
 				return Conversation{}, ErrEncryptedConversationNotReady
 			}
 			bumpEpoch = strings.ToUpper(strings.TrimSpace(currentEncryptionState)) != "ENCRYPTED"
+		} else if strings.ToUpper(strings.TrimSpace(conversationType)) == "GROUP" {
+			disableMLS = true
 		}
 	}
 
-	if _, err := tx.Exec(ctx, `
+	var nextEncryptionEpoch int
+	var nextMLSEpoch int
+	var nextMLSEnabled bool
+	if err := tx.QueryRow(ctx, `
 		UPDATE conversations
 		SET title = CASE WHEN $2::bool THEN NULLIF($3::text, '') ELSE title END,
 		    avatar_url = CASE WHEN $4::bool THEN NULLIF($5::text, '') ELSE avatar_url END,
@@ -733,50 +779,85 @@ func (s *Service) UpdateMetadata(ctx context.Context, actor, conversationID stri
 		      WHEN $8::bool AND $10::bool THEN encryption_epoch + 1
 		      ELSE encryption_epoch
 		    END,
+		    is_mls_encrypted = CASE
+		      WHEN $8::bool AND $11::bool THEN false
+		      WHEN $8::bool AND $9 = 'ENCRYPTED' AND type = 'GROUP' THEN true
+		      ELSE COALESCE(is_mls_encrypted, false)
+		    END,
+		    mls_epoch = CASE
+		      WHEN $8::bool AND $11::bool THEN 0
+		      WHEN $8::bool AND $10::bool AND type = 'GROUP' THEN COALESCE(mls_epoch, 0) + 1
+		      ELSE COALESCE(mls_epoch, 0)
+		    END,
 		    settings_version = COALESCE(settings_version, 1) + 1,
 		    settings_updated_at = now(),
 		    updated_at = now()
 		WHERE id = $1::uuid
-	`, conversationID, title != nil, titleArg, avatarURL != nil, avatarArg, description != nil, descriptionArg, encryptionState != nil, encryptionArg, bumpEpoch); err != nil {
+		RETURNING COALESCE(encryption_epoch, 0), COALESCE(mls_epoch, 0), COALESCE(is_mls_encrypted, false)
+	`, conversationID, title != nil, titleArg, avatarURL != nil, avatarArg, description != nil, descriptionArg, encryptionState != nil, encryptionArg, bumpEpoch, disableMLS).Scan(&nextEncryptionEpoch, &nextMLSEpoch, &nextMLSEnabled); err != nil {
 		return Conversation{}, err
+	}
+	if nextMLSEnabled {
+		targetEpoch := int64(nextMLSEpoch)
+		if targetEpoch <= 0 {
+			targetEpoch = int64(nextEncryptionEpoch)
+		}
+		if err := s.syncConversationMLSTx(ctx, tx, conversationID, targetEpoch); err != nil {
+			return Conversation{}, err
+		}
 	}
 
 	if err := tx.Commit(ctx); err != nil {
 		return Conversation{}, err
 	}
-	return s.Get(ctx, actor, conversationID)
+	updated, err := s.Get(ctx, actor, conversationID)
+	if err != nil {
+		return Conversation{}, err
+	}
+	if s.replication != nil {
+		s.emitConversationStateUpdateToMembers(ctx, updated)
+	}
+	return updated, nil
 }
 
-func (s *Service) encryptionReadyForDM(ctx context.Context, tx pgx.Tx, conversationID string) (bool, error) {
-	rows, err := tx.Query(ctx, `
+func (s *Service) encryptionReadyForConversation(ctx context.Context, tx pgx.Tx, conversationID string) (bool, []string, error) {
+	return s.encryptionReadyForConversationQuery(ctx, tx, conversationID)
+}
+
+func (s *Service) encryptionReadyForConversationQuery(ctx context.Context, q interface {
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+}, conversationID string) (bool, []string, error) {
+	rows, err := q.Query(ctx, `
 		SELECT user_id::text
 		FROM conversation_members
 		WHERE conversation_id = $1::uuid
 		ORDER BY joined_at ASC
 	`, conversationID)
 	if err != nil {
-		return false, err
+		return false, nil, err
 	}
 	defer rows.Close()
 
-	members := make([]string, 0, 2)
+	members := make([]string, 0, 8)
 	for rows.Next() {
 		var userID string
 		if err := rows.Scan(&userID); err != nil {
-			return false, err
+			return false, nil, err
 		}
 		members = append(members, userID)
 	}
 	if err := rows.Err(); err != nil {
-		return false, err
+		return false, nil, err
 	}
-	if len(members) != 2 {
-		return false, nil
+	if len(members) == 0 {
+		return false, nil, nil
 	}
 
+	blocked := make([]string, 0, len(members))
 	for _, userID := range members {
 		var ready bool
-		if err := tx.QueryRow(ctx, `
+		if err := q.QueryRow(ctx, `
 			SELECT EXISTS(
 				SELECT 1
 				FROM device_identity_keys dik
@@ -786,13 +867,13 @@ func (s *Service) encryptionReadyForDM(ctx context.Context, tx pgx.Tx, conversat
 				  AND d.capabilities @> $3::text[]
 			)
 		`, userID, devicekeys.BundleVersionSignalV1, []string{devicekeys.RequiredDeviceCapability}).Scan(&ready); err != nil {
-			return false, err
+			return false, nil, err
 		}
 		if !ready {
-			return false, nil
+			blocked = append(blocked, userID)
 		}
 	}
-	return true, nil
+	return len(blocked) == 0, blocked, nil
 }
 
 func normalizeConversationRole(raw string) string {
@@ -914,6 +995,8 @@ func (s *Service) AddMembers(ctx context.Context, actor, conversationID string, 
 		return Conversation{}, errors.New("forbidden")
 	}
 
+	membershipChanged := false
+	addedUserIDs := make([]string, 0, len(userIDs))
 	for _, userID := range dedupeUsers(userIDs) {
 		banned, err := s.isBannedTx(ctx, tx, conversationID, userID)
 		if err != nil {
@@ -922,86 +1005,51 @@ func (s *Service) AddMembers(ctx context.Context, actor, conversationID string, 
 		if banned {
 			return Conversation{}, errors.New("user_banned")
 		}
-		if _, err := tx.Exec(ctx, `
+		tag, err := tx.Exec(ctx, `
 			INSERT INTO conversation_members (conversation_id, user_id, role)
 			VALUES ($1::uuid, $2::uuid, 'MEMBER')
 			ON CONFLICT (conversation_id, user_id) DO NOTHING
-		`, conversationID, userID); err != nil {
+		`, conversationID, userID)
+		if err != nil {
 			return Conversation{}, err
+		}
+		if tag.RowsAffected() > 0 {
+			membershipChanged = true
+			addedUserIDs = append(addedUserIDs, userID)
 		}
 	}
 	if err := s.touchConversationTx(ctx, tx, conversationID); err != nil {
 		return Conversation{}, err
 	}
-	if err := tx.Commit(ctx); err != nil {
-		return Conversation{}, err
-	}
-
-	// Update MLS tree for encrypted groups
-	if s.mls != nil {
-		var isMLSEncrypted bool
-		err := s.db.QueryRow(ctx, `
-			SELECT is_mls_encrypted FROM conversations WHERE id = $1::uuid
-		`, conversationID).Scan(&isMLSEncrypted)
-		if err == nil && isMLSEncrypted {
-			// Load current tree
-			tree, err := s.mls.LoadRatchetTree(ctx, conversationID)
-			if err != nil && err.Error() != "no rows in result set" {
+	if membershipChanged {
+		if err := s.bumpEncryptedConversationEpochTx(ctx, tx, conversationID); err != nil {
+			return Conversation{}, err
+		}
+		if epoch, enabled, err := s.loadConversationMLSEpochTx(ctx, tx, conversationID); err != nil {
+			return Conversation{}, err
+		} else if enabled {
+			if err := s.syncConversationMLSTx(ctx, tx, conversationID, epoch); err != nil {
 				return Conversation{}, err
 			}
-
-			if tree == nil {
-				// Initialize tree if not exists
-				tree = e2ee.NewMLSRatchetTree(conversationID)
-			}
-
-			// Get devices for newly added members
-			newMemberDevices := make(map[string][]string)
-			for _, userID := range dedupeUsers(userIDs) {
-				deviceRows, err := s.db.Query(ctx, "SELECT id FROM devices WHERE user_id = $1::uuid", userID)
-				if err != nil {
-					return Conversation{}, err
-				}
-				for deviceRows.Next() {
-					var deviceID string
-					if err := deviceRows.Scan(&deviceID); err != nil {
-						return Conversation{}, err
-					}
-					newMemberDevices[userID] = append(newMemberDevices[userID], deviceID)
-				}
-				deviceRows.Close()
-			}
-
-			// Add new members to tree and bump epoch
-			for userID, devices := range newMemberDevices {
-				for _, deviceID := range devices {
-					leaf := e2ee.TreeLeaf{
-						UserID:   userID,
-						DeviceID: deviceID,
-					}
-					if _, err := tree.AddMember(leaf); err != nil {
-						return Conversation{}, err
-					}
-				}
-			}
-
-			tree.Epoch++  // Force rekey for all existing members
-
-			// Persist updated tree
-			if err := s.mls.SaveRatchetTree(ctx, tree); err != nil {
-				return Conversation{}, err
-			}
-
-			// Record membership changes
-			for userID := range newMemberDevices {
-				if err := s.mls.RecordMembershipChange(ctx, conversationID, actor, userID, "MEMBER_ADDED", tree.Epoch); err != nil {
+			for _, userID := range addedUserIDs {
+				if err := s.recordMLSMembershipChangeTx(ctx, tx, conversationID, actor, userID, "MEMBER_ADDED", epoch); err != nil {
 					return Conversation{}, err
 				}
 			}
 		}
 	}
+	if err := tx.Commit(ctx); err != nil {
+		return Conversation{}, err
+	}
 
-	return s.Get(ctx, actor, conversationID)
+	updated, err := s.Get(ctx, actor, conversationID)
+	if err != nil {
+		return Conversation{}, err
+	}
+	if s.replication != nil {
+		s.emitConversationStateUpdateToMembers(ctx, updated)
+	}
+	return updated, nil
 }
 
 func (s *Service) UpdateMemberRole(ctx context.Context, actor, conversationID, targetUserID, role string) (Conversation, error) {
@@ -1097,59 +1145,47 @@ func (s *Service) RemoveMember(ctx context.Context, actor, conversationID, targe
 		}
 	}
 
-	if _, err := tx.Exec(ctx, `DELETE FROM conversation_members WHERE conversation_id = $1::uuid AND user_id = $2::uuid`, conversationID, targetUserID); err != nil {
+	tag, err := tx.Exec(ctx, `DELETE FROM conversation_members WHERE conversation_id = $1::uuid AND user_id = $2::uuid`, conversationID, targetUserID)
+	if err != nil {
 		return Conversation{}, err
 	}
 	if err := s.touchConversationTx(ctx, tx, conversationID); err != nil {
 		return Conversation{}, err
 	}
+	if tag.RowsAffected() > 0 {
+		if err := s.bumpEncryptedConversationEpochTx(ctx, tx, conversationID); err != nil {
+			return Conversation{}, err
+		}
+		if epoch, enabled, err := s.loadConversationMLSEpochTx(ctx, tx, conversationID); err != nil {
+			return Conversation{}, err
+		} else if enabled {
+			if err := s.syncConversationMLSTx(ctx, tx, conversationID, epoch); err != nil {
+				return Conversation{}, err
+			}
+			if err := s.recordMLSMembershipChangeTx(ctx, tx, conversationID, actor, targetUserID, "MEMBER_REMOVED", epoch); err != nil {
+				return Conversation{}, err
+			}
+		}
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return Conversation{}, err
 	}
 
-	// Update MLS tree for encrypted groups
-	if s.mls != nil {
-		var isMLSEncrypted bool
-		err := s.db.QueryRow(ctx, `
-			SELECT is_mls_encrypted FROM conversations WHERE id = $1::uuid
-		`, conversationID).Scan(&isMLSEncrypted)
-		if err == nil && isMLSEncrypted {
-			// Load current tree
-			tree, err := s.mls.LoadRatchetTree(ctx, conversationID)
-			if err == nil && tree != nil {
-				// Get all devices for the removed member
-				deviceRows, err := s.db.Query(ctx, "SELECT id FROM devices WHERE user_id = $1::uuid", targetUserID)
-				if err == nil {
-					for deviceRows.Next() {
-						var deviceID string
-						if err := deviceRows.Scan(&deviceID); err != nil {
-							return Conversation{}, err
-						}
-						if err := tree.RemoveMember(targetUserID, deviceID); err != nil {
-							// Log but don't fail if device not in tree
-							_ = err
-						}
-					}
-					deviceRows.Close()
-				}
-
-				// Persist updated tree (epoch incremented by RemoveMember)
-				if err := s.mls.SaveRatchetTree(ctx, tree); err != nil {
-					return Conversation{}, err
-				}
-
-				// Record membership change
-				if err := s.mls.RecordMembershipChange(ctx, conversationID, actor, targetUserID, "MEMBER_REMOVED", tree.Epoch); err != nil {
-					return Conversation{}, err
-				}
-			}
-		}
-	}
-
 	if targetUserID == actor {
-		return Conversation{ConversationID: conversationID, Type: conversationType}, nil
+		updated := Conversation{ConversationID: conversationID, Type: conversationType}
+		if s.replication != nil {
+			s.emitConversationStateUpdateToMembers(ctx, updated)
+		}
+		return updated, nil
 	}
-	return s.Get(ctx, actor, conversationID)
+	updated, err := s.Get(ctx, actor, conversationID)
+	if err != nil {
+		return Conversation{}, err
+	}
+	if s.replication != nil {
+		s.emitConversationStateUpdateToMembers(ctx, updated)
+	}
+	return updated, nil
 }
 
 // GetGroupMembersWithDevices retrieves all members and their devices for a group
@@ -1199,55 +1235,22 @@ func (s *Service) GetGroupMembersWithDevices(ctx context.Context, conversationID
 
 // InitializeGroupMLS creates initial ratchet tree for group when encryption enabled
 func (s *Service) InitializeGroupMLS(ctx context.Context, conversationID string) error {
-	if s.mls == nil {
-		return fmt.Errorf("MLS store not initialized")
-	}
-
-	// Get current members and their devices
-	members, err := s.GetGroupMembersWithDevices(ctx, conversationID)
+	tx, err := s.db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return err
 	}
-
-	// Create new tree
-	tree := e2ee.NewMLSRatchetTree(conversationID)
-
-	// Add each device as a leaf
-	for _, member := range members {
-		for _, deviceID := range member.Devices {
-			leaf := e2ee.TreeLeaf{
-				UserID:   member.UserID,
-				DeviceID: deviceID,
-			}
-			if _, err := tree.AddMember(leaf); err != nil {
-				return err
-			}
-		}
-	}
-
-	// Persist tree
-	if err := s.mls.SaveRatchetTree(ctx, tree); err != nil {
+	defer tx.Rollback(ctx)
+	epoch, enabled, err := s.loadConversationMLSEpochTx(ctx, tx, conversationID)
+	if err != nil {
 		return err
 	}
-
-	// Save member-to-leaf mappings
-	members2, _ := s.GetGroupMembersWithDevices(ctx, conversationID)
-	var leaves []e2ee.TreeLeaf
-	for _, member := range members2 {
-		for i, deviceID := range member.Devices {
-			leaves = append(leaves, e2ee.TreeLeaf{
-				Index:    i,
-				UserID:   member.UserID,
-				DeviceID: deviceID,
-			})
-		}
+	if !enabled {
+		return nil
 	}
-
-	if err := s.mls.SaveMemberLeaves(ctx, conversationID, leaves, tree.Generation); err != nil {
+	if err := s.syncConversationMLSTx(ctx, tx, conversationID, epoch); err != nil {
 		return err
 	}
-
-	return nil
+	return tx.Commit(ctx)
 }
 
 func (s *Service) UpdateTransportPolicy(ctx context.Context, actor, conversationID, policy string) (Conversation, error) {
@@ -1817,9 +1820,169 @@ func normalizeEncryptionState(conversationType, raw string) string {
 	}
 }
 
+func normalizeCreateEncryptionState(conversationType, raw string) string {
+	if strings.EqualFold(strings.TrimSpace(conversationType), "GROUP") {
+		return "ENCRYPTED"
+	}
+	return normalizeEncryptionState(conversationType, raw)
+}
+
 func encryptionEpochForState(state string) int {
 	if strings.ToUpper(strings.TrimSpace(state)) == "ENCRYPTED" {
 		return 1
 	}
 	return 0
+}
+
+func supportsConversationE2EE(conversationType string) bool {
+	switch strings.ToUpper(strings.TrimSpace(conversationType)) {
+	case "DM", "GROUP":
+		return true
+	default:
+		return false
+	}
+}
+
+func (s *Service) populateConversationE2EEReadiness(ctx context.Context, conversation *Conversation) error {
+	if conversation == nil {
+		return nil
+	}
+	if !supportsConversationE2EE(conversation.Type) {
+		conversation.E2EEReady = false
+		conversation.E2EEBlockedMemberIDs = nil
+		return nil
+	}
+	ready, blocked, err := s.encryptionReadyForConversationQuery(ctx, s.db, conversation.ConversationID)
+	if err != nil {
+		return err
+	}
+	conversation.E2EEReady = ready
+	conversation.E2EEBlockedMemberIDs = blocked
+	return nil
+}
+
+func useMLSForConversation(conversationType, encryptionState string) bool {
+	return strings.EqualFold(strings.TrimSpace(conversationType), "GROUP") &&
+		strings.EqualFold(strings.TrimSpace(encryptionState), "ENCRYPTED")
+}
+
+func (s *Service) loadConversationMLSEpochTx(ctx context.Context, tx pgx.Tx, conversationID string) (int64, bool, error) {
+	var epoch int64
+	var enabled bool
+	if err := tx.QueryRow(ctx, `
+		SELECT COALESCE(mls_epoch, 0), COALESCE(is_mls_encrypted, false)
+		FROM conversations
+		WHERE id = $1::uuid
+	`, conversationID).Scan(&epoch, &enabled); err != nil {
+		return 0, false, err
+	}
+	return epoch, enabled, nil
+}
+
+func (s *Service) syncConversationMLSTx(ctx context.Context, q interface {
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+}, conversationID string, epoch int64) error {
+	tree, err := e2ee.BuildConversationMLSTree(ctx, q, conversationID, epoch)
+	if err != nil {
+		return err
+	}
+	if err := e2ee.PersistConversationMLSTree(ctx, q, tree); err != nil {
+		return err
+	}
+	_, err = q.Exec(ctx, `
+		UPDATE conversations
+		SET is_mls_encrypted = true,
+		    mls_epoch = $2,
+		    updated_at = now()
+		WHERE id = $1::uuid
+	`, conversationID, epoch)
+	return err
+}
+
+func (s *Service) conversationMLSTreeHash(ctx context.Context, conversationID string, epoch int64) (string, error) {
+	if epoch <= 0 {
+		return "", nil
+	}
+	return e2ee.ConversationMLSTreeHash(ctx, s.db, conversationID, epoch)
+}
+
+func (s *Service) recordMLSMembershipChangeTx(ctx context.Context, tx pgx.Tx, conversationID, actor, targetUserID, changeType string, epoch int64) error {
+	if !strings.EqualFold(strings.TrimSpace(changeType), "MEMBER_ADDED") &&
+		!strings.EqualFold(strings.TrimSpace(changeType), "MEMBER_REMOVED") {
+		return nil
+	}
+	_, err := tx.Exec(ctx, `
+		INSERT INTO group_membership_changes (group_id, initiator_user_id, target_user_id, change_type, epoch)
+		VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5)
+	`, conversationID, actor, targetUserID, strings.ToUpper(strings.TrimSpace(changeType)), epoch)
+	return err
+}
+
+func (s *Service) bumpEncryptedConversationEpochTx(ctx context.Context, tx pgx.Tx, conversationID string) error {
+	_, err := tx.Exec(ctx, `
+		UPDATE conversations
+		SET encryption_epoch = encryption_epoch + 1,
+		    mls_epoch = CASE
+		      WHEN COALESCE(is_mls_encrypted, false) THEN COALESCE(mls_epoch, 0) + 1
+		      ELSE COALESCE(mls_epoch, 0)
+		    END,
+		    settings_version = COALESCE(settings_version, 1) + 1,
+		    settings_updated_at = now(),
+		    updated_at = now()
+		WHERE id = $1::uuid
+		  AND type = 'GROUP'
+		  AND COALESCE(encryption_state, 'PLAINTEXT') = 'ENCRYPTED'
+	`, conversationID)
+	return err
+}
+
+func (s *Service) emitConversationStateUpdateToMembers(ctx context.Context, conversation Conversation) {
+	if s.replication == nil {
+		return
+	}
+	if conversation.ConversationID == "" {
+		return
+	}
+	if len(conversation.Participants) == 0 {
+		participants, externalPhones, err := s.participants(ctx, conversation.ConversationID)
+		if err != nil {
+			return
+		}
+		conversation.Participants = participants
+		conversation.ExternalPhones = externalPhones
+	}
+	if conversation.Type == "" || conversation.UpdatedAt == "" {
+		if len(conversation.Participants) == 0 {
+			return
+		}
+		var err error
+		conversation, err = s.Get(ctx, conversation.Participants[0], conversation.ConversationID)
+		if err != nil {
+			return
+		}
+	}
+	payload := map[string]any{
+		"conversation_id":         conversation.ConversationID,
+		"conversation_type":       conversation.Type,
+		"title":                   conversation.Title,
+		"avatar_url":              conversation.AvatarURL,
+		"description":             conversation.Description,
+		"encryption_state":        conversation.EncryptionState,
+		"encryption_epoch":        conversation.EncryptionEpoch,
+		"mls_enabled":             conversation.MLSEnabled,
+		"mls_epoch":               conversation.MLSEpoch,
+		"mls_tree_hash":           conversation.MLSTreeHash,
+		"e2ee_ready":              conversation.E2EEReady,
+		"e2ee_blocked_member_ids": conversation.E2EEBlockedMemberIDs,
+		"participants":            conversation.Participants,
+		"external_phones":         conversation.ExternalPhones,
+		"updated_at":              conversation.UpdatedAt,
+	}
+	for _, userID := range dedupeUsers(conversation.Participants) {
+		if strings.TrimSpace(userID) == "" {
+			continue
+		}
+		_, _ = s.replication.EmitUserEvent(ctx, userID, conversation.ConversationID, replication.UserEventConversationStateUpdated, payload)
+	}
 }

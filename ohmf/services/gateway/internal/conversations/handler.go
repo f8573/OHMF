@@ -238,7 +238,7 @@ func (h *Handler) UpdateMetadata(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if errors.Is(err, ErrEncryptedConversationNotReady) {
-			httpx.WriteError(w, r, http.StatusConflict, "encrypted_conversation_not_ready", "both DM participants must publish E2EE_OTT_V2 signal bundles before enabling encryption", nil)
+			httpx.WriteError(w, r, http.StatusConflict, "encrypted_conversation_not_ready", "all conversation members must publish E2EE_OTT_V2 signal bundles before enabling encryption", nil)
 			return
 		}
 		httpx.WriteError(w, r, http.StatusInternalServerError, "update_failed", err.Error(), nil)
