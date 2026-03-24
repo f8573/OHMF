@@ -26,6 +26,7 @@ import (
 	"ohmf/services/gateway/internal/middleware"
 	"ohmf/services/gateway/internal/otp"
 	"ohmf/services/gateway/internal/phone"
+	"ohmf/services/gateway/internal/replication"
 	"ohmf/services/gateway/internal/securityaudit"
 	"ohmf/services/gateway/internal/sqlutil"
 	"ohmf/services/gateway/internal/token"
@@ -396,28 +397,6 @@ ON CONFLICT (conversation_id, user_id) DO NOTHING
 `, phoneE164, userID); err != nil {
 		return nil, err
 	}
-	if _, err := tx.Exec(ctx, `
-WITH matched AS (
-SELECT DISTINCT cem.conversation_id
-FROM conversation_external_members cem
-JOIN external_contacts ec ON ec.id = cem.external_contact_id
-WHERE ec.phone_e164 = $1
-)
-UPDATE conversations c
-SET type = 'DM', transport_policy = 'AUTO', updated_at = now()
-WHERE c.id IN (SELECT conversation_id FROM matched)
-`, phoneE164); err != nil {
-		return nil, err
-	}
-	if _, err := tx.Exec(ctx, `
-DELETE FROM conversation_external_members cem
-USING external_contacts ec
-WHERE cem.external_contact_id = ec.id
-  AND ec.phone_e164 = $1
-`, phoneE164); err != nil {
-		return nil, err
-	}
-
 	var deviceID string
 	deviceCapabilities := normalizeDeviceCapabilities(req.Device.Platform, req.Device.Capabilities)
 	err = tx.QueryRow(ctx, `
@@ -892,14 +871,14 @@ func (h *Handler) CompletePairing(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback(r.Context())
 
-	var sessionID, userID string
+	var sessionID, userID, requestedByDeviceID string
 	var expiresAt time.Time
 	if err := tx.QueryRow(r.Context(), `
-		SELECT id::text, user_id::text, expires_at
+		SELECT id::text, user_id::text, COALESCE(requested_by_device_id::text, ''), expires_at
 		FROM device_pairing_sessions
 		WHERE pairing_code = $1 AND status = 'PENDING'
 		FOR UPDATE
-	`, strings.TrimSpace(req.PairingCode)).Scan(&sessionID, &userID, &expiresAt); err != nil {
+	`, strings.TrimSpace(req.PairingCode)).Scan(&sessionID, &userID, &requestedByDeviceID, &expiresAt); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			httpx.WriteError(w, r, http.StatusUnauthorized, "invalid_pairing_code", "pairing code invalid", nil)
 			return
@@ -956,6 +935,13 @@ func (h *Handler) CompletePairing(w http.ResponseWriter, r *http.Request) {
 	if err := tx.Commit(r.Context()); err != nil {
 		httpx.WriteError(w, r, http.StatusInternalServerError, "pairing_failed", err.Error(), nil)
 		return
+	}
+	if h.redis != nil {
+		_, _ = replication.NewStore(h.db, h.redis).EmitUserEvent(r.Context(), userID, "", replication.UserEventAccountDeviceLinked, map[string]any{
+			"pairing_session_id":     sessionID,
+			"paired_device_id":       newDeviceID,
+			"requested_by_device_id": requestedByDeviceID,
+		})
 	}
 
 	accessToken, err := h.tokens.IssueAccess(userID, newDeviceID, h.cfg.AccessTTL, h.decideProfilesForPlatform(req.Device.Platform))

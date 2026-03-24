@@ -365,6 +365,43 @@ func (h *Handler) PublishBundle(ctx context.Context, actorUserID, deviceID strin
 			return Bundle{}, err
 		}
 	}
+	var actorPhoneE164 string
+	if err := tx.QueryRow(ctx, `SELECT COALESCE(primary_phone_e164, '') FROM users WHERE id = $1::uuid`, actorUserID).Scan(&actorPhoneE164); err != nil {
+		return Bundle{}, err
+	}
+	if strings.TrimSpace(actorPhoneE164) != "" {
+		if _, err := tx.Exec(ctx, `
+WITH matched AS (
+SELECT DISTINCT cem.conversation_id
+FROM conversation_external_members cem
+JOIN external_contacts ec ON ec.id = cem.external_contact_id
+JOIN conversation_members cm ON cm.conversation_id = cem.conversation_id
+WHERE ec.phone_e164 = $1
+  AND cm.user_id = $2::uuid
+)
+UPDATE conversations c
+SET type = 'DM',
+    transport_policy = 'AUTO',
+    encryption_state = CASE
+      WHEN COALESCE(c.encryption_state, 'PLAINTEXT') = 'CARRIER_PLAINTEXT' THEN 'PLAINTEXT'
+      ELSE COALESCE(c.encryption_state, 'PLAINTEXT')
+    END,
+    updated_at = now()
+WHERE c.id IN (SELECT conversation_id FROM matched)
+`, actorPhoneE164, actorUserID); err != nil {
+			return Bundle{}, err
+		}
+		if _, err := tx.Exec(ctx, `
+DELETE FROM conversation_external_members cem
+USING external_contacts ec, conversation_members cm
+WHERE cem.external_contact_id = ec.id
+  AND cm.conversation_id = cem.conversation_id
+  AND cm.user_id = $2::uuid
+  AND ec.phone_e164 = $1
+`, actorPhoneE164, actorUserID); err != nil {
+			return Bundle{}, err
+		}
+	}
 	if priorFingerprint == "" || priorFingerprint != fingerprint {
 		if _, err := tx.Exec(ctx, `
 			UPDATE conversations c

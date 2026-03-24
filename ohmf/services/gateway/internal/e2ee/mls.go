@@ -323,8 +323,7 @@ func (s *MLSSessionStore) SaveGroupEpoch(ctx context.Context, groupID string, ep
 	query := `INSERT INTO group_epochs (group_id, epoch, group_secret)
 		VALUES ($1, $2, $3)
 		ON CONFLICT (group_id, epoch) DO UPDATE
-		SET group_secret = EXCLUDED.group_secret,
-		    updated_at = NOW()`
+		SET group_secret = EXCLUDED.group_secret`
 	_, err := s.db.Exec(ctx, query, groupID, epoch, secret)
 	return err
 }

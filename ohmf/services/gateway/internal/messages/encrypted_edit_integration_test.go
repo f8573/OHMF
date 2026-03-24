@@ -55,9 +55,9 @@ func TestEditEncryptedMessageAllowsOriginDeviceAndPublishesSyncEvent(t *testing.
 	insertTestDeviceIdentity(t, ctx, pool, recipientID, recipientDeviceID)
 
 	if _, err := pool.Exec(ctx, `
-		INSERT INTO conversations (id, type, encryption_state, last_message_id)
-		VALUES ($1::uuid, 'DM', 'ENCRYPTED', $2::uuid)
-	`, conversationID, messageID); err != nil {
+		INSERT INTO conversations (id, type, encryption_state, encryption_epoch)
+		VALUES ($1::uuid, 'DM', 'ENCRYPTED', 1)
+	`, conversationID); err != nil {
 		t.Fatalf("insert conversation: %v", err)
 	}
 	if _, err := pool.Exec(ctx, `INSERT INTO conversation_counters (conversation_id, next_server_order) VALUES ($1::uuid, 2)`, conversationID); err != nil {
@@ -73,6 +73,36 @@ func TestEditEncryptedMessageAllowsOriginDeviceAndPublishesSyncEvent(t *testing.
 		VALUES ($1::uuid, $2::uuid, $3::uuid, 'encrypted', $4::jsonb, 'OHMF', 1)
 	`, messageID, conversationID, senderID, mustJSON(t, initialContent)); err != nil {
 		t.Fatalf("insert encrypted message: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `
+		UPDATE conversations
+		SET last_message_id = $2::uuid
+		WHERE id = $1::uuid
+	`, conversationID, messageID); err != nil {
+		t.Fatalf("update conversation last_message_id: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO user_conversation_state (
+			user_id,
+			conversation_id,
+			last_message_id,
+			last_message_preview,
+			last_message_at,
+			unread_count,
+			updated_at
+		)
+		SELECT
+			$1::uuid,
+			$2::uuid,
+			$3::uuid,
+			'Encrypted message',
+			m.created_at,
+			1,
+			m.created_at
+		FROM messages m
+		WHERE m.id = $3::uuid
+	`, recipientID, conversationID, messageID); err != nil {
+		t.Fatalf("seed recipient conversation state: %v", err)
 	}
 
 	userEventPubsub := rdb.Subscribe(ctx, store.ChannelForUser(recipientID))
@@ -177,13 +207,14 @@ func insertTestDeviceIdentity(t *testing.T, ctx context.Context, pool *pgxpool.P
 		t.Fatalf("generate signing key: %v", err)
 	}
 	signingPublicKey := base64.StdEncoding.EncodeToString(publicKey)
+	agreementPublicKey := base64.StdEncoding.EncodeToString([]byte("agreement-" + deviceID))
 	identityPublicKey := base64.StdEncoding.EncodeToString([]byte("identity-" + deviceID))
 	signedPrekeyPublicKey := base64.StdEncoding.EncodeToString([]byte("signed-prekey-" + deviceID))
 	signedPrekeySignature := base64.StdEncoding.EncodeToString(ed25519.Sign(privateKey, []byte(signedPrekeyPublicKey)))
 
 	if _, err := pool.Exec(ctx, `
-		INSERT INTO devices (id, user_id, platform, device_name)
-		VALUES ($1::uuid, $2::uuid, 'web', 'test device')
+		INSERT INTO devices (id, user_id, platform, device_name, capabilities)
+		VALUES ($1::uuid, $2::uuid, 'web', 'test device', ARRAY['E2EE_OTT_V2']::text[])
 	`, deviceID, userID); err != nil {
 		t.Fatalf("insert device: %v", err)
 	}
@@ -195,10 +226,13 @@ func insertTestDeviceIdentity(t *testing.T, ctx context.Context, pool *pgxpool.P
 			signed_prekey_id,
 			signed_prekey_public_key,
 			signed_prekey_signature,
-			signing_public_key
+			agreement_identity_public_key,
+			signing_key_alg,
+			signing_public_key,
+			bundle_version
 		)
-		VALUES ($1::uuid, $2::uuid, $3, 1, $4, $5, $6)
-	`, deviceID, userID, identityPublicKey, signedPrekeyPublicKey, signedPrekeySignature, signingPublicKey); err != nil {
+		VALUES ($1::uuid, $2::uuid, $3, 1, $4, $5, $6, 'ED25519', $7, 'OHMF_SIGNAL_V1')
+	`, deviceID, userID, identityPublicKey, signedPrekeyPublicKey, signedPrekeySignature, agreementPublicKey, signingPublicKey); err != nil {
 		t.Fatalf("insert device identity keys: %v", err)
 	}
 	return privateKey

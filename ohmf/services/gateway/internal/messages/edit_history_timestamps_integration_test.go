@@ -90,13 +90,7 @@ func TestEditHistoryPreservesSentDeliveredReadTimestamps(t *testing.T) {
 	if history[0].SentAt == "" || history[0].DeliveredAt == "" || history[0].ReadAt == "" {
 		t.Fatalf("expected preserved timestamps, got sent=%q delivered=%q read=%q", history[0].SentAt, history[0].DeliveredAt, history[0].ReadAt)
 	}
-	if history[0].SentAt != beforeEdit[0].SentAt {
-		t.Fatalf("expected preserved sent_at %q, got %q", beforeEdit[0].SentAt, history[0].SentAt)
-	}
-	if history[0].DeliveredAt != beforeEdit[0].DeliveredAt {
-		t.Fatalf("expected preserved delivered_at %q, got %q", beforeEdit[0].DeliveredAt, history[0].DeliveredAt)
-	}
-	if history[0].ReadAt != beforeEdit[0].ReadAt {
-		t.Fatalf("expected preserved read_at %q, got %q", beforeEdit[0].ReadAt, history[0].ReadAt)
-	}
+	assertSameInstant(t, "sent_at", beforeEdit[0].SentAt, history[0].SentAt)
+	assertSameInstant(t, "delivered_at", beforeEdit[0].DeliveredAt, history[0].DeliveredAt)
+	assertSameInstant(t, "read_at", beforeEdit[0].ReadAt, history[0].ReadAt)
 }

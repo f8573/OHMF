@@ -42,14 +42,14 @@ func TestNormalizeQuery(t *testing.T) {
 			expectedTokens: []string{"hello", "world"},
 		},
 		{
-			name:           "With boolean operators",
-			query:          "hello AND world",
-			expectedTokens: []string{"hello", "world"},
+			name:              "With boolean operators",
+			query:             "hello AND world",
+			expectedTokens:    []string{"hello", "world"},
 			expectedOperators: 1,
 		},
 		{
-			name:            "All stopwords",
-			query:           "the and or",
+			name:             "All stopwords",
+			query:            "the and or",
 			expectedAllStops: true,
 		},
 		{
@@ -59,14 +59,15 @@ func TestNormalizeQuery(t *testing.T) {
 			expectedTokens:  []string{"search"},
 		},
 		{
-			name:           "Multiple phrases",
-			query:          `"first phrase" and "second phrase"`,
+			name:            "Multiple phrases",
+			query:           `"first phrase" and "second phrase"`,
 			expectedPhrases: 2,
 		},
 		{
-			name:           "NOT operator",
-			query:          "hello NOT world",
-			expectedTokens: []string{"hello", "world"},
+			name:              "NOT operator",
+			query:             "hello NOT world",
+			expectedTokens:    []string{"hello", "world"},
+			expectedOperators: 1,
 		},
 	}
 
@@ -106,10 +107,10 @@ func TestNormalizeQuery(t *testing.T) {
 
 func TestValidateSearchQuality(t *testing.T) {
 	tests := []struct {
-		name              string
-		query             string
-		expectedValid     bool
-		expectedWarning   bool
+		name            string
+		query           string
+		expectedValid   bool
+		expectedWarning bool
 	}{
 		{
 			name:          "Valid query",
@@ -137,9 +138,9 @@ func TestValidateSearchQuality(t *testing.T) {
 			expectedValid: false,
 		},
 		{
-			name:            "Single character valid",
-			query:           `"a"`,
-			expectedValid:   true,
+			name:          "Single character valid",
+			query:         `"a"`,
+			expectedValid: true,
 		},
 	}
 
@@ -157,9 +158,9 @@ func TestValidateSearchQuality(t *testing.T) {
 
 func TestGetFirstToken(t *testing.T) {
 	tests := []struct {
-		name            string
-		query           string
-		expectedToken   string
+		name          string
+		query         string
+		expectedToken string
 	}{
 		{
 			name:          "Single token",
@@ -232,10 +233,10 @@ func TestIsExactPhraseSearch(t *testing.T) {
 
 func TestTruncateForDB(t *testing.T) {
 	tests := []struct {
-		name         string
-		query        string
-		maxLen       int
-		expectedLen  int
+		name        string
+		query       string
+		maxLen      int
+		expectedLen int
 	}{
 		{
 			name:        "No truncation needed",
@@ -271,9 +272,9 @@ func TestTruncateForDB(t *testing.T) {
 
 func TestIsLikelyTypo(t *testing.T) {
 	tests := []struct {
-		name          string
-		token         string
-		expectedTypo  bool
+		name         string
+		token        string
+		expectedTypo bool
 	}{
 		{
 			name:         "Common word",

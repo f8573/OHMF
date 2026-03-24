@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/redis/go-redis/v9"
+	"ohmf/services/gateway/internal/devicekeys"
 	"ohmf/services/gateway/internal/e2ee"
 	"ohmf/services/gateway/internal/limit"
 	"ohmf/services/gateway/internal/middleware"
@@ -1645,8 +1646,7 @@ func validateMLSEncryptedConversationEnvelope(ctx context.Context, q interface {
 		INSERT INTO group_epochs (group_id, epoch, group_secret)
 		VALUES ($1::uuid, $2, $3)
 		ON CONFLICT (group_id, epoch) DO UPDATE
-		SET group_secret = EXCLUDED.group_secret,
-		    updated_at = NOW()
+		SET group_secret = EXCLUDED.group_secret
 	`, conversationID, expectedMLSEpoch, []byte(metadata.EpochSecretDigest)); err != nil {
 		return err
 	}
@@ -3011,6 +3011,7 @@ func (s *Service) sendSyncWithEndpoint(ctx context.Context, userID, senderDevice
 		return Message{}, err
 	}
 	s.publishMessageCreated(ctx, recipients, msg)
+	s.publishOnlineDeliveryUpdates(ctx, recipients, msg)
 	return msg, nil
 }
 
@@ -3271,12 +3272,22 @@ func (s *Service) checkBlockedRecipients(ctx context.Context, q querier, senderU
 	if err != nil {
 		return false, "", err
 	}
-	defer rows2.Close()
+	recipients := make([]string, 0, 4)
 	for rows2.Next() {
 		var uid string
 		if err := rows2.Scan(&uid); err != nil {
+			rows2.Close()
 			return false, "", err
 		}
+		recipients = append(recipients, uid)
+	}
+	if err := rows2.Err(); err != nil {
+		rows2.Close()
+		return false, "", err
+	}
+	rows2.Close()
+
+	for _, uid := range recipients {
 		var one int
 		err := q.QueryRow(ctx, `SELECT 1 FROM user_blocks WHERE blocker_user_id = $1::uuid AND blocked_user_id = $2::uuid`, uid, senderUserID).Scan(&one)
 		if err == nil {
@@ -3339,6 +3350,23 @@ func (s *Service) conversationHasTombstones(ctx context.Context, conversationID 
 }
 
 func (s *Service) findOrCreatePhoneConversation(ctx context.Context, tx pgx.Tx, userID, phoneE164 string) (string, error) {
+	hasPublishedSignalBundle := func(targetUserID string) (bool, error) {
+		var ready bool
+		if err := tx.QueryRow(ctx, `
+			SELECT EXISTS(
+				SELECT 1
+				FROM device_identity_keys dik
+				JOIN devices d ON d.id = dik.device_id
+				WHERE dik.user_id = $1::uuid
+				  AND dik.bundle_version = $2
+				  AND d.capabilities @> $3::text[]
+			)
+		`, targetUserID, devicekeys.BundleVersionSignalV1, []string{devicekeys.RequiredDeviceCapability}).Scan(&ready); err != nil {
+			return false, err
+		}
+		return ready, nil
+	}
+
 	var targetUserID string
 	err := tx.QueryRow(ctx, `
 		SELECT id::text
@@ -3346,6 +3374,15 @@ func (s *Service) findOrCreatePhoneConversation(ctx context.Context, tx pgx.Tx, 
 		WHERE primary_phone_e164 = $1
 		LIMIT 1
 	`, phoneE164).Scan(&targetUserID)
+	if err == nil && targetUserID != "" && targetUserID != userID {
+		ready, err := hasPublishedSignalBundle(targetUserID)
+		if err != nil {
+			return "", err
+		}
+		if !ready {
+			targetUserID = ""
+		}
+	}
 	if err == nil && targetUserID != "" && targetUserID != userID {
 		var dmConversationID string
 		err = tx.QueryRow(ctx, `

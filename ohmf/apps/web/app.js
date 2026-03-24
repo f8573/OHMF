@@ -44,6 +44,11 @@ const CRYPTO_DB_VERSION = 1;
 const CRYPTO_DEVICE_STORE = "device_state";
 const MINIAPP_CONSENT_STORAGE_PREFIX = "ohmf.miniapp.consent.v1";
 const DECRYPTED_MESSAGE_CACHE_LIMIT = 500;
+const CRYPTO_BACKUP_NAME = "default";
+const CRYPTO_BACKUP_FORMAT = "OHMF_CRYPTO_EXPORT_V1";
+const CRYPTO_BACKUP_MIN_SYNC_INTERVAL_MS = 15000;
+const CRYPTO_BACKUP_RESTORE_RETRY_MS = 5000;
+const CRYPTO_BACKUP_RESTORE_MAX_RETRIES = 24;
 const SMS_DELIVERY_STATUSES = Object.freeze({
   SENT: "SENT",
   FAIL_SEND: "FAIL_SEND",
@@ -89,6 +94,7 @@ const state = {
     error: "",
     edits: [],
     reactions: [],
+    readStatusMembers: [],
     recipientDeliveryAt: "",
     recipientReadAt: "",
     requestToken: 0,
@@ -137,6 +143,14 @@ let liveRefreshTimer = 0;
 let typingStopTimer = 0;
 let localTypingThreadId = "";
 let localTypingSent = false;
+let cryptoBackupSyncTimer = 0;
+let cryptoBackupSyncInFlight = false;
+let cryptoBackupDirty = false;
+let cryptoBackupLastSyncAt = 0;
+let cryptoBackupLastFingerprint = "";
+let cryptoBackupRestorePromise = null;
+let cryptoBackupRestoreRetryCount = 0;
+let cryptoBackupRestoreTimer = 0;
 const pendingDeliveredThroughByThread = Object.create(null);
 const pendingDeliveredFlushTimers = Object.create(null);
 
@@ -772,15 +786,18 @@ function normalizeRatchetSession(session, device) {
 function persistCryptoDeviceState(device) {
   const next = {
     ...device,
+    deviceId: sanitizeText(device?.deviceId, 80),
     ratchetSessions: device?.ratchetSessions && typeof device.ratchetSessions === "object" ? device.ratchetSessions : {},
     signalRatchetSessions: device?.signalRatchetSessions && typeof device.signalRatchetSessions === "object" ? device.signalRatchetSessions : {},
-    mlsEpochSecrets: device?.mlsEpochSecrets && typeof device.mlsEpochSecrets === "object" ? device.mlsEpochSecrets : {},
+    mlsEpochSecrets: normalizeMLSEpochSecrets(device?.mlsEpochSecrets),
+    ownedDeviceStates: normalizeOwnedCryptoDeviceStates(device?.ownedDeviceStates),
     trustPins: device?.trustPins && typeof device.trustPins === "object" ? device.trustPins : {},
     legacyRatchetSessions: device?.legacyRatchetSessions && typeof device.legacyRatchetSessions === "object" ? device.legacyRatchetSessions : {},
     decryptedMessageCache: normalizeDecryptedMessageCache(state.crypto.decryptedMessageCache),
   };
   void cryptoStoreSave(next);
   state.crypto.device = next;
+  scheduleCryptoBackupSync();
   return next;
 }
 
@@ -815,6 +832,59 @@ function normalizeMLSEpochSecret(secret) {
   };
 }
 
+function normalizeMLSEpochSecrets(raw) {
+  if (!raw || typeof raw !== "object") return {};
+  const normalized = {};
+  for (const [key, value] of Object.entries(raw)) {
+    const item = normalizeMLSEpochSecret(value);
+    if (!item.epoch || !item.secretKey) continue;
+    normalized[sanitizeText(key, 160)] = item;
+  }
+  return normalized;
+}
+
+function normalizeOwnedCryptoDeviceState(device) {
+  if (!device || typeof device !== "object") return null;
+  const deviceId = sanitizeText(device?.deviceId, 80);
+  if (!deviceId) return null;
+  return {
+    deviceId,
+    agreementPublicKey: sanitizeText(device?.agreementPublicKey, 4000),
+    agreementPrivateKeyJwk: device?.agreementPrivateKeyJwk || null,
+    signingPublicKey: sanitizeText(device?.signingPublicKey, 4000),
+    signingPrivateKeyJwk: device?.signingPrivateKeyJwk || null,
+    signedPrekeyId: Number(device?.signedPrekeyId || 1),
+    signedPrekeyPublicKey: sanitizeText(device?.signedPrekeyPublicKey, 4000),
+    signedPrekeyPrivateKeyJwk: device?.signedPrekeyPrivateKeyJwk || null,
+    publishedAt: sanitizeText(device?.publishedAt, 80),
+    fingerprint: sanitizeText(device?.fingerprint, 128),
+    ratchetSessions: device?.ratchetSessions && typeof device.ratchetSessions === "object" ? cloneJson(device.ratchetSessions) : {},
+    signalRatchetSessions: device?.signalRatchetSessions && typeof device.signalRatchetSessions === "object" ? cloneJson(device.signalRatchetSessions) : {},
+    legacyRatchetSessions: device?.legacyRatchetSessions && typeof device.legacyRatchetSessions === "object" ? cloneJson(device.legacyRatchetSessions) : {},
+    trustPins: device?.trustPins && typeof device.trustPins === "object" ? cloneJson(device.trustPins) : {},
+    oneTimePrekeys: device?.oneTimePrekeys && typeof device.oneTimePrekeys === "object" ? cloneJson(device.oneTimePrekeys) : {},
+    nextPrekeyId: Number(device?.nextPrekeyId || 1),
+    mlsEpochSecrets: normalizeMLSEpochSecrets(device?.mlsEpochSecrets),
+    legacyAgreementPublicKey: sanitizeText(device?.legacyAgreementPublicKey, 4000),
+    legacyAgreementPrivateKeyJwk: device?.legacyAgreementPrivateKeyJwk || null,
+    legacySigningPublicKey: sanitizeText(device?.legacySigningPublicKey, 4000),
+    legacySigningPrivateKeyJwk: device?.legacySigningPrivateKeyJwk || null,
+    restoredAt: sanitizeText(device?.restoredAt, 80),
+    importedFromDeviceId: sanitizeText(device?.importedFromDeviceId, 80),
+  };
+}
+
+function normalizeOwnedCryptoDeviceStates(raw) {
+  if (!raw || typeof raw !== "object") return {};
+  const normalized = {};
+  for (const [key, value] of Object.entries(raw)) {
+    const item = normalizeOwnedCryptoDeviceState(value);
+    if (!item?.deviceId) continue;
+    normalized[sanitizeText(key, 80) || item.deviceId] = item;
+  }
+  return normalized;
+}
+
 function getMLSEpochSecret(device, conversationId, epoch, digest = "") {
   if (!device) return null;
   const stored = device.mlsEpochSecrets?.[mlsEpochSecretId(conversationId, epoch)];
@@ -834,6 +904,95 @@ function setMLSEpochSecret(device, conversationId, secret) {
     },
   };
   return persistCryptoDeviceState(next);
+}
+
+function allKnownCryptoStates(device) {
+  const primary = normalizeOwnedCryptoDeviceState(device);
+  if (!primary) return [];
+  return [
+    primary,
+    ...Object.values(normalizeOwnedCryptoDeviceStates(device?.ownedDeviceStates || {})),
+  ];
+}
+
+function ownedCryptoStateForDevice(device, deviceId) {
+  const normalizedDeviceID = sanitizeText(deviceId, 80);
+  if (!normalizedDeviceID) return null;
+  if (normalizedDeviceID === sanitizeText(device?.deviceId, 80)) {
+    return normalizeOwnedCryptoDeviceState(device);
+  }
+  return normalizeOwnedCryptoDeviceState(device?.ownedDeviceStates?.[normalizedDeviceID]);
+}
+
+function mergeImportedOwnedDeviceState(primaryDevice, importedDevice) {
+  const normalized = normalizeOwnedCryptoDeviceState(importedDevice);
+  if (!normalized?.deviceId) return primaryDevice;
+  if (normalized.deviceId === sanitizeText(primaryDevice?.deviceId, 80)) {
+    return {
+      ...primaryDevice,
+      ...normalized,
+      ownedDeviceStates: normalizeOwnedCryptoDeviceStates(primaryDevice?.ownedDeviceStates),
+    };
+  }
+  return {
+    ...primaryDevice,
+    ownedDeviceStates: {
+      ...normalizeOwnedCryptoDeviceStates(primaryDevice?.ownedDeviceStates),
+      [normalized.deviceId]: normalized,
+    },
+  };
+}
+
+function recipientCandidateForCurrentUser(device, recipientEntries) {
+  const currentDeviceId = sanitizeText(state.auth?.deviceId, 80);
+  const currentUserId = sanitizeText(state.auth?.userId, 80);
+  const entries = Array.isArray(recipientEntries) ? recipientEntries : [];
+  const currentRecipient = entries.find((item) => sanitizeText(item?.device_id, 80) === currentDeviceId);
+  if (currentRecipient) {
+    return {
+      recipient: currentRecipient,
+      deviceState: normalizeOwnedCryptoDeviceState(device),
+      usedTransferredState: false,
+    };
+  }
+  for (const item of entries) {
+    const userId = sanitizeText(item?.user_id, 80);
+    const deviceId = sanitizeText(item?.device_id, 80);
+    if (!deviceId || userId !== currentUserId) continue;
+    const ownedState = ownedCryptoStateForDevice(device, deviceId);
+    if (!ownedState?.agreementPrivateKeyJwk && !ownedState?.legacyAgreementPrivateKeyJwk) continue;
+    return {
+      recipient: item,
+      deviceState: ownedState,
+      usedTransferredState: true,
+    };
+  }
+  return { recipient: null, deviceState: null, usedTransferredState: false };
+}
+
+function persistResolvedCryptoDevice(primaryDevice, resolvedDeviceState) {
+  const normalizedPrimary = normalizeOwnedCryptoDeviceState(primaryDevice);
+  const normalizedResolved = normalizeOwnedCryptoDeviceState(resolvedDeviceState);
+  if (!normalizedPrimary?.deviceId || !normalizedResolved?.deviceId) {
+    return persistCryptoDeviceState(primaryDevice);
+  }
+  if (normalizedPrimary.deviceId === normalizedResolved.deviceId) {
+    return persistCryptoDeviceState({
+      ...primaryDevice,
+      ...normalizedResolved,
+      ownedDeviceStates: normalizeOwnedCryptoDeviceStates(primaryDevice?.ownedDeviceStates),
+    });
+  }
+  return persistCryptoDeviceState({
+    ...primaryDevice,
+    ownedDeviceStates: {
+      ...normalizeOwnedCryptoDeviceStates(primaryDevice?.ownedDeviceStates),
+      [normalizedResolved.deviceId]: {
+        ...normalizedResolved,
+        restoredAt: sanitizeText(normalizedResolved.restoredAt, 80) || nowISO(),
+      },
+    },
+  });
 }
 
 function takeSkippedMessageKey(session, ratchetPublicKey, messageNumber) {
@@ -1321,6 +1480,8 @@ async function ensureCryptoDeviceState() {
       ratchetSessions: stored?.ratchetSessions && typeof stored.ratchetSessions === "object" ? stored.ratchetSessions : {},
       signalRatchetSessions: stored?.signalRatchetSessions && typeof stored.signalRatchetSessions === "object" ? stored.signalRatchetSessions : {},
       legacyRatchetSessions: stored?.legacyRatchetSessions && typeof stored.legacyRatchetSessions === "object" ? stored.legacyRatchetSessions : {},
+      mlsEpochSecrets: normalizeMLSEpochSecrets(stored?.mlsEpochSecrets),
+      ownedDeviceStates: normalizeOwnedCryptoDeviceStates(stored?.ownedDeviceStates),
       trustPins: stored?.trustPins && typeof stored.trustPins === "object" ? stored.trustPins : {},
       oneTimePrekeys: stored?.oneTimePrekeys && typeof stored.oneTimePrekeys === "object" ? stored.oneTimePrekeys : {},
       nextPrekeyId: Number(stored?.nextPrekeyId || 1),
@@ -1354,6 +1515,8 @@ async function ensureCryptoDeviceState() {
     ratchetSessions: {},
     signalRatchetSessions: {},
     legacyRatchetSessions: legacyRaw?.ratchetSessions && typeof legacyRaw.ratchetSessions === "object" ? legacyRaw.ratchetSessions : {},
+    mlsEpochSecrets: normalizeMLSEpochSecrets(legacyRaw?.mlsEpochSecrets),
+    ownedDeviceStates: normalizeOwnedCryptoDeviceStates(legacyRaw?.ownedDeviceStates),
     trustPins: {},
     oneTimePrekeys: {},
     nextPrekeyId: 1,
@@ -1409,6 +1572,7 @@ async function publishCryptoBundle() {
   };
   persistCryptoDeviceState(next);
   state.crypto.published = true;
+  scheduleCryptoBackupSync(250);
   await apiRequest(`/v1/devices/${encodeURIComponent(state.auth.deviceId)}`, {
     method: "PATCH",
     body: JSON.stringify({
@@ -1435,6 +1599,267 @@ async function refetchDeviceBundles(userId) {
   delete state.crypto.bundleCache[cacheKey];
   return fetchDeviceBundles(cacheKey);
 } // removed: boolean cache bypass replaced with named refresh helper
+
+function cryptoBackupWrappedEntries(raw) {
+  return (Array.isArray(raw) ? raw : [])
+    .map((item) => ({
+      device_id: sanitizeText(item?.device_id, 80),
+      wrapped_key: sanitizeText(item?.wrapped_key, 12000),
+      wrap_nonce: sanitizeText(item?.wrap_nonce, 1200),
+    }))
+    .filter((item) => item.device_id && item.wrapped_key && item.wrap_nonce)
+    .sort((a, b) => a.device_id.localeCompare(b.device_id));
+}
+
+function buildCryptoBackupExport(device) {
+  const deviceStates = {};
+  for (const item of allKnownCryptoStates(device)) {
+    if (!item?.deviceId) continue;
+    deviceStates[item.deviceId] = item;
+  }
+  return {
+    format: CRYPTO_BACKUP_FORMAT,
+    exported_at: nowISO(),
+    exported_by_device_id: sanitizeText(device?.deviceId, 80),
+    device_states: deviceStates,
+  };
+}
+
+function cryptoBackupSignaturePayload(sourceDeviceID, blobHash, blobNonce, wrappedEntries) {
+  const wrappers = cryptoBackupWrappedEntries(wrappedEntries)
+    .map((item) => `${item.device_id}:${item.wrap_nonce}:${item.wrapped_key}`)
+    .join("|");
+  return [
+    CRYPTO_BACKUP_FORMAT,
+    sanitizeText(sourceDeviceID, 80),
+    sanitizeText(blobHash, 200),
+    sanitizeText(blobNonce, 1200),
+    wrappers,
+  ].join("|");
+}
+
+async function syncCryptoBackup() {
+  if (!state.auth?.userId || !state.auth?.deviceId) return false;
+  let device = await ensureCryptoDeviceState();
+  if (!device?.agreementPrivateKeyJwk || !device?.signingPrivateKeyJwk) return false;
+  const ownBundles = (await refetchDeviceBundles(state.auth.userId)).filter(signalBundleSupported);
+  if (!ownBundles.some((item) => sanitizeText(item?.device_id, 80) === sanitizeText(device.deviceId, 80))) {
+    return false;
+  }
+  const backupExport = buildCryptoBackupExport(device);
+  const encoded = utf8Bytes(JSON.stringify(backupExport));
+  const stateHash = await sha256Base64(encoded);
+  const deviceListSignature = ownBundles.map((item) => sanitizeText(item?.device_id, 80)).filter(Boolean).sort().join(",");
+  const fingerprint = `${sanitizeText(device.deviceId, 80)}|${deviceListSignature}|${stateHash}`;
+  if (fingerprint === cryptoBackupLastFingerprint && (Date.now() - cryptoBackupLastSyncAt) < CRYPTO_BACKUP_MIN_SYNC_INTERVAL_MS) {
+    return true;
+  }
+
+  const backupKeyBytes = window.crypto.getRandomValues(new Uint8Array(32));
+  const backupNonce = window.crypto.getRandomValues(new Uint8Array(12));
+  const backupKey = await importAESKey(backupKeyBytes, ["encrypt"]);
+  const encryptedBlob = await window.crypto.subtle.encrypt({ name: "AES-GCM", iv: backupNonce }, backupKey, encoded);
+  const encryptedBlobB64 = bytesToBase64(encryptedBlob);
+  const blobHash = await sha256Base64(new Uint8Array(encryptedBlob));
+  const sourcePrivateKey = await signalImportAgreementPrivateKey(device.agreementPrivateKeyJwk);
+  const wrappedEntries = [];
+  for (const bundle of ownBundles.sort((a, b) => sanitizeText(a?.device_id, 80).localeCompare(sanitizeText(b?.device_id, 80)))) {
+    const peerAgreementKey = agreementKeyForBundle(bundle);
+    if (!peerAgreementKey) continue;
+    const peerPublicKey = await signalImportAgreementPublicKey(peerAgreementKey);
+    const wrapKey = await signalDeriveWrapKey(sourcePrivateKey, peerPublicKey);
+    const wrapNonce = window.crypto.getRandomValues(new Uint8Array(12));
+    const wrappedKey = await window.crypto.subtle.encrypt({ name: "AES-GCM", iv: wrapNonce }, wrapKey, backupKeyBytes);
+    wrappedEntries.push({
+      device_id: sanitizeText(bundle?.device_id, 80),
+      wrapped_key: bytesToBase64(wrappedKey),
+      wrap_nonce: bytesToBase64(wrapNonce),
+    });
+  }
+  const signingPrivateKey = await signalImportSigningPrivateKey(device.signingPrivateKeyJwk);
+  const backupNonceB64 = bytesToBase64(backupNonce);
+  const signature = await signalSignDetached(
+    signingPrivateKey,
+    cryptoBackupSignaturePayload(device.deviceId, blobHash, backupNonceB64, wrappedEntries)
+  );
+  await apiRequest(`/v1/device-keys/backups/${encodeURIComponent(CRYPTO_BACKUP_NAME)}`, {
+    method: "PUT",
+    body: JSON.stringify({
+      source_device_id: sanitizeText(device.deviceId, 80),
+      encrypted_blob: encryptedBlobB64,
+      wrapping_alg: "X25519_AES256GCM",
+      backup_hash: fingerprint,
+      recovery_data: {
+        format: CRYPTO_BACKUP_FORMAT,
+        blob_nonce: backupNonceB64,
+        blob_hash: blobHash,
+        signature_alg: "Ed25519",
+        signature,
+        device_wrapped_keys: wrappedEntries,
+      },
+      attestation_type: "OHMF_DEVICE_BUNDLE_WRAP",
+      attestation_payload: {
+        exported_at: backupExport.exported_at,
+        device_count: Object.keys(backupExport.device_states || {}).length,
+      },
+    }),
+  });
+  cryptoBackupLastFingerprint = fingerprint;
+  cryptoBackupLastSyncAt = Date.now();
+  return true;
+}
+
+function clearCryptoBackupRestoreRetry() {
+  if (cryptoBackupRestoreTimer) {
+    window.clearTimeout(cryptoBackupRestoreTimer);
+    cryptoBackupRestoreTimer = 0;
+  }
+  cryptoBackupRestoreRetryCount = 0;
+}
+
+function scheduleCryptoBackupRestoreRetry(delayMs = CRYPTO_BACKUP_RESTORE_RETRY_MS) {
+  if (!state.auth || cryptoBackupRestoreTimer || cryptoBackupRestoreRetryCount >= CRYPTO_BACKUP_RESTORE_MAX_RETRIES) return;
+  cryptoBackupRestoreTimer = window.setTimeout(() => {
+    cryptoBackupRestoreTimer = 0;
+    cryptoBackupRestoreRetryCount += 1;
+    void restoreCryptoHistoryFromBackup({ allowRetry: true }).catch((error) => {
+      console.error(error);
+    });
+  }, delayMs);
+}
+
+function scheduleCryptoBackupSync(delayMs = 1500) {
+  if (!state.auth?.userId || !state.auth?.deviceId) return;
+  cryptoBackupDirty = true;
+  if (cryptoBackupSyncTimer || cryptoBackupSyncInFlight) return;
+  const earliest = Math.max(0, CRYPTO_BACKUP_MIN_SYNC_INTERVAL_MS - (Date.now() - cryptoBackupLastSyncAt));
+  cryptoBackupSyncTimer = window.setTimeout(() => {
+    cryptoBackupSyncTimer = 0;
+    void flushCryptoBackupSync();
+  }, Math.max(delayMs, earliest));
+}
+
+async function flushCryptoBackupSync() {
+  if (!cryptoBackupDirty || cryptoBackupSyncInFlight || !state.auth) return;
+  cryptoBackupDirty = false;
+  cryptoBackupSyncInFlight = true;
+  try {
+    await syncCryptoBackup();
+  } catch (error) {
+    console.error(error);
+  } finally {
+    cryptoBackupSyncInFlight = false;
+    if (cryptoBackupDirty) {
+      scheduleCryptoBackupSync();
+    }
+  }
+}
+
+async function restoreCryptoHistoryFromBackup(options = {}) {
+  if (!state.auth?.userId || !state.auth?.deviceId) return false;
+  if (cryptoBackupRestorePromise) return cryptoBackupRestorePromise;
+  cryptoBackupRestorePromise = (async () => {
+    try {
+      let device = await ensureCryptoDeviceState();
+      if (!device?.agreementPrivateKeyJwk) return false;
+      await publishCryptoBundle().catch((error) => {
+        console.error(error);
+      });
+      device = await ensureCryptoDeviceState();
+      let backup;
+      try {
+        backup = await apiRequest(`/v1/device-keys/backups/${encodeURIComponent(CRYPTO_BACKUP_NAME)}/restore`, {
+          method: "POST",
+          body: JSON.stringify({}),
+        });
+      } catch (error) {
+        if (options.allowRetry) {
+          scheduleCryptoBackupRestoreRetry();
+        }
+        if (Number(error?.status || 0) === 404) return false;
+        throw error;
+      }
+      const recoveryData = backup?.recovery_data && typeof backup.recovery_data === "object" ? backup.recovery_data : {};
+      if (sanitizeText(recoveryData?.format, 80) !== CRYPTO_BACKUP_FORMAT) {
+        return false;
+      }
+      const wrappedEntry = cryptoBackupWrappedEntries(recoveryData?.device_wrapped_keys)
+        .find((item) => item.device_id === sanitizeText(state.auth?.deviceId, 80));
+      if (!wrappedEntry) {
+        if (options.allowRetry) {
+          scheduleCryptoBackupRestoreRetry();
+        }
+        return false;
+      }
+      const sourceDeviceID = sanitizeText(backup?.source_device_id || recoveryData?.source_device_id, 80);
+      const ownBundles = (await refetchDeviceBundles(state.auth.userId)).filter(signalBundleSupported);
+      const sourceBundle = ownBundles.find((item) => sanitizeText(item?.device_id, 80) === sourceDeviceID);
+      if (!sourceBundle) {
+        if (options.allowRetry) {
+          scheduleCryptoBackupRestoreRetry();
+        }
+        return false;
+      }
+      const signature = sanitizeText(recoveryData?.signature, 12000);
+      const signingPublicKeyValue = sanitizeText(sourceBundle?.signing_public_key, 4000);
+      if (signature && signingPublicKeyValue) {
+        const signingPublicKey = await signalImportSigningPublicKey(signingPublicKeyValue);
+        const valid = await signalVerifyDetached(
+          signingPublicKey,
+          cryptoBackupSignaturePayload(sourceDeviceID, recoveryData?.blob_hash, recoveryData?.blob_nonce, recoveryData?.device_wrapped_keys),
+          signature
+        );
+        if (!valid) {
+          throw new Error("Invalid crypto backup signature");
+        }
+      }
+      const agreementPrivateKey = await signalImportAgreementPrivateKey(device.agreementPrivateKeyJwk);
+      const sourceAgreementPublicKey = await signalImportAgreementPublicKey(agreementKeyForBundle(sourceBundle));
+      const wrapKey = await signalDeriveWrapKey(agreementPrivateKey, sourceAgreementPublicKey);
+      const backupKeyBytes = await window.crypto.subtle.decrypt(
+        { name: "AES-GCM", iv: base64ToBytes(wrappedEntry.wrap_nonce) },
+        wrapKey,
+        base64ToBytes(wrappedEntry.wrapped_key)
+      );
+      const backupKey = await importAESKey(new Uint8Array(backupKeyBytes), ["decrypt"]);
+      const decrypted = await window.crypto.subtle.decrypt(
+        { name: "AES-GCM", iv: base64ToBytes(sanitizeText(recoveryData?.blob_nonce, 1200)) },
+        backupKey,
+        base64ToBytes(sanitizeText(backup?.encrypted_blob, 2000000))
+      );
+      const payload = JSON.parse(new TextDecoder().decode(decrypted));
+      const importedStates = payload?.device_states && typeof payload.device_states === "object" ? payload.device_states : {};
+      let nextDevice = {
+        ...device,
+        ownedDeviceStates: normalizeOwnedCryptoDeviceStates(device?.ownedDeviceStates),
+        mlsEpochSecrets: normalizeMLSEpochSecrets(device?.mlsEpochSecrets),
+      };
+      for (const value of Object.values(importedStates)) {
+        const imported = normalizeOwnedCryptoDeviceState(value);
+        if (!imported?.deviceId || imported.deviceId === sanitizeText(nextDevice.deviceId, 80)) continue;
+        nextDevice = mergeImportedOwnedDeviceState(nextDevice, {
+          ...imported,
+          restoredAt: nowISO(),
+          importedFromDeviceId: sourceDeviceID,
+        });
+        nextDevice.mlsEpochSecrets = {
+          ...normalizeMLSEpochSecrets(imported.mlsEpochSecrets),
+          ...normalizeMLSEpochSecrets(nextDevice.mlsEpochSecrets),
+        };
+      }
+      device = persistCryptoDeviceState(nextDevice);
+      clearCryptoBackupRestoreRetry();
+      scheduleCryptoBackupSync(250);
+      if (state.activeThreadId) {
+        renderAll();
+      }
+      return Boolean(Object.keys(device?.ownedDeviceStates || {}).length || Object.keys(device?.mlsEpochSecrets || {}).length);
+    } finally {
+      cryptoBackupRestorePromise = null;
+    }
+  })();
+  return cryptoBackupRestorePromise;
+}
 
 function participantUserIdsForThread(thread) {
   const selfUserId = sanitizeText(state.auth?.userId, 80);
@@ -1935,20 +2360,22 @@ async function decryptConversationContent(message) {
   const recipients = Array.isArray(encryption.recipients) ? encryption.recipients : [];
   const epochSecretBoxes = Array.isArray(encryption.epoch_secret_boxes) ? encryption.epoch_secret_boxes : [];
   const recipientEntries = scheme === MLS_ENCRYPTION_SCHEME ? epochSecretBoxes : recipients;
-  const recipient = recipientEntries.find((item) => sanitizeText(item?.device_id, 80) === sanitizeText(state.auth?.deviceId, 80));
-  if (!recipient && scheme !== MLS_ENCRYPTION_SCHEME) {
-    return {
-      ...message,
-      text: "[Encrypted message for another device]",
-      content: { text: "[Encrypted message for another device]" },
-      isEncrypted: true,
-      decryptStatus: "other_device",
-    };
-  }
 
   return queueCryptoDecrypt(async () => {
     try {
       let device = await ensureCryptoDeviceState();
+      const recipientCandidate = recipientCandidateForCurrentUser(device, recipientEntries);
+      const recipient = recipientCandidate.recipient;
+      let activeDecryptDevice = recipientCandidate.deviceState || normalizeOwnedCryptoDeviceState(device);
+      if (!recipient && scheme !== MLS_ENCRYPTION_SCHEME) {
+        return {
+          ...message,
+          text: "[Encrypted message for another device]",
+          content: { text: "[Encrypted message for another device]" },
+          isEncrypted: true,
+          decryptStatus: "other_device",
+        };
+      }
       if (scheme === MLS_ENCRYPTION_SCHEME) {
         const senderUserId = sanitizeText(encryption.sender_user_id, 80);
         const senderDeviceId = sanitizeText(encryption.sender_device_id, 80);
@@ -1988,8 +2415,10 @@ async function decryptConversationContent(message) {
               decryptStatus: "other_device",
             };
           }
-          const unwrapped = await unwrapSignalWrappedKey(device, recipient, encryption);
-          device = setMLSEpochSecret(unwrapped.device, sanitizeText(message?.conversationId, 80), {
+          const unwrapped = await unwrapSignalWrappedKey(activeDecryptDevice, recipient, encryption);
+          device = persistResolvedCryptoDevice(device, unwrapped.device);
+          activeDecryptDevice = ownedCryptoStateForDevice(device, unwrapped.device?.deviceId) || activeDecryptDevice;
+          device = setMLSEpochSecret(device, sanitizeText(message?.conversationId, 80), {
             epoch: Number(encryption.mls_epoch || encryption.conversation_epoch || 1),
             digest: sanitizeText(encryption.epoch_secret_digest, 200),
             treeHash: sanitizeText(encryption.tree_hash, 512),
@@ -2037,10 +2466,10 @@ async function decryptConversationContent(message) {
         return decrypted;
       }
       if (scheme === LEGACY_ENCRYPTION_SCHEME) {
-        if (!device.legacyAgreementPrivateKeyJwk) throw new Error("Missing legacy key material");
+        if (!activeDecryptDevice?.legacyAgreementPrivateKeyJwk) throw new Error("Missing legacy key material");
         const legacyDevice = {
-          agreementPrivateKeyJwk: device.legacyAgreementPrivateKeyJwk,
-          ratchetSessions: device.legacyRatchetSessions || {},
+          agreementPrivateKeyJwk: activeDecryptDevice.legacyAgreementPrivateKeyJwk,
+          ratchetSessions: activeDecryptDevice.legacyRatchetSessions || {},
         };
         const legacyAgreementPrivateKey = await importECDHPrivateKey(legacyDevice.agreementPrivateKeyJwk);
         let wrapKey;
@@ -2104,14 +2533,15 @@ async function decryptConversationContent(message) {
             session.receiveChainKey = current.nextChainKey;
             session.receiveCount = Number(session.receiveCount || 0) + 1;
           }
-          device = persistCryptoDeviceState({
-            ...device,
+          device = persistResolvedCryptoDevice(device, {
+            ...activeDecryptDevice,
             legacyRatchetSessions: {
-              ...(device.legacyRatchetSessions || {}),
+              ...(activeDecryptDevice?.legacyRatchetSessions || {}),
               ...legacyDevice.ratchetSessions,
               [ratchetSessionId(senderUserId, senderDeviceId)]: session,
             },
           });
+          activeDecryptDevice = ownedCryptoStateForDevice(device, activeDecryptDevice?.deviceId) || activeDecryptDevice;
           wrapKey = await importAESKey(base64ToBytes(messageKey), ["decrypt"]);
         } else {
           const peerPublicKey = await importECDHPublicKey(sanitizeText(encryption.sender_identity_public_key, 4000));
@@ -2143,7 +2573,7 @@ async function decryptConversationContent(message) {
         return decrypted;
       }
 
-      const agreementPrivateKey = await signalImportAgreementPrivateKey(device.agreementPrivateKeyJwk);
+      const agreementPrivateKey = await signalImportAgreementPrivateKey(activeDecryptDevice.agreementPrivateKeyJwk);
       let plaintext;
       const ratchetPublicKey = sanitizeText(recipient.ratchet_public_key, 4000);
       if (ratchetPublicKey && sanitizeText(encryption.sender_signature, 8000)) {
@@ -2168,7 +2598,7 @@ async function decryptConversationContent(message) {
         );
         if (!valid) throw new Error("Invalid sender signature");
         const decryptWithSignalSession = async (useFreshSession = false) => {
-          const workingDevice = cloneJson(device || {});
+          const workingDevice = cloneJson(activeDecryptDevice || device || {});
           let session = useFreshSession
             ? normalizeSignalRatchetSession(null, workingDevice)
             : (getSignalRatchetSession(workingDevice, senderUserId, senderDeviceId) || normalizeSignalRatchetSession(null, workingDevice));
@@ -2255,14 +2685,15 @@ async function decryptConversationContent(message) {
         } catch (error) {
           const canRetryFreshSession = error?.name === "OperationError"
             && Boolean(initialSession?.sender_ephemeral_public_key)
-            && Boolean(getSignalRatchetSession(device, senderUserId, senderDeviceId));
+            && Boolean(getSignalRatchetSession(activeDecryptDevice || device, senderUserId, senderDeviceId));
           if (!canRetryFreshSession) throw error;
           decryptedSignalPayload = await decryptWithSignalSession(true);
         }
         plaintext = decryptedSignalPayload.plaintext;
-        device = persistCryptoDeviceState(decryptedSignalPayload.device);
+        device = persistResolvedCryptoDevice(device, decryptedSignalPayload.device);
+        activeDecryptDevice = ownedCryptoStateForDevice(device, decryptedSignalPayload.device?.deviceId) || activeDecryptDevice;
       } else {
-        const peerPublicKey = await signalImportAgreementPublicKey(device.agreementPublicKey);
+        const peerPublicKey = await signalImportAgreementPublicKey(activeDecryptDevice.agreementPublicKey);
         const wrapKey = await signalDeriveWrapKey(agreementPrivateKey, peerPublicKey);
         const contentKeyRaw = await window.crypto.subtle.decrypt(
           { name: "AES-GCM", iv: base64ToBytes(recipient.wrap_nonce) },
@@ -3159,6 +3590,34 @@ function displayNameForUser(userId) {
   return sanitizeText(profile?.display_name || profile?.primary_phone_e164 || "", 80);
 }
 
+function fallbackUserLabel(userId, fallback = "") {
+  const normalized = sanitizeText(userId, 80);
+  if (!normalized) return sanitizeText(fallback, 80);
+  return `User ${normalized.slice(0, 8)}`;
+}
+
+function labelForUser(userId, options = {}) {
+  const normalized = sanitizeText(userId, 80);
+  const selfUserId = sanitizeText(state.auth?.userId, 80);
+  if (!normalized) return sanitizeText(options.fallback, 80);
+  if (options.preferSelfLabel && normalized === selfUserId) {
+    return sanitizeText(options.selfLabel || "you", 80);
+  }
+  return displayNameForUser(normalized) || fallbackUserLabel(normalized, options.fallback);
+}
+
+function summarizeUserLabels(userIds, options = {}) {
+  const unique = [...new Set((userIds || []).map((userId) => sanitizeText(userId, 80)).filter(Boolean))];
+  if (!unique.length) return sanitizeText(options.fallback, 120);
+  const labels = unique
+    .map((userId) => labelForUser(userId, options))
+    .filter(Boolean);
+  if (!labels.length) return sanitizeText(options.fallback, 120);
+  if (labels.length === 1) return labels[0];
+  if (labels.length === 2) return `${labels[0]} and ${labels[1]}`;
+  return `${labels[0]}, ${labels[1]}, and ${labels.length - 2} others`;
+}
+
 function pickTitle(conversation) {
   if (conversation.nickname) return conversation.nickname;
   if (sanitizeText(conversation.serverTitle, 80)) return sanitizeText(conversation.serverTitle, 80);
@@ -3166,16 +3625,17 @@ function pickTitle(conversation) {
   const others = (conversation.participants || []).filter((id) => id !== state.auth?.userId);
   if (others.length === 0) return `Conversation ${conversation.id.slice(0, 8)}`;
   if (conversation.kind === "group") {
-    const labels = others.map((id) => displayNameForUser(id) || `User ${id.slice(0, 8)}`).slice(0, 3);
+    const labels = others.map((id) => labelForUser(id)).slice(0, 3);
     return labels.join(", ");
   }
-  return displayNameForUser(others[0]) || `User ${others[0].slice(0, 8)}`;
+  return labelForUser(others[0]);
 }
 
 function pickSubtitle(conversation) {
   if (conversation.blockedByViewer) return "Blocked by you";
   if (conversation.blockedByOther) return "Blocked";
   if (conversation.kind === "phone") return "Phone conversation (OTT preferred)";
+  if (conversation.kind === "dm" && !conversation.e2eeReady) return "Secure messaging unavailable";
   if (conversation.kind === "group" && sanitizeText(conversation.encryptionState, 40) === "ENCRYPTED" && !conversation.e2eeReady) {
     const blockedCount = Array.isArray(conversation.e2eeBlockedMemberIds) ? conversation.e2eeBlockedMemberIds.length : 0;
     return blockedCount > 0 ? `Encrypted group waiting on ${blockedCount} member${blockedCount === 1 ? "" : "s"}` : "Encrypted group syncing";
@@ -3375,16 +3835,103 @@ function normalizeDeliveryStatus(transport, status) {
   return Object.values(allowed).includes(normalized) ? normalized : resolvedTransport === TRANSPORT_SMS ? SMS_DELIVERY_STATUSES.SENT : OHMF_DELIVERY_STATUSES.SENT;
 }
 
-function deliveryIndicatorLabel(message) {
+function metadataReadStatusMembersForMessage(message, key) {
+  if (!message || message.direction !== "out") return [];
+  const selfUserId = sanitizeText(state.auth?.userId, 80);
+  const serverOrder = Number(message.serverOrder || 0);
+  if (!serverOrder) return [];
+  const members = Array.isArray(state.messageMetadata.readStatusMembers) ? state.messageMetadata.readStatusMembers : [];
+  const matches = [];
+  for (const item of members) {
+    const userId = sanitizeText(item?.user_id, 80);
+    if (!userId || userId === selfUserId) continue;
+    if (Number(item?.[key] || 0) < serverOrder) continue;
+    matches.push(userId);
+  }
+  return [...new Set(matches)];
+}
+
+function receiptAudienceLabel(thread, message, phase) {
+  if (!thread || !message) return "";
+  if (message.direction !== "out") {
+    if (phase === "sent") {
+      return labelForUser(message.senderUserId, {
+        preferSelfLabel: true,
+        selfLabel: "you",
+        fallback: sanitizeText(thread.title, 80) || "sender",
+      });
+    }
+    return "you";
+  }
+  if (phase === "sent") {
+    return summarizeUserLabels(remoteParticipantUserIdsForThread(thread), {
+      fallback: sanitizeText(thread.title, 80) || "recipient",
+    });
+  }
+  const userIds = metadataReadStatusMembersForMessage(
+    message,
+    phase === "read" ? "last_read_server_order" : "last_delivered_server_order"
+  );
+  if (userIds.length) {
+    return summarizeUserLabels(userIds, {
+      fallback: sanitizeText(thread.title, 80) || "recipient",
+    });
+  }
+  if (thread.kind === "dm" || thread.kind === "phone") {
+    return labelForUser(otherUserIdForThread(thread), {
+      fallback: sanitizeText(thread.title, 80) || "recipient",
+    });
+  }
+  return "";
+}
+
+function sentReceiptLabel(thread, message) {
+  const audience = receiptAudienceLabel(thread, message, "sent");
+  if (!audience) return "Sent";
+  return message?.direction === "out" ? `Sent to ${audience}` : `Sent by ${audience}`;
+}
+
+function deliveredReceiptLabel(thread, message) {
+  const audience = receiptAudienceLabel(thread, message, "delivered");
+  return audience ? `Delivered to ${audience}` : "Delivered";
+}
+
+function readReceiptLabel(thread, message) {
+  const audience = receiptAudienceLabel(thread, message, "read");
+  return audience ? `Read by ${audience}` : "Read";
+}
+
+function receiptMessageForActor(actorUserId, serverOrder = 0) {
+  const normalizedActorUserId = sanitizeText(actorUserId, 80);
+  return {
+    direction: normalizedActorUserId && normalizedActorUserId === sanitizeText(state.auth?.userId, 80) ? "out" : "in",
+    senderUserId: normalizedActorUserId,
+    serverOrder: Number(serverOrder || 0),
+  };
+}
+
+function sentReceiptLabelForActor(thread, actorUserId, serverOrder = 0) {
+  return sentReceiptLabel(thread, receiptMessageForActor(actorUserId, serverOrder));
+}
+
+function deliveredReceiptLabelForActor(thread, actorUserId, serverOrder = 0) {
+  return deliveredReceiptLabel(thread, receiptMessageForActor(actorUserId, serverOrder));
+}
+
+function readReceiptLabelForActor(thread, actorUserId, serverOrder = 0) {
+  return readReceiptLabel(thread, receiptMessageForActor(actorUserId, serverOrder));
+}
+
+function deliveryIndicatorLabel(thread, message) {
   if (normalizeTransport(message.transport) !== TRANSPORT_OHMF || message.direction !== "out") return "";
   const status = normalizeDeliveryStatus(message.transport, message.status);
   switch (status) {
     case OHMF_DELIVERY_STATUSES.SENT:
-      return message.sentAt ? `Sent ${formatShortTime(message.sentAt)}` : "Sent";
+      return `${sentReceiptLabel(thread, message)} ${formatShortTime(message.sentAt)}`.trim();
     case OHMF_DELIVERY_STATUSES.DELIVERED:
-      return message.deliveredAt ? `Delivered ${formatShortTime(message.deliveredAt)}` : "Delivered";
+      return `${deliveredReceiptLabel(thread, message)} ${formatShortTime(message.deliveredAt)}`.trim();
     case OHMF_DELIVERY_STATUSES.READ:
-      return message.readAt ? `Read ${formatShortTime(message.readAt)}` : "Read";
+      return `${readReceiptLabel(thread, message)} ${formatShortTime(message.readAt)}`.trim();
     case OHMF_DELIVERY_STATUSES.FAIL_DELIVERY:
       return "Failed delivery";
     case OHMF_DELIVERY_STATUSES.FAIL_SEND:
@@ -3450,6 +3997,7 @@ function resetMessageMetadataState() {
     error: "",
     edits: [],
     reactions: [],
+    readStatusMembers: [],
     recipientDeliveryAt: "",
     recipientReadAt: "",
     requestToken: 0,
@@ -3560,6 +4108,7 @@ async function openMessageMetadata(threadId, messageId) {
     error: "",
     edits: [],
     reactions: [],
+    readStatusMembers: [],
     recipientDeliveryAt: "",
     recipientReadAt: "",
     requestToken,
@@ -3604,7 +4153,14 @@ async function openMessageMetadata(threadId, messageId) {
       state.messageMetadata.edits = [];
     }
     state.messageMetadata.reactions = Array.isArray(reactionsPayload?.history) ? reactionsPayload.history : [];
-    const selfStatus = (Array.isArray(readStatusPayload?.members) ? readStatusPayload.members : [])
+    state.messageMetadata.readStatusMembers = Array.isArray(readStatusPayload?.members) ? readStatusPayload.members : [];
+    await resolveProfilesForUsers([
+      sanitizeText(message.senderUserId, 80),
+      ...state.messageMetadata.edits.map((item) => sanitizeText(item?.edited_by, 80)),
+      ...state.messageMetadata.reactions.map((item) => sanitizeText(item?.acted_by, 80)),
+      ...state.messageMetadata.readStatusMembers.map((item) => sanitizeText(item?.user_id, 80)),
+    ]);
+    const selfStatus = state.messageMetadata.readStatusMembers
       .find((item) => sanitizeText(item?.user_id, 80) === sanitizeText(state.auth?.userId, 80));
     state.messageMetadata.recipientDeliveryAt = sanitizeText(selfStatus?.delivery_at, 80);
     state.messageMetadata.recipientReadAt = sanitizeText(selfStatus?.read_at, 80);
@@ -3686,9 +4242,9 @@ function renderMessageMetadataWindow() {
   }
 
   const currentSection = buildMessageMetadataSection("Current State");
-  appendMetadataValueRow(currentSection, "Sent", formatDateTime(message.sentAt));
-  appendMetadataValueRow(currentSection, "Delivered", formatDateTime(message.direction === "out" ? message.deliveredAt : recipientDeliveredAt(thread, message)));
-  appendMetadataValueRow(currentSection, "Read", formatDateTime(message.direction === "out" ? message.readAt : recipientReadAt(thread, message)));
+  appendMetadataValueRow(currentSection, sentReceiptLabel(thread, message), formatDateTime(message.sentAt));
+  appendMetadataValueRow(currentSection, deliveredReceiptLabel(thread, message), formatDateTime(message.direction === "out" ? message.deliveredAt : recipientDeliveredAt(thread, message)));
+  appendMetadataValueRow(currentSection, readReceiptLabel(thread, message), formatDateTime(message.direction === "out" ? message.readAt : recipientReadAt(thread, message)));
   appendMetadataValueRow(currentSection, "Edited", formatDateTime(message.editedAt));
   appendMetadataValueRow(currentSection, "Status", sanitizeText(message.status, 40));
   appendMetadataValueRow(currentSection, "Transport", sanitizeText(message.transport, 40));
@@ -3723,10 +4279,10 @@ function renderMessageMetadataWindow() {
       const card = document.createElement("article");
       card.className = "message-metadata-history-card";
       appendMetadataValueRow(card, "Edited", formatDateTime(item?.edited_at));
-      appendMetadataValueRow(card, "By", sanitizeText(item?.edited_by, 80));
-      appendMetadataValueRow(card, "Sent", formatDateTime(item?.sent_at));
-      appendMetadataValueRow(card, "Delivered", formatDateTime(item?.delivered_at));
-      appendMetadataValueRow(card, "Read", formatDateTime(item?.read_at));
+      appendMetadataValueRow(card, "Edited by", labelForUser(item?.edited_by, { preferSelfLabel: true, selfLabel: "you" }));
+      appendMetadataValueRow(card, sentReceiptLabelForActor(thread, item?.edited_by, message.serverOrder), formatDateTime(item?.sent_at));
+      appendMetadataValueRow(card, deliveredReceiptLabelForActor(thread, item?.edited_by, message.serverOrder), formatDateTime(item?.delivered_at));
+      appendMetadataValueRow(card, readReceiptLabelForActor(thread, item?.edited_by, message.serverOrder), formatDateTime(item?.read_at));
       appendMetadataValueRow(card, "Before", sanitizeText(item?.previous_summary, 180) || messageHistoryContentSummary(item?.previous_content), "history");
       appendMetadataValueRow(card, "After", sanitizeText(item?.new_summary, 180) || messageHistoryContentSummary(item?.new_content), "history");
       list.appendChild(card);
@@ -3747,12 +4303,17 @@ function renderMessageMetadataWindow() {
     for (const item of state.messageMetadata.reactions) {
       const card = document.createElement("article");
       card.className = "message-metadata-history-card";
-      appendMetadataValueRow(card, "Action", `${sanitizeText(item?.emoji, 8) || "Reaction"} ${sanitizeText(item?.action, 20)}`);
-      appendMetadataValueRow(card, "By", sanitizeText(item?.acted_by, 80));
+      const reactionAction = sanitizeText(item?.action, 20).toLowerCase();
+      appendMetadataValueRow(card, "Reaction", `${sanitizeText(item?.emoji, 8) || "Reaction"} ${sanitizeText(item?.action, 20)}`);
+      appendMetadataValueRow(
+        card,
+        reactionAction.includes("remove") ? "Removed by" : "Reacted by",
+        labelForUser(item?.acted_by, { preferSelfLabel: true, selfLabel: "you" })
+      );
       appendMetadataValueRow(card, "Changed", formatDateTime(item?.acted_at));
-      appendMetadataValueRow(card, "Sent", formatDateTime(item?.sent_at));
-      appendMetadataValueRow(card, "Delivered", formatDateTime(item?.delivered_at));
-      appendMetadataValueRow(card, "Read", formatDateTime(item?.read_at));
+      appendMetadataValueRow(card, sentReceiptLabelForActor(thread, item?.acted_by, message.serverOrder), formatDateTime(item?.sent_at));
+      appendMetadataValueRow(card, deliveredReceiptLabelForActor(thread, item?.acted_by, message.serverOrder), formatDateTime(item?.delivered_at));
+      appendMetadataValueRow(card, readReceiptLabelForActor(thread, item?.acted_by, message.serverOrder), formatDateTime(item?.read_at));
       list.appendChild(card);
     }
     reactionsSection.appendChild(list);
@@ -3852,11 +4413,14 @@ function typingIndicatorText(threadId) {
   const thread = getThreadById(threadId);
   const users = remoteTypingUsers(threadId);
   if (!thread || users.length === 0) return "";
-  if (users.length === 1) {
-    if (thread.kind === "dm" || thread.kind === "phone") return `${thread.title} is typing...`;
-    return "Someone is typing...";
-  }
-  return `${users.length} people are typing...`;
+  const fallback = sanitizeText(thread.title, 80) || "Someone";
+  const labels = users
+    .map((userId) => labelForUser(userId, { fallback }))
+    .filter(Boolean);
+  if (!labels.length) return "";
+  if (labels.length === 1) return `${labels[0]} is typing...`;
+  if (labels.length === 2) return `${labels[0]} and ${labels[1]} are typing...`;
+  return `${labels[0]}, ${labels[1]}, and ${labels.length - 2} others are typing...`;
 }
 
 function sendTypingEvent(eventName, conversationId) {
@@ -4305,6 +4869,18 @@ async function applyUserEvent(event) {
   }
   if (eventType === "conversation_state_updated") {
     applyConversationStateUpdate(payload);
+    return;
+  }
+  if (eventType === "account_device_linked") {
+    const pairedDeviceID = sanitizeText(payload?.paired_device_id, 80);
+    if (!pairedDeviceID) return;
+    if (pairedDeviceID === sanitizeText(state.auth?.deviceId, 80)) {
+      void restoreCryptoHistoryFromBackup({ allowRetry: true }).catch((error) => {
+        console.error(error);
+      });
+      return;
+    }
+    scheduleCryptoBackupSync(250);
   }
 }
 
@@ -4400,6 +4976,7 @@ function scheduleLiveRefreshLoop(delayMs = LIVE_SYNC_INTERVAL_MS) {
     if (!state.auth) return;
     if (!document.hidden) {
       await refreshLiveState();
+      scheduleCryptoBackupSync();
     }
     if (state.auth && !realtimeSocket) {
       startRealtimeSocket();
@@ -5385,6 +5962,7 @@ function buildTextBubble(thread, message) {
 function renderMessages() {
   const thread = getActiveThread();
   const blocked = Boolean(thread?.blocked);
+  const dmEncryptionPending = dmSecureMessagingUnavailable(thread);
   const encryptedGroupPending = Boolean(
     thread
     && thread.kind === "group"
@@ -5402,7 +5980,7 @@ function renderMessages() {
     : "Lock";
   el.blockBtn.disabled = !thread || !targetUserId;
   el.closeThreadBtn.disabled = !thread || thread?.kind === "draft_phone";
-  el.attachBtn.disabled = !thread || blocked || encryptedGroupPending;
+  el.attachBtn.disabled = !thread || blocked || encryptedGroupPending || dmEncryptionPending;
   el.blockBtn.textContent = thread?.blockedByViewer ? "Unblock" : "Block";
   renderComposerReply(thread);
 
@@ -5421,11 +5999,13 @@ function renderMessages() {
 
   el.title.textContent = thread.title;
   el.subtitle.textContent = thread.subtitle;
-  el.composerInput.disabled = blocked || encryptedGroupPending;
+  el.composerInput.disabled = blocked || encryptedGroupPending || dmEncryptionPending;
   el.composerInput.placeholder = thread.blockedByOther
     ? "Messaging unavailable in this conversation"
     : blocked
     ? "Unblock this user to send messages"
+    : dmEncryptionPending
+    ? "Secure messaging is not available for this user yet"
     : encryptedGroupPending
     ? "Waiting for all members to publish secure messaging keys"
     : "Message";
@@ -5460,7 +6040,7 @@ function renderMessages() {
       if (normalizedStatus) {
         const statusNode = document.createElement("span");
         statusNode.className = `delivery-status status-${normalizedStatus.toLowerCase().replace(/_/g, "-")}`;
-        const ohmfLabel = deliveryIndicatorLabel(message);
+        const ohmfLabel = deliveryIndicatorLabel(thread, message);
         statusNode.textContent = ohmfLabel || normalizedStatus;
         meta.appendChild(statusNode);
       }
@@ -5710,6 +6290,16 @@ function moveDraftToConversation(draftId, conversationId, phone) {
   state.activeThreadId = conversationId;
 }
 
+function dmSecureMessagingUnavailable(thread) {
+  return Boolean(
+    thread
+    && thread.kind === "dm"
+    && !thread.blocked
+    && !thread.closed
+    && !thread.e2eeReady
+  );
+}
+
 async function sendOTT(conversationId, content, contentType = CONTENT_TYPE_TEXT) {
   return apiRequest("/v1/messages", {
     method: "POST",
@@ -5751,6 +6341,9 @@ async function sendEncryptedConversationPayload(thread, plainContent, innerConte
 }
 
 async function sendInConversation(thread, content) {
+  if (dmSecureMessagingUnavailable(thread)) {
+    throw new Error("Secure messaging is not available for this user yet. Start from their phone number to send SMS until they sign in.");
+  }
   const shouldEncrypt = thread.kind === "dm" || (thread.kind === "group" && sanitizeText(thread.encryptionState, 40) === "ENCRYPTED");
   let encryptedEnvelope = null;
   if (shouldEncrypt) {
@@ -5819,6 +6412,9 @@ async function sendInConversation(thread, content) {
 async function sendAttachmentInConversation(thread, attachment) {
   if (!thread || thread.kind === "draft_phone") {
     throw new Error("Attachments require a saved OHMF conversation.");
+  }
+  if (dmSecureMessagingUnavailable(thread)) {
+    throw new Error("Secure messaging is not available for this user yet. Attachments can be sent after they enable secure messaging.");
   }
   const content = {
     attachment_id: attachment.attachment_id,
@@ -6022,7 +6618,17 @@ async function bootAfterAuth() {
   state.selfProfile = null;
   state.miniapp.catalog = [];
   state.miniapp.catalogLoaded = false;
-  state.crypto = { device: null, published: false, bundleCache: {}, decryptedMessageCache: {} };
+  clearCryptoBackupRestoreRetry();
+  if (cryptoBackupSyncTimer) {
+    window.clearTimeout(cryptoBackupSyncTimer);
+    cryptoBackupSyncTimer = 0;
+  }
+  cryptoBackupSyncInFlight = false;
+  cryptoBackupDirty = false;
+  cryptoBackupLastSyncAt = 0;
+  cryptoBackupLastFingerprint = "";
+  cryptoBackupRestorePromise = null;
+  state.crypto = { device: null, published: false, bundleCache: {}, decryptedMessageCache: {}, decryptChain: Promise.resolve() };
   eventStreamDisabled = false;
   ensureSyncDeviceId();
   await hydrateCryptoClientState();
@@ -6036,6 +6642,9 @@ async function bootAfterAuth() {
       console.error(error);
     });
     await publishCryptoBundle().catch((error) => {
+      console.error(error);
+    });
+    await restoreCryptoHistoryFromBackup({ allowRetry: true }).catch((error) => {
       console.error(error);
     });
     await loadConversationsFromApi();
@@ -6054,6 +6663,7 @@ async function bootAfterAuth() {
     stopLiveRefreshLoop();
     startRealtimeSocket();
     scheduleLiveRefreshLoop();
+    scheduleCryptoBackupSync(250);
     renderAll();
   } catch (error) {
     console.error(error);
@@ -6132,6 +6742,16 @@ function logout() {
   stopEventStream();
   stopRealtimeSocket();
   stopLiveRefreshLoop();
+  clearCryptoBackupRestoreRetry();
+  if (cryptoBackupSyncTimer) {
+    window.clearTimeout(cryptoBackupSyncTimer);
+    cryptoBackupSyncTimer = 0;
+  }
+  cryptoBackupSyncInFlight = false;
+  cryptoBackupDirty = false;
+  cryptoBackupLastSyncAt = 0;
+  cryptoBackupLastFingerprint = "";
+  cryptoBackupRestorePromise = null;
   authStoreClear();
   state.threads = [];
   state.activeThreadId = null;
@@ -6156,7 +6776,7 @@ function logout() {
   state.sync.lastUserCursor = 0;
   state.profiles = {};
   state.selfProfile = null;
-  state.crypto = { device: null, published: false, bundleCache: {}, decryptedMessageCache: {} };
+  state.crypto = { device: null, published: false, bundleCache: {}, decryptedMessageCache: {}, decryptChain: Promise.resolve() };
   showAuthShell();
   setAuthMessage("Signed out.");
   renderAll();

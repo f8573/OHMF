@@ -602,6 +602,8 @@ func (h *Handler) userEventTypeName(domainType string) string {
 		return "conversation_state_updated"
 	case replication.UserEventConversationTypingUpdated:
 		return "conversation_typing_updated"
+	case replication.UserEventAccountDeviceLinked:
+		return "account_device_linked"
 	default:
 		observability.RecordWSMessage("unknown_event_type", domainType)
 		return "event"

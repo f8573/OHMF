@@ -7,15 +7,15 @@ import (
 
 // SearchQuery represents a normalized and parsed search query
 type SearchQuery struct {
-	Original         string
-	Normalized       string
-	Tokens           []string
-	HasOperators     bool
-	Operators        map[string]bool
-	PhraseQueries    []string
-	QueryLength      int
-	IsEmpty          bool
-	IsAllStopwords   bool
+	Original       string
+	Normalized     string
+	Tokens         []string
+	HasOperators   bool
+	Operators      map[string]bool
+	PhraseQueries  []string
+	QueryLength    int
+	IsEmpty        bool
+	IsAllStopwords bool
 }
 
 // Common English stop words that often don't provide value in searches
@@ -39,20 +39,20 @@ var stopwords = map[string]bool{
 // BooleanOperators that can be used in queries
 var booleanOperators = map[string]bool{
 	"AND": true,
-	"OR": true,
+	"OR":  true,
 	"NOT": true,
-	"&": true,
-	"|": true,
-	"!": true,
-	"-": true,
+	"&":   true,
+	"|":   true,
+	"!":   true,
+	"-":   true,
 }
 
 // NormalizeQuery preprocesses user input for better matching
 // Returns a SearchQuery struct with normalized and parsed information
 func NormalizeQuery(q string) *SearchQuery {
 	sq := &SearchQuery{
-		Original:     q,
-		Operators:    make(map[string]bool),
+		Original:      q,
+		Operators:     make(map[string]bool),
 		PhraseQueries: make([]string, 0),
 	}
 
@@ -73,34 +73,47 @@ func NormalizeQuery(q string) *SearchQuery {
 	sq.Normalized = normalized
 	sq.QueryLength = len(q)
 
-	// Split into tokens
-	tokens := strings.Fields(normalized)
-	sq.Tokens = make([]string, 0, len(tokens))
+	originalTokens := strings.Fields(strings.TrimSpace(remaining))
+	normalizedTokens := strings.Fields(normalized)
+	sq.Tokens = make([]string, 0, len(normalizedTokens))
+	lexicalTokens := make([]string, 0, len(normalizedTokens))
 
-	// Filter tokens and detect operators
-	for _, token := range tokens {
-		tokenUpper := strings.ToUpper(token)
-		if booleanOperators[tokenUpper] {
+	// Detect explicit operators, then keep only meaningful non-stopword terms.
+	for idx, token := range normalizedTokens {
+		originalToken := token
+		if idx < len(originalTokens) {
+			originalToken = originalTokens[idx]
+		}
+		if isExplicitBooleanOperator(originalToken) {
 			sq.HasOperators = true
-			sq.Operators[tokenUpper] = true
+			sq.Operators[strings.ToUpper(strings.TrimSpace(originalToken))] = true
 		} else if token != "" {
-			sq.Tokens = append(sq.Tokens, token)
+			lexicalTokens = append(lexicalTokens, token)
+			if !stopwords[token] {
+				sq.Tokens = append(sq.Tokens, token)
+			}
 		}
 	}
 
-	// Check if all tokens are stopwords
-	if len(sq.Tokens) > 0 {
-		allStopwords := true
-		for _, token := range sq.Tokens {
-			if !stopwords[strings.ToLower(token)] {
-				allStopwords = false
-				break
-			}
-		}
-		sq.IsAllStopwords = allStopwords
+	// Check if every lexical token was filtered as a stopword.
+	if len(lexicalTokens) > 0 && len(sq.Tokens) == 0 && len(sq.PhraseQueries) == 0 {
+		sq.IsAllStopwords = true
 	}
 
 	return sq
+}
+
+func isExplicitBooleanOperator(token string) bool {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return false
+	}
+	switch token {
+	case "AND", "OR", "NOT", "&", "|", "!", "-":
+		return true
+	default:
+		return false
+	}
 }
 
 // normalizeText performs unicode normalization, accent removal, and case normalization
@@ -271,25 +284,38 @@ func IsLikelyTypo(token string) bool {
 		return false
 	}
 
+	normalized := strings.ToLower(strings.TrimSpace(token))
+	if normalized == "" {
+		return false
+	}
+
 	// Count vowels and consonants
 	vowels := 0
 	consonants := 0
-	for _, r := range strings.ToLower(token) {
-		if isVowel(r) {
+	hasY := false
+	for _, r := range normalized {
+		switch {
+		case isCoreVowel(r):
 			vowels++
-		} else if unicode.IsLetter(r) {
+		case r == 'y':
+			hasY = true
+		case unicode.IsLetter(r):
 			consonants++
 		}
 	}
 
-	// If mostly consonants (ratio > 2:1), likely a typo or special term
-	if consonants > 0 && vowels > 0 && consonants/vowels > 2 {
+	if vowels == 0 {
+		return consonants >= 5 && !hasY
+	}
+
+	// If overwhelmingly consonant-heavy, likely a typo.
+	if consonants >= 5 && consonants > vowels*3 {
 		return true
 	}
 
 	return false
 }
 
-func isVowel(r rune) bool {
-	return strings.ContainsRune("aeiouy", r)
+func isCoreVowel(r rune) bool {
+	return strings.ContainsRune("aeiou", r)
 }

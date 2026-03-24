@@ -95,8 +95,8 @@ func TestReactionHistoryAppendsAddAndRemoveEvents(t *testing.T) {
 		if item.Emoji != emoji {
 			t.Fatalf("expected emoji %q, got %q", emoji, item.Emoji)
 		}
-		if item.SentAt != beforeReaction[0].SentAt || item.DeliveredAt != beforeReaction[0].DeliveredAt || item.ReadAt != beforeReaction[0].ReadAt {
-			t.Fatalf("expected preserved timestamps sent=%q delivered=%q read=%q, got sent=%q delivered=%q read=%q", beforeReaction[0].SentAt, beforeReaction[0].DeliveredAt, beforeReaction[0].ReadAt, item.SentAt, item.DeliveredAt, item.ReadAt)
-		}
+		assertSameInstant(t, "sent_at", beforeReaction[0].SentAt, item.SentAt)
+		assertSameInstant(t, "delivered_at", beforeReaction[0].DeliveredAt, item.DeliveredAt)
+		assertSameInstant(t, "read_at", beforeReaction[0].ReadAt, item.ReadAt)
 	}
 }

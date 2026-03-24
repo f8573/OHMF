@@ -32,6 +32,7 @@ const (
 	UserEventConversationPreviewUpdated          = "conversation_preview_updated"
 	UserEventConversationStateUpdated            = "conversation_state_updated"
 	UserEventConversationTypingUpdated           = "conversation_typing_updated"
+	UserEventAccountDeviceLinked                 = "account_device_linked"
 
 	userEventChannelPrefix = "user-event:user:"
 )

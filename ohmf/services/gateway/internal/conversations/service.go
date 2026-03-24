@@ -175,56 +175,134 @@ func (s *Service) FindOrCreatePhoneDM(ctx context.Context, actor, phoneE164 stri
 	}
 	defer tx.Rollback(ctx)
 
-	var conversationID string
-	err = tx.QueryRow(ctx, `
-		SELECT c.id::text
-		FROM conversations c
-		JOIN conversation_members cm ON cm.conversation_id = c.id
-		JOIN conversation_external_members cem ON cem.conversation_id = c.id
-		JOIN external_contacts ec ON ec.id = cem.external_contact_id
-		WHERE c.type = 'PHONE_DM'
-		  AND cm.user_id = $1::uuid
-		  AND ec.phone_e164 = $2
-		LIMIT 1
-	`, actor, phoneE164).Scan(&conversationID)
-	if err != nil {
-		if !errors.Is(err, pgx.ErrNoRows) {
-			return Conversation{}, err
+	createPhoneDM := func() (Conversation, error) {
+		var conversationID string
+		err = tx.QueryRow(ctx, `
+			SELECT c.id::text
+			FROM conversations c
+			JOIN conversation_members cm ON cm.conversation_id = c.id
+			JOIN conversation_external_members cem ON cem.conversation_id = c.id
+			JOIN external_contacts ec ON ec.id = cem.external_contact_id
+			WHERE c.type = 'PHONE_DM'
+			  AND cm.user_id = $1::uuid
+			  AND ec.phone_e164 = $2
+			LIMIT 1
+		`, actor, phoneE164).Scan(&conversationID)
+		if err != nil {
+			if !errors.Is(err, pgx.ErrNoRows) {
+				return Conversation{}, err
+			}
+
+			var externalID string
+			if err := tx.QueryRow(ctx, `
+				INSERT INTO external_contacts (phone_e164)
+				VALUES ($1)
+				ON CONFLICT (phone_e164) DO UPDATE SET phone_e164 = EXCLUDED.phone_e164
+				RETURNING id::text
+			`, phoneE164).Scan(&externalID); err != nil {
+				return Conversation{}, err
+			}
+
+			if err := tx.QueryRow(ctx, `
+				INSERT INTO conversations (type, transport_policy, encryption_state)
+				VALUES ('PHONE_DM', 'AUTO', 'CARRIER_PLAINTEXT')
+				RETURNING id::text
+			`).Scan(&conversationID); err != nil {
+				return Conversation{}, err
+			}
+
+			if _, err := tx.Exec(ctx, `INSERT INTO conversation_counters (conversation_id, next_server_order) VALUES ($1::uuid, 1)`, conversationID); err != nil {
+				return Conversation{}, err
+			}
+			if _, err := tx.Exec(ctx, `INSERT INTO conversation_members (conversation_id, user_id, role) VALUES ($1::uuid, $2::uuid, 'MEMBER')`, conversationID, actor); err != nil {
+				return Conversation{}, err
+			}
+			if _, err := tx.Exec(ctx, `INSERT INTO conversation_external_members (conversation_id, external_contact_id) VALUES ($1::uuid, $2::uuid)`, conversationID, externalID); err != nil {
+				return Conversation{}, err
+			}
 		}
 
-		var externalID string
-		if err := tx.QueryRow(ctx, `
-			INSERT INTO external_contacts (phone_e164)
-			VALUES ($1)
-			ON CONFLICT (phone_e164) DO UPDATE SET phone_e164 = EXCLUDED.phone_e164
-			RETURNING id::text
-		`, phoneE164).Scan(&externalID); err != nil {
+		if err := tx.Commit(ctx); err != nil {
 			return Conversation{}, err
 		}
-
-		if err := tx.QueryRow(ctx, `
-			INSERT INTO conversations (type, transport_policy, encryption_state)
-			VALUES ('PHONE_DM', 'AUTO', 'CARRIER_PLAINTEXT')
-			RETURNING id::text
-		`).Scan(&conversationID); err != nil {
-			return Conversation{}, err
-		}
-
-		if _, err := tx.Exec(ctx, `INSERT INTO conversation_counters (conversation_id, next_server_order) VALUES ($1::uuid, 1)`, conversationID); err != nil {
-			return Conversation{}, err
-		}
-		if _, err := tx.Exec(ctx, `INSERT INTO conversation_members (conversation_id, user_id, role) VALUES ($1::uuid, $2::uuid, 'MEMBER')`, conversationID, actor); err != nil {
-			return Conversation{}, err
-		}
-		if _, err := tx.Exec(ctx, `INSERT INTO conversation_external_members (conversation_id, external_contact_id) VALUES ($1::uuid, $2::uuid)`, conversationID, externalID); err != nil {
-			return Conversation{}, err
-		}
+		return s.Get(ctx, actor, conversationID)
 	}
 
-	if err := tx.Commit(ctx); err != nil {
+	hasPublishedSignalBundle := func(userID string) (bool, error) {
+		var ready bool
+		if err := tx.QueryRow(ctx, `
+			SELECT EXISTS(
+				SELECT 1
+				FROM device_identity_keys dik
+				JOIN devices d ON d.id = dik.device_id
+				WHERE dik.user_id = $1::uuid
+				  AND dik.bundle_version = $2
+				  AND d.capabilities @> $3::text[]
+			)
+		`, userID, devicekeys.BundleVersionSignalV1, []string{devicekeys.RequiredDeviceCapability}).Scan(&ready); err != nil {
+			return false, err
+		}
+		return ready, nil
+	}
+
+	var targetUserID string
+	err = tx.QueryRow(ctx, `
+		SELECT id::text
+		FROM users
+		WHERE primary_phone_e164 = $1
+		LIMIT 1
+	`, phoneE164).Scan(&targetUserID)
+	if err == nil && targetUserID != "" && targetUserID != actor {
+		ready, err := hasPublishedSignalBundle(targetUserID)
+		if err != nil {
+			return Conversation{}, err
+		}
+		if !ready {
+			return createPhoneDM()
+		}
+
+		var conversationID string
+		err = tx.QueryRow(ctx, `
+			SELECT c.id::text
+			FROM conversations c
+			JOIN conversation_members me ON me.conversation_id = c.id AND me.user_id = $1::uuid
+			JOIN conversation_members them ON them.conversation_id = c.id AND them.user_id = $2::uuid
+			LEFT JOIN conversation_external_members cem ON cem.conversation_id = c.id
+			WHERE cem.conversation_id IS NULL
+			ORDER BY c.updated_at DESC
+			LIMIT 1
+		`, actor, targetUserID).Scan(&conversationID)
+		if err != nil {
+			if !errors.Is(err, pgx.ErrNoRows) {
+				return Conversation{}, err
+			}
+			if err := tx.QueryRow(ctx, `
+				INSERT INTO conversations (type, transport_policy, encryption_state)
+				VALUES ('DM', 'AUTO', 'PLAINTEXT')
+				RETURNING id::text
+			`).Scan(&conversationID); err != nil {
+				return Conversation{}, err
+			}
+			if _, err := tx.Exec(ctx, `INSERT INTO conversation_counters (conversation_id, next_server_order) VALUES ($1::uuid, 1)`, conversationID); err != nil {
+				return Conversation{}, err
+			}
+			if _, err := tx.Exec(ctx, `INSERT INTO conversation_members (conversation_id, user_id, role) VALUES ($1::uuid, $2::uuid, 'MEMBER')`, conversationID, actor); err != nil {
+				return Conversation{}, err
+			}
+			if _, err := tx.Exec(ctx, `INSERT INTO conversation_members (conversation_id, user_id, role) VALUES ($1::uuid, $2::uuid, 'MEMBER')`, conversationID, targetUserID); err != nil {
+				return Conversation{}, err
+			}
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return Conversation{}, err
+		}
+		return s.Get(ctx, actor, conversationID)
+	}
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return Conversation{}, err
 	}
-	return s.Get(ctx, actor, conversationID)
+
+	return createPhoneDM()
 }
 
 // List returns up to `limit` conversations for the actor, ordered by updated_at

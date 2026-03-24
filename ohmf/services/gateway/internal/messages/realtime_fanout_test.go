@@ -68,6 +68,9 @@ func TestSendPublishesRealtimeMessageToRecipients(t *testing.T) {
 	deliveryChannel := deliveryPubsub.Channel()
 
 	svc := NewService(pool, Options{Redis: rdb})
+	if err := rdb.Set(ctx, "presence:user:"+recipientID, "1", time.Minute).Err(); err != nil {
+		t.Fatalf("set recipient presence: %v", err)
+	}
 	result, err := svc.Send(ctx, senderID, "", conversationID, uuid.NewString(), "text", map[string]any{"text": "hello"}, "", "trace-test", "127.0.0.1")
 	if err != nil {
 		t.Fatalf("send message: %v", err)
@@ -121,6 +124,15 @@ func TestSendPublishesRealtimeMessageToRecipients(t *testing.T) {
 func applyAllMigrations(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
 	t.Helper()
 
+	if _, err := pool.Exec(ctx, `
+		CREATE TABLE IF NOT EXISTS test_applied_migrations (
+			name TEXT PRIMARY KEY,
+			applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
+		)
+	`); err != nil {
+		t.Fatalf("ensure test_applied_migrations table: %v", err)
+	}
+
 	patterns := []string{
 		filepath.Join("..", "..", "migrations", "*.up.sql"),
 		filepath.Join("..", "migrations", "*.up.sql"),
@@ -144,12 +156,34 @@ func applyAllMigrations(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
 
 	sort.Strings(paths)
 	for _, path := range paths {
+		name := filepath.Base(path)
+		var alreadyApplied bool
+		if err := pool.QueryRow(ctx, `
+			SELECT EXISTS (
+				SELECT 1
+				FROM test_applied_migrations
+				WHERE name = $1
+			)
+		`, name).Scan(&alreadyApplied); err != nil {
+			t.Fatalf("check applied migration %q: %v", name, err)
+		}
+		if alreadyApplied {
+			continue
+		}
+
 		body, err := os.ReadFile(path)
 		if err != nil {
 			t.Fatalf("read migration %q: %v", path, err)
 		}
 		if _, err := pool.Exec(ctx, string(body)); err != nil {
 			t.Fatalf("apply migration %q: %v", path, err)
+		}
+		if _, err := pool.Exec(ctx, `
+			INSERT INTO test_applied_migrations (name)
+			VALUES ($1)
+			ON CONFLICT (name) DO NOTHING
+		`, name); err != nil {
+			t.Fatalf("record applied migration %q: %v", name, err)
 		}
 	}
 }
