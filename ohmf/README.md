@@ -1,10 +1,12 @@
 # OHMF Milestone 1 Foundation
 
-**Phase 1 Status**: ✅ COMPLETE (28/29 items, 96.6%)
+**Phase 1 Status**: COMPLETE (28/29 items, 96.6%)
 
-## 📚 Documentation
+## Documentation
 
-- **Specification**: [`OHMF_COMPREHENSIVE_SPECIFICATION.md`](./OHMF_COMPREHENSIVE_SPECIFICATION.md) - Full system design, APIs, architecture, security model
+- **Platform spec**: [`OHMF_Complete_Platform_Spec_v1.md`](./OHMF_Complete_Platform_Spec_v1.md) - Single-document OHMF platform inventory with explicit feature statuses
+- **iMessage reference**: [`IMESSAGE_COMPLETE_REFERENCE.md`](./IMESSAGE_COMPLETE_REFERENCE.md) - Current Apple Messages/iMessage capability reference used for parity decisions
+- **Parity plan**: [`OHMF_IMESSAGE_PARITY_PLAN.md`](./OHMF_IMESSAGE_PARITY_PLAN.md) - Justified build/cut/add roadmap for OHMF relative to iMessage
 - **Setup guide**: [`SETUP.md`](./SETUP.md) - Local development setup
 - **Phase 1 Report**: [`FINAL_SESSION_REPORT.md`](./ohmf/FINAL_SESSION_REPORT.md) - Completion metrics and deliverables
 - **Phase 2 Roadmap**: [`PHASE_2_ROADMAP.md`](./PHASE_2_ROADMAP.md) - Future work, blockers, priorities
