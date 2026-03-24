@@ -110,6 +110,14 @@ Windows PowerShell:
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\run-tests.ps1 -Integration
 ```
 
+For gateway-only Go tests, prefer the bundled toolchain:
+
+```powershell
+Push-Location .\ohmf\services\gateway
+& ..\..\.tools\go\bin\go.exe test ./...
+Pop-Location
+```
+
 Linux/macOS:
 
 ```bash
@@ -135,6 +143,12 @@ Restart one service:
 
 ```powershell
 docker compose restart gateway
+```
+
+Refresh the full OHMF API automatically when gateway Go files change:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\ohmf\scripts\watch-api.ps1
 ```
 
 Stop the environment:
@@ -199,6 +213,8 @@ docker compose -f .\ohmf\infra\docker\docker-compose.yml -f .\ohmf\infra\docker\
 - Docker build errors:
   - Ensure Docker Desktop is running
   - Retry with `docker compose build --no-cache`
+- Gateway API not reflecting `.go` edits:
+  - Run `.\ohmf\scripts\watch-api.ps1` so Docker rebuilds and restarts the API service on each change
 - Postgres startup conflicts:
   - Confirm nothing else is using port 5432
   - Run `docker compose down -v` and start again

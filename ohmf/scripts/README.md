@@ -7,15 +7,21 @@ Purpose
 
 Key scripts (examples)
 - `scripts/refresh-db-build.ps1` — rebuild local DB state.
-- `scripts/dev.ps1` — start local dev environment with watchers.
+- `scripts/dev.ps1` — start local dev environment and API helpers.
+- `scripts/watch-api.ps1` — rebuild and restart the Docker API service whenever `services/gateway/**/*.go` changes.
 
 Usage examples (PowerShell)
 ```powershell
 # reset local DB
 .\scripts\refresh-db-build.ps1
 
-# run local gateway in dev mode
-.\scripts\dev.ps1 gateway
+# watch gateway Go files and refresh the API container on changes
+.\scripts\dev.ps1 watch-api
+
+# run gateway tests with the bundled toolchain
+Push-Location .\services\gateway
+& ..\..\.tools\go\bin\go.exe test ./...
+Pop-Location
 ```
 
 Implementation constraints
@@ -26,6 +32,7 @@ Security considerations
 
 Observability and operational notes
 - Provide verbose and non-verbose modes.
+- Keep database-backed development flows in Docker; use scripts/watchers to refresh the API process instead of editing container state by hand.
 
 Testing requirements
 - Smoke tests for scripts in CI.

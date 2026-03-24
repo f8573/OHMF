@@ -7,7 +7,9 @@ param(
 )
 
 # Configuration
-$GATEWAY_DIR = "ohmf\services\gateway"
+$SCRIPT_DIR = Split-Path -Parent $MyInvocation.MyCommand.Path
+$OHMF_ROOT = Split-Path -Parent (Split-Path -Parent $SCRIPT_DIR)
+$GO_CMD = Join-Path $OHMF_ROOT ".tools\go\bin\go.exe"
 $COMPOSE_FILE = "docker-compose.e2ee-test.yml"
 $API_PORT = 8080
 $DB_PORT = 5432
@@ -82,16 +84,19 @@ try {
 
 # Check Go
 try {
-    $GoVersion = (go version | ForEach-Object { $_ -match "\d+\.\d+"; $matches[0] } | Select-Object -First 1)
+    if (-not (Test-Path $GO_CMD)) {
+        throw "bundled Go toolchain not found at $GO_CMD"
+    }
+    $GoVersion = (& $GO_CMD version | ForEach-Object { $_ -match "\d+\.\d+"; $matches[0] } | Select-Object -First 1)
     Write-Success "Go installed (version $GoVersion)"
 } catch {
-    Write-Error-Custom "Go not found. Please install Go 1.19+."
+    Write-Error-Custom "Bundled Go toolchain not found. Expected $GO_CMD"
     exit 1
 }
 
 # Check gateway directory
-if (-not (Test-Path $GATEWAY_DIR)) {
-    Write-Error-Custom "Gateway directory not found: $GATEWAY_DIR"
+if (-not (Test-Path $SCRIPT_DIR)) {
+    Write-Error-Custom "Gateway directory not found: $SCRIPT_DIR"
     exit 1
 }
 Write-Success "Gateway directory found"
@@ -99,7 +104,7 @@ Write-Success "Gateway directory found"
 # Step 1: Stop any existing containers
 Write-Step "Step 1: Cleaning up existing containers..."
 
-Push-Location $GATEWAY_DIR
+Push-Location $SCRIPT_DIR
 
 try {
     $ContainerStatus = docker-compose -f $COMPOSE_FILE ps 2>$null | Select-String "e2ee-test-db"
@@ -174,7 +179,7 @@ try {
             throw "Build timeout"
         }
 
-        go build -v ./cmd/api 2>&1 | Select-Object -Last 5
+        & $GO_CMD build -v ./cmd/api 2>&1 | Select-Object -Last 5
     }
 
     Write-Host ($buildOutput -join "`n")
@@ -192,7 +197,7 @@ $env:TEST_DATABASE_URL = "postgres://e2ee_test:test_password_e2ee@localhost:5432
 Write-Host "  Connection: $env:TEST_DATABASE_URL"
 Write-Host "  Running tests..."
 
-$testOutput = go test -v -tags integration ./internal/e2ee -run E2EE 2>&1
+$testOutput = & $GO_CMD test -v -tags integration ./internal/e2ee -run E2EE 2>&1
 $testExit = $LASTEXITCODE
 
 Write-Host ($testOutput | Select-Object -Last 20 | ForEach-Object { $_ })
@@ -224,22 +229,22 @@ Write-Host "  # Or from Docker:"
 Write-Host "  docker exec -it e2ee-test-db psql -U e2ee_test -d e2ee_test"
 
 Write-ColorOutput "Yellow" "`nAvailable Unit Tests:"
-Write-Host "  cd $GATEWAY_DIR"
-Write-Host "  go test -v ./internal/e2ee"
-Write-Host "  go test -bench=. -benchmem ./internal/e2ee"
+Write-Host "  cd $SCRIPT_DIR"
+Write-Host "  & $GO_CMD test -v ./internal/e2ee"
+Write-Host "  & $GO_CMD test -bench=. -benchmem ./internal/e2ee"
 
 Write-ColorOutput "Yellow" "`nStop Services:"
-Write-Host "  cd $GATEWAY_DIR"
+Write-Host "  cd $SCRIPT_DIR"
 Write-Host "  docker-compose -f $COMPOSE_FILE down"
 
 Write-ColorOutput "Yellow" "`nFull Reset (deletes all data):"
-Write-Host "  cd $GATEWAY_DIR"
+Write-Host "  cd $SCRIPT_DIR"
 Write-Host "  docker-compose -f $COMPOSE_FILE down -v"
 Write-Host "  docker-compose -f $COMPOSE_FILE up -d"
 
 Write-ColorOutput "Cyan" "`nFor more information:"
-Write-Host "  See: $GATEWAY_DIR\E2EE_COMPLETE_DOCUMENTATION.md"
-Write-Host "  See: $GATEWAY_DIR\internal\e2ee\migrations\README.md"
+Write-Host "  See: $SCRIPT_DIR\E2EE_COMPLETE_DOCUMENTATION.md"
+Write-Host "  See: $SCRIPT_DIR\internal\e2ee\migrations\README.md"
 
 Write-ColorOutput "Green" "`nSuccess! Everything is ready for testing.`n"
 
