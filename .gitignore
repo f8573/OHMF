@@ -12,4 +12,6 @@ ohmf/services/delivery-processor/processor
 ohmf/services/sms-processor/*.exe
 ohmf/services/sms-processor/processor
 node_modules/
+ohmf/AGENTS.md
+ohmf/docs/
 # removed: generated binaries and captured outputs do not belong in source control
