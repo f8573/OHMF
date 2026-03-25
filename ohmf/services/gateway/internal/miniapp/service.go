@@ -33,33 +33,33 @@ import (
 )
 
 var (
-	ErrManifestRequired           = errors.New("manifest_required")
-	ErrManifestInvalid            = errors.New("manifest_invalid")
-	ErrManifestSignatureRequired  = errors.New("manifest_signature_required")
-	ErrManifestSignatureInvalid   = errors.New("manifest_signature_invalid")
-	ErrManifestNotFound           = errors.New("manifest_not_found")
-	ErrAppInstallNotFound         = errors.New("miniapp_install_not_found")
-	ErrSessionNotFound            = errors.New("session_not_found")
-	ErrSessionEnded               = errors.New("session_ended")
-	ErrStateVersionConflict       = errors.New("state_version_conflict")
-	ErrBridgeMethodRequired        = errors.New("bridge_method_required")
-	ErrBridgeMethodNotAllowed      = errors.New("bridge_method_not_allowed")
-	ErrBridgeMethodRateLimited     = errors.New("bridge_method_rate_limited")
-	ErrReleaseSuspended           = errors.New("release_suspended")
-	ErrReleaseRevoked             = errors.New("release_revoked")
-	ErrPreviewURLInvalid          = errors.New("preview_url_invalid")
-	ErrIconURLInvalid             = errors.New("icon_url_invalid")
+	ErrManifestRequired          = errors.New("manifest_required")
+	ErrManifestInvalid           = errors.New("manifest_invalid")
+	ErrManifestSignatureRequired = errors.New("manifest_signature_required")
+	ErrManifestSignatureInvalid  = errors.New("manifest_signature_invalid")
+	ErrManifestNotFound          = errors.New("manifest_not_found")
+	ErrAppInstallNotFound        = errors.New("miniapp_install_not_found")
+	ErrSessionNotFound           = errors.New("session_not_found")
+	ErrSessionEnded              = errors.New("session_ended")
+	ErrStateVersionConflict      = errors.New("state_version_conflict")
+	ErrBridgeMethodRequired      = errors.New("bridge_method_required")
+	ErrBridgeMethodNotAllowed    = errors.New("bridge_method_not_allowed")
+	ErrBridgeMethodRateLimited   = errors.New("bridge_method_rate_limited")
+	ErrReleaseSuspended          = errors.New("release_suspended")
+	ErrReleaseRevoked            = errors.New("release_revoked")
+	ErrPreviewURLInvalid         = errors.New("preview_url_invalid")
+	ErrIconURLInvalid            = errors.New("icon_url_invalid")
 )
 
 var semverPattern = regexp.MustCompile(`^\d+\.\d+\.\d+(-[A-Za-z0-9.-]+)?$`)
 
 // P4.1 Event Model: Event type constants (append-only audit trail)
 const (
-	EventTypeSessionCreated    = "session_created"    // Session initialized with participants and permissions
-	EventTypeSessionJoined     = "session_joined"     // New participant joined existing session
-	EventTypeStorageUpdated    = "storage_updated"    // AppendEvent call recorded (bridge method invoked)
-	EventTypeSnapshotWritten   = "snapshot_written"   // State snapshot persisted (SnapshotSession called)
-	EventTypeMessageProjected  = "message_projected"  // Message projected into session (future: used when messages are synchronized)
+	EventTypeSessionCreated   = "session_created"   // Session initialized with participants and permissions
+	EventTypeSessionJoined    = "session_joined"    // New participant joined existing session
+	EventTypeStorageUpdated   = "storage_updated"   // AppendEvent call recorded (bridge method invoked)
+	EventTypeSnapshotWritten  = "snapshot_written"  // State snapshot persisted (SnapshotSession called)
+	EventTypeMessageProjected = "message_projected" // Message projected into session (future: used when messages are synchronized)
 )
 
 // Allowed MIME types for preview and icon assets
@@ -574,7 +574,15 @@ func (s *Service) manifestHashByID(ctx context.Context, manifestID string) (stri
 		}
 		return "", err
 	}
-	return manifestHashHex(manifestB), nil
+	var manifest any
+	if err := json.Unmarshal(manifestB, &manifest); err != nil {
+		return "", err
+	}
+	canonical, err := json.Marshal(manifest)
+	if err != nil {
+		return "", err
+	}
+	return manifestHashHex(canonical), nil
 }
 
 // publishRelease records a mini-app release in the gateway registry.
@@ -755,11 +763,11 @@ func (s *Service) GetSession(ctx context.Context, sessionID string) (map[string]
 
 // P4.1 Event Model: GetSessionEvents retrieves the event log for a session with optional pagination
 type SessionEvent struct {
-	EventSeq  int64                  `json:"event_seq"`
-	EventType string                 `json:"event_type"`
-	ActorID   *string                `json:"actor_id"`
-	Body      map[string]any         `json:"body"`
-	CreatedAt string                 `json:"created_at"` // RFC3339 timestamp
+	EventSeq  int64          `json:"event_seq"`
+	EventType string         `json:"event_type"`
+	ActorID   *string        `json:"actor_id"`
+	Body      map[string]any `json:"body"`
+	CreatedAt string         `json:"created_at"` // RFC3339 timestamp
 }
 
 // GetSessionEvents retrieves events for a session, optionally filtered by type and paginated by event_seq
@@ -956,6 +964,7 @@ func (s *Service) AppendEvent(ctx context.Context, sessionID, actorID, eventType
 	if s.redis != nil {
 		go func() {
 			eventPayload := map[string]any{
+				"session_id": sessionID,
 				"event_seq":  seq,
 				"event_type": eventType,
 				"actor_id":   actorID,
@@ -1404,9 +1413,9 @@ func (s *Service) sessionRecordToMap(record sessionRecord) map[string]any {
 
 	// P3.2 Isolated Runtime Origins: Generate isolated origin for this app runtime
 	originCfg := config.GenerateOriginConfig(config.OriginGenerationParams{
-		AppID:       record.AppID,
-		ReleaseID:   record.AppVersion,
-		BaseDomain:  "miniapp.local",
+		AppID:        record.AppID,
+		ReleaseID:    record.AppVersion,
+		BaseDomain:   "miniapp.local",
 		SubdomainLen: 8,
 	})
 
@@ -1435,9 +1444,9 @@ func buildLaunchContext(record sessionRecord) map[string]any {
 
 	// P3.2 Isolated Runtime Origins: Include origin in launch context for client-side iframe setup
 	originCfg := config.GenerateOriginConfig(config.OriginGenerationParams{
-		AppID:       record.AppID,
-		ReleaseID:   record.AppVersion,
-		BaseDomain:  "miniapp.local",
+		AppID:        record.AppID,
+		ReleaseID:    record.AppVersion,
+		BaseDomain:   "miniapp.local",
 		SubdomainLen: 8,
 	})
 
@@ -1799,4 +1808,3 @@ func (s *Service) PublishReleaseInvalidation(ctx context.Context, appID, version
 
 	return s.redis.Publish(ctx, "miniapp:release:invalidation", string(data)).Err()
 }
-

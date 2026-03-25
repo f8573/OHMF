@@ -253,6 +253,9 @@ func TestUserEventTypeNameIncludesTypingAndEffectEvents(t *testing.T) {
 	if got := handler.userEventTypeName(replication.UserEventConversationMessageEffectTriggered); got != "conversation_message_effect_triggered" {
 		t.Fatalf("unexpected effect mapping: %q", got)
 	}
+	if got := handler.userEventTypeName(replication.UserEventAccountDeviceLinked); got != "account_device_linked" {
+		t.Fatalf("unexpected linked-device mapping: %q", got)
+	}
 	if got := handler.userEventTypeName("unknown"); got != "event" {
 		t.Fatalf("unexpected default mapping: %q", got)
 	}

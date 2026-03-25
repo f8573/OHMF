@@ -4,6 +4,7 @@ const runtimeParams = new URLSearchParams(window.location.search);
 const isPreviewMode = runtimeParams.get("preview") === "1";
 const hasBridgeContext = Boolean(runtimeParams.get("channel") && runtimeParams.get("parent_origin"));
 const bridge = hasBridgeContext ? createMiniAppClientFromLocation() : null;
+const permissionHelpers = window.OHMFEightballPermissions || {};
 
 const ANSWERS = Object.freeze([
   "It is certain.",
@@ -24,6 +25,7 @@ const state = {
   recentMessages: [],
   currentAnswer: "Ask a question",
   answerCount: 0,
+  blockedActions: null,
 };
 
 const el = {
@@ -133,6 +135,48 @@ function renderRecentMessages() {
   }
 }
 
+function blockedActionsForLaunchContext() {
+  const granted = Array.isArray(state.launchContext?.capabilities_granted) ? state.launchContext.capabilities_granted : [];
+  if (typeof permissionHelpers.describeBlockedActions === "function") {
+    return permissionHelpers.describeBlockedActions(granted);
+  }
+  const grantedSet = new Set(granted);
+  const askDisabled = !grantedSet.has("realtime.session");
+  const sendDisabled = !grantedSet.has("conversation.send_message");
+  const draftDisabled = !grantedSet.has("storage.session");
+  const refreshDisabled = !grantedSet.has("conversation.read_context");
+  const missing = [];
+  if (askDisabled) missing.push("realtime.session");
+  if (sendDisabled) missing.push("conversation.send_message");
+  if (draftDisabled) missing.push("storage.session");
+  if (refreshDisabled) missing.push("conversation.read_context");
+  return {
+    askDisabled,
+    sendDisabled,
+    draftDisabled,
+    refreshDisabled,
+    missing,
+    blockedSummary: missing.length ? `Blocked: host denied ${missing.join(", ")}.` : "",
+  };
+}
+
+function permissionDeniedMessage(error) {
+  if (typeof permissionHelpers.permissionErrorMessage === "function") {
+    return permissionHelpers.permissionErrorMessage(error);
+  }
+  return sanitizeText(error?.message, 180) || "Blocked: required permission was denied by the host.";
+}
+
+function syncActionAvailability() {
+  state.blockedActions = blockedActionsForLaunchContext();
+  el.askBtn.disabled = Boolean(state.blockedActions.askDisabled);
+  el.sendBtn.disabled = Boolean(state.blockedActions.sendDisabled);
+  el.loadDraftBtn.disabled = Boolean(state.blockedActions.draftDisabled);
+  el.saveDraftBtn.disabled = Boolean(state.blockedActions.draftDisabled);
+  el.refreshBtn.disabled = Boolean(state.blockedActions.refreshDisabled);
+  el.questionInput.disabled = Boolean(state.blockedActions.askDisabled);
+}
+
 function applyLaunchContext(launchContext) {
   state.launchContext = launchContext || {};
   state.answerCount = Number(state.launchContext?.state_snapshot?.answer_count || 0) || 0;
@@ -140,6 +184,7 @@ function applyLaunchContext(launchContext) {
   renderAnswer();
   renderContext();
   renderHistory();
+  syncActionAvailability();
 }
 
 async function refreshLaunchContext() {
@@ -243,7 +288,11 @@ async function bootstrap() {
     } catch (error) {
       console.error(error);
     }
-    setStatus("Mini-app ready.");
+    if (state.blockedActions?.blockedSummary) {
+      setStatus(state.blockedActions.blockedSummary, true);
+    } else {
+      setStatus("Mini-app ready.");
+    }
   } catch (error) {
     console.error(error);
     setStatus(error.message || "Mini-app failed to boot.", true);
@@ -267,7 +316,7 @@ el.askBtn?.addEventListener("click", async () => {
     await askQuestion();
   } catch (error) {
     console.error(error);
-    setStatus(error.message || "Unable to update shared state.", true);
+    setStatus(error?.code === "permission_denied" ? permissionDeniedMessage(error) : (error.message || "Unable to update shared state."), true);
   }
 });
 
@@ -276,7 +325,7 @@ el.sendBtn?.addEventListener("click", async () => {
     await sendSummary();
   } catch (error) {
     console.error(error);
-    setStatus(error.message || "Unable to send to thread.", true);
+    setStatus(error?.code === "permission_denied" ? permissionDeniedMessage(error) : (error.message || "Unable to send to thread."), true);
   }
 });
 
@@ -286,7 +335,7 @@ el.refreshBtn?.addEventListener("click", async () => {
     await refreshConversationContext();
   } catch (error) {
     console.error(error);
-    setStatus(error.message || "Unable to refresh context.", true);
+    setStatus(error?.code === "permission_denied" ? permissionDeniedMessage(error) : (error.message || "Unable to refresh context."), true);
   }
 });
 
@@ -295,7 +344,7 @@ el.loadDraftBtn?.addEventListener("click", async () => {
     await loadDraft();
   } catch (error) {
     console.error(error);
-    setStatus(error.message || "Unable to load draft.", true);
+    setStatus(error?.code === "permission_denied" ? permissionDeniedMessage(error) : (error.message || "Unable to load draft."), true);
   }
 });
 
@@ -304,7 +353,7 @@ el.saveDraftBtn?.addEventListener("click", async () => {
     await saveDraft();
   } catch (error) {
     console.error(error);
-    setStatus(error.message || "Unable to save draft.", true);
+    setStatus(error?.code === "permission_denied" ? permissionDeniedMessage(error) : (error.message || "Unable to save draft."), true);
   }
 });
 

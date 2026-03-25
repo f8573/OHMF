@@ -385,6 +385,7 @@ func main() {
 			protected.Get("/device-keys/{userID}/{deviceID}/bundle", e2eeHandler.GetDeviceKeyBundle)
 			protected.Post("/device-keys/{deviceID}/claim-otp", e2eeHandler.ClaimOneTimePrekey)
 			protected.Post("/e2ee/session/verify", e2eeHandler.VerifyDeviceFingerprint)
+			protected.Post("/e2ee/session/revoke", e2eeHandler.RevokeDeviceFingerprint)
 			protected.Get("/e2ee/session/trust-state", e2eeHandler.GetTrustState)
 			protected.Post("/media/attachments", mediaHandler.Register)
 			protected.Get("/media/attachments/{id}/download", mediaHandler.CreateDownload)

@@ -2,6 +2,7 @@ package e2ee
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"time"
 
@@ -28,37 +29,37 @@ func NewHandler(pool *pgxpool.Pool) *Handler {
 
 // DeviceKeyResponse represents a device key in API response
 type DeviceKeyResponse struct {
-	DeviceID            string `json:"device_id"`
-	UserID              string `json:"user_id"`
-	BundleVersion       string `json:"bundle_version"`
-	IdentityKeyAlg      string `json:"identity_key_alg"`
-	IdentityPublicKey   string `json:"identity_public_key"`
-	SigningKeyAlg       string `json:"signing_key_alg"`
-	SigningPublicKey    string `json:"signing_public_key"`
-	Fingerprint         string `json:"fingerprint"`
-	PublishedAt         *string `json:"published_at,omitempty"`
+	DeviceID          string  `json:"device_id"`
+	UserID            string  `json:"user_id"`
+	BundleVersion     string  `json:"bundle_version"`
+	IdentityKeyAlg    string  `json:"identity_key_alg"`
+	IdentityPublicKey string  `json:"identity_public_key"`
+	SigningKeyAlg     string  `json:"signing_key_alg"`
+	SigningPublicKey  string  `json:"signing_public_key"`
+	Fingerprint       string  `json:"fingerprint"`
+	PublishedAt       *string `json:"published_at,omitempty"`
 }
 
 // BundleResponse represents a full Signal protocol key bundle
 type BundleResponse struct {
-	DeviceID                   string             `json:"device_id"`
-	UserID                     string             `json:"user_id"`
-	BundleVersion              string             `json:"bundle_version"`
-	IdentityKeyAlg             string             `json:"identity_key_alg"`
-	IdentityPublicKey          string             `json:"identity_public_key"`
-	AgreementIdentityPublicKey string             `json:"agreement_identity_public_key"`
-	SigningKeyAlg              string             `json:"signing_key_alg"`
-	SigningPublicKey           string             `json:"signing_public_key"`
-	SignedPrekeyID             int64              `json:"signed_prekey_id"`
-	SignedPrekeyPublicKey      string             `json:"signed_prekey_public_key"`
-	SignedPrekeySignature      string             `json:"signed_prekey_signature"`
-	Fingerprint                string             `json:"fingerprint"`
-	ClaimedOneTimePrekey       *ClaimOTPResponse  `json:"claimed_one_time_prekey,omitempty"`
+	DeviceID                   string            `json:"device_id"`
+	UserID                     string            `json:"user_id"`
+	BundleVersion              string            `json:"bundle_version"`
+	IdentityKeyAlg             string            `json:"identity_key_alg"`
+	IdentityPublicKey          string            `json:"identity_public_key"`
+	AgreementIdentityPublicKey string            `json:"agreement_identity_public_key"`
+	SigningKeyAlg              string            `json:"signing_key_alg"`
+	SigningPublicKey           string            `json:"signing_public_key"`
+	SignedPrekeyID             int64             `json:"signed_prekey_id"`
+	SignedPrekeyPublicKey      string            `json:"signed_prekey_public_key"`
+	SignedPrekeySignature      string            `json:"signed_prekey_signature"`
+	Fingerprint                string            `json:"fingerprint"`
+	ClaimedOneTimePrekey       *ClaimOTPResponse `json:"claimed_one_time_prekey,omitempty"`
 }
 
 // ClaimOTPResponse represents the response when claiming an OTP
 type ClaimOTPResponse struct {
-	PrekeyID  int64 `json:"prekey_id"`
+	PrekeyID  int64  `json:"prekey_id"`
 	PublicKey string `json:"public_key"`
 }
 
@@ -66,9 +67,14 @@ type ClaimOTPResponse struct {
 
 // VerifyFingerprintRequest represents the request to verify a device fingerprint
 type VerifyFingerprintRequest struct {
-	ContactUserID    string `json:"contact_user_id"`
-	ContactDeviceID  string `json:"contact_device_id"`
-	Fingerprint      string `json:"fingerprint"`
+	ContactUserID   string `json:"contact_user_id"`
+	ContactDeviceID string `json:"contact_device_id"`
+	Fingerprint     string `json:"fingerprint"`
+}
+
+type RevokeFingerprintRequest struct {
+	ContactUserID   string `json:"contact_user_id"`
+	ContactDeviceID string `json:"contact_device_id"`
 }
 
 // VerifyFingerprintResponse represents the response from fingerprint verification
@@ -333,83 +339,20 @@ func (h *Handler) VerifyDeviceFingerprint(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Get stored fingerprint for this device if it exists
-	queryExisting := `
-		SELECT trust_state, fingerprint FROM device_key_trust
-		WHERE user_id = $1::uuid AND contact_user_id = $2::uuid AND contact_device_id = $3::uuid
-	`
-
-	var existingTrustState, storedFingerprint string
-	err := h.pool.QueryRow(r.Context(), queryExisting, userID, req.ContactUserID, req.ContactDeviceID).Scan(&existingTrustState, &storedFingerprint)
-
-	response := VerifyFingerprintResponse{
-		Verified:   false,
-		TrustState: "UNKNOWN",
-	}
-
-	if err == nil {
-		// Trust record exists
-		response.TrustState = existingTrustState
-
-		if storedFingerprint == req.Fingerprint {
-			response.Verified = true
-
-			// If TOFU, upgrade to VERIFIED
-			if existingTrustState == "TOFU" {
-				updateQuery := `
-					UPDATE device_key_trust
-					SET trust_state = 'VERIFIED', verified_at = NOW()
-					WHERE user_id = $1::uuid AND contact_user_id = $2::uuid AND contact_device_id = $3::uuid
-				`
-				if _, err := h.pool.Exec(r.Context(), updateQuery, userID, req.ContactUserID, req.ContactDeviceID); err != nil {
-					httpx.WriteError(w, r, http.StatusInternalServerError, "database_error", "failed to update trust state", nil)
-					return
-				}
-				response.TrustState = "VERIFIED"
-			}
-
-			response.Message = "fingerprint verified and matches stored value"
-		} else {
-			response.Message = "fingerprint does not match stored value - possible MITM!"
+	view, err := trustStateVerifier(r.Context(), h.sm, userID, req.ContactUserID, req.ContactDeviceID, req.Fingerprint)
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrTrustDeviceNotFound):
+			httpx.WriteError(w, r, http.StatusNotFound, "not_found", "contact device not found", nil)
+		case errors.Is(err, ErrTrustFingerprintMismatch):
+			httpx.WriteError(w, r, http.StatusConflict, "fingerprint_mismatch", "fingerprint does not match the current published device fingerprint", nil)
+		default:
+			httpx.WriteError(w, r, http.StatusInternalServerError, "database_error", "failed to update trust state", nil)
 		}
-	} else if err == pgx.ErrNoRows {
-		// First contact - establish TOFU trust
-		response.Verified = true
-		response.TrustState = "TOFU"
-		response.Message = "first contact - TOFU trust established"
-
-		// Get device bundle to get the actual signing public key
-		bundleQuery := `
-			SELECT signing_public_key FROM device_identity_keys
-			WHERE user_id = $1::uuid AND device_id = $2::uuid
-		`
-		var signingPublicKey string
-		err := h.pool.QueryRow(r.Context(), bundleQuery, req.ContactUserID, req.ContactDeviceID).Scan(&signingPublicKey)
-		if err != nil {
-			if err == pgx.ErrNoRows {
-				httpx.WriteError(w, r, http.StatusNotFound, "not_found", "contact device not found", nil)
-				return
-			}
-			httpx.WriteError(w, r, http.StatusInternalServerError, "database_error", "failed to query device bundle", nil)
-			return
-		}
-
-		// Insert trust record
-		insertQuery := `
-			INSERT INTO device_key_trust (user_id, contact_user_id, contact_device_id, trust_state, fingerprint, trusted_device_public_key, trust_established_at)
-			VALUES ($1::uuid, $2::uuid, $3::uuid, 'TOFU', $4, $5, NOW())
-			ON CONFLICT DO NOTHING
-		`
-		if _, err := h.pool.Exec(r.Context(), insertQuery, userID, req.ContactUserID, req.ContactDeviceID, req.Fingerprint, signingPublicKey); err != nil {
-			httpx.WriteError(w, r, http.StatusInternalServerError, "database_error", "failed to store trust state", nil)
-			return
-		}
-	} else {
-		httpx.WriteError(w, r, http.StatusInternalServerError, "database_error", "failed to query trust state", nil)
 		return
 	}
 
-	httpx.WriteJSON(w, http.StatusOK, response)
+	httpx.WriteJSON(w, http.StatusOK, view)
 }
 
 // GetTrustState handles GET /v1/e2ee/trust/{contact_user_id}/{device_id}
@@ -423,42 +366,57 @@ func (h *Handler) GetTrustState(w http.ResponseWriter, r *http.Request) {
 
 	contactUserID := chi.URLParam(r, "contact_user_id")
 	contactDeviceID := chi.URLParam(r, "device_id")
+	if contactUserID == "" {
+		contactUserID = r.URL.Query().Get("contact_user_id")
+	}
+	if contactDeviceID == "" {
+		contactDeviceID = r.URL.Query().Get("contact_device_id")
+	}
 
 	if contactUserID == "" || contactDeviceID == "" {
-		httpx.WriteError(w, r, http.StatusBadRequest, "missing_param", "contact_user_id and device_id path parameters required", nil)
+		httpx.WriteError(w, r, http.StatusBadRequest, "missing_param", "contact_user_id and contact_device_id are required", nil)
 		return
 	}
 
-	query := `
-		SELECT trust_state, fingerprint, trust_established_at, verified_at
-		FROM device_key_trust
-		WHERE user_id = $1::uuid AND contact_user_id = $2::uuid AND contact_device_id = $3::uuid
-	`
-
-	var trustState, fingerprint string
-	var trustEstablishedAt time.Time
-	var verifiedAt *time.Time
-
-	err := h.pool.QueryRow(r.Context(), query, userID, contactUserID, contactDeviceID).Scan(
-		&trustState, &fingerprint, &trustEstablishedAt, &verifiedAt,
-	)
-
+	view, err := trustStateFetcher(r.Context(), h.sm, userID, contactUserID, contactDeviceID)
 	if err != nil {
-		if err == pgx.ErrNoRows {
-			// No trust record - first encounter would establish TOFU
-			httpx.WriteError(w, r, http.StatusNotFound, "not_found", "no trust state recorded for this device", nil)
+		if errors.Is(err, ErrTrustDeviceNotFound) {
+			httpx.WriteError(w, r, http.StatusNotFound, "not_found", "contact device not found", nil)
 			return
 		}
 		httpx.WriteError(w, r, http.StatusInternalServerError, "database_error", "failed to query trust state", nil)
 		return
 	}
+	httpx.WriteJSON(w, http.StatusOK, view)
+}
 
-	response := map[string]interface{}{
-		"trust_state":           trustState,
-		"fingerprint":           fingerprint,
-		"trust_established_at": trustEstablishedAt,
-		"verified_at":          verifiedAt,
+func (h *Handler) RevokeDeviceFingerprint(w http.ResponseWriter, r *http.Request) {
+	userID, ok := middleware.UserIDFromContext(r.Context())
+	if !ok {
+		httpx.WriteError(w, r, http.StatusUnauthorized, "unauthorized", "user context required", nil)
+		return
 	}
 
-	httpx.WriteJSON(w, http.StatusOK, response)
+	var req RevokeFingerprintRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		httpx.WriteError(w, r, http.StatusBadRequest, "invalid_json", "failed to parse request body", nil)
+		return
+	}
+
+	if req.ContactUserID == "" || req.ContactDeviceID == "" {
+		httpx.WriteError(w, r, http.StatusBadRequest, "missing_field", "contact_user_id and contact_device_id required", nil)
+		return
+	}
+
+	view, err := trustStateRevoker(r.Context(), h.sm, userID, req.ContactUserID, req.ContactDeviceID)
+	if err != nil {
+		if errors.Is(err, ErrTrustDeviceNotFound) {
+			httpx.WriteError(w, r, http.StatusNotFound, "not_found", "contact device not found", nil)
+			return
+		}
+		httpx.WriteError(w, r, http.StatusInternalServerError, "database_error", "failed to revoke trust state", nil)
+		return
+	}
+
+	httpx.WriteJSON(w, http.StatusOK, view)
 }

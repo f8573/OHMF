@@ -109,11 +109,12 @@ func TestHandlerMethodsSignatures(t *testing.T) {
 
 	// Verify all methods exist and are callable
 	methods := map[string]func(http.ResponseWriter, *http.Request){
-		"ListDeviceKeys":        handler.ListDeviceKeys,
-		"GetDeviceKeyBundle":    handler.GetDeviceKeyBundle,
-		"ClaimOneTimePrekey":    handler.ClaimOneTimePrekey,
+		"ListDeviceKeys":          handler.ListDeviceKeys,
+		"GetDeviceKeyBundle":      handler.GetDeviceKeyBundle,
+		"ClaimOneTimePrekey":      handler.ClaimOneTimePrekey,
 		"VerifyDeviceFingerprint": handler.VerifyDeviceFingerprint,
-		"GetTrustState":         handler.GetTrustState,
+		"GetTrustState":           handler.GetTrustState,
+		"RevokeDeviceFingerprint": handler.RevokeDeviceFingerprint,
 	}
 
 	for name, method := range methods {
@@ -170,9 +171,9 @@ func TestResponseTypes(t *testing.T) {
 
 	// Verify BundleResponse can be created
 	bundle := BundleResponse{
-		DeviceID:     "device-1",
-		UserID:       "user-1",
-		Fingerprint:  "abc123",
+		DeviceID:    "device-1",
+		UserID:      "user-1",
+		Fingerprint: "abc123",
 	}
 	if bundle.DeviceID != "device-1" {
 		t.Fatal("BundleResponse field assignment failed")

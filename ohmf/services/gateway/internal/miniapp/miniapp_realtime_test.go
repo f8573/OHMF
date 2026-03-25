@@ -11,14 +11,15 @@ import (
 	"time"
 
 	miniredis "github.com/alicebob/miniredis/v2"
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"ohmf/services/gateway/internal/config"
-	"ohmf/services/gateway/internal/replication"
 	"ohmf/services/gateway/internal/realtime"
+	"ohmf/services/gateway/internal/replication"
 	"ohmf/services/gateway/internal/token"
 )
 
@@ -54,18 +55,19 @@ func TestSingleClientRealtimeEventDelivery(t *testing.T) {
 
 	// Create test users and sessions
 	userID := insertTestUser(t, ctx, pool)
-	appID := "com.example.test"
+	appID := "com.example.realtime." + uuid.NewString()
 	insertMiniappCapableDevice(t, ctx, pool, userID)
+	conversationID := createTestConversation(t, ctx, pool, userID)
 
 	// Register manifest
-	manifestID, err := miniappSvc.RegisterManifest(ctx, userID, validManifest())
+	manifestID, err := miniappSvc.RegisterManifest(ctx, userID, testManifest(appID))
 	require.NoError(t, err)
 
 	// Create session
-	sessionID, err := miniappSvc.CreateSession(ctx, CreateSessionInput{
+	session, _, err := miniappSvc.CreateSession(ctx, CreateSessionInput{
 		ManifestID:     manifestID,
 		AppID:          appID,
-		ConversationID: "",
+		ConversationID: conversationID,
 		Viewer: SessionParticipant{
 			UserID: userID,
 			Role:   "owner",
@@ -78,6 +80,8 @@ func TestSingleClientRealtimeEventDelivery(t *testing.T) {
 		TTL:                time.Hour,
 	})
 	require.NoError(t, err)
+	sessionID, _ := session["app_session_id"].(string)
+	require.NotEmpty(t, sessionID)
 
 	// Setup gateway handler
 	gh, wsURL := setupTestGateway(t, miniappSvc, rdb, pool)
@@ -148,19 +152,20 @@ func TestMultipleClientsReceiveEvent(t *testing.T) {
 	// Create test users and sessions
 	user1ID := insertTestUser(t, ctx, pool)
 	user2ID := insertTestUser(t, ctx, pool)
-	appID := "com.example.test"
+	appID := "com.example.realtime." + uuid.NewString()
 	insertMiniappCapableDevice(t, ctx, pool, user1ID)
 	insertMiniappCapableDevice(t, ctx, pool, user2ID)
+	conversationID := createTestConversation(t, ctx, pool, user1ID, user2ID)
 
 	// Register manifest
-	manifestID, err := miniappSvc.RegisterManifest(ctx, user1ID, validManifest())
+	manifestID, err := miniappSvc.RegisterManifest(ctx, user1ID, testManifest(appID))
 	require.NoError(t, err)
 
 	// Create session shared between users
-	sessionID, err := miniappSvc.CreateSession(ctx, CreateSessionInput{
+	session, _, err := miniappSvc.CreateSession(ctx, CreateSessionInput{
 		ManifestID:     manifestID,
 		AppID:          appID,
-		ConversationID: "",
+		ConversationID: conversationID,
 		Viewer: SessionParticipant{
 			UserID: user1ID,
 			Role:   "owner",
@@ -174,6 +179,8 @@ func TestMultipleClientsReceiveEvent(t *testing.T) {
 		TTL:                time.Hour,
 	})
 	require.NoError(t, err)
+	sessionID, _ := session["app_session_id"].(string)
+	require.NotEmpty(t, sessionID)
 
 	// Setup gateway handler
 	gh, wsURL := setupTestGateway(t, miniappSvc, rdb, pool)
@@ -251,18 +258,19 @@ func TestReconnectWithCursorResume(t *testing.T) {
 
 	// Create test user and session
 	userID := insertTestUser(t, ctx, pool)
-	appID := "com.example.test"
+	appID := "com.example.realtime." + uuid.NewString()
 	insertMiniappCapableDevice(t, ctx, pool, userID)
+	conversationID := createTestConversation(t, ctx, pool, userID)
 
 	// Register manifest
-	manifestID, err := miniappSvc.RegisterManifest(ctx, userID, validManifest())
+	manifestID, err := miniappSvc.RegisterManifest(ctx, userID, testManifest(appID))
 	require.NoError(t, err)
 
 	// Create session
-	sessionID, err := miniappSvc.CreateSession(ctx, CreateSessionInput{
+	session, _, err := miniappSvc.CreateSession(ctx, CreateSessionInput{
 		ManifestID:     manifestID,
 		AppID:          appID,
-		ConversationID: "",
+		ConversationID: conversationID,
 		Viewer: SessionParticipant{
 			UserID: userID,
 			Role:   "owner",
@@ -275,6 +283,8 @@ func TestReconnectWithCursorResume(t *testing.T) {
 		TTL:                time.Hour,
 	})
 	require.NoError(t, err)
+	sessionID, _ := session["app_session_id"].(string)
+	require.NotEmpty(t, sessionID)
 
 	// Append events while disconnected
 	seqEvents := make([]int64, 3)
@@ -285,7 +295,8 @@ func TestReconnectWithCursorResume(t *testing.T) {
 	}
 
 	// Query events using polling API
-	events, err := miniappSvc.GetSessionEvents(ctx, sessionID, nil, 100, 0, nil)
+	eventType := EventTypeStorageUpdated
+	events, err := miniappSvc.GetSessionEvents(ctx, sessionID, &eventType, 100, 0, nil)
 	require.NoError(t, err)
 	require.Len(t, events, 3)
 
@@ -333,18 +344,19 @@ func TestUnsubscribeStopsEventDelivery(t *testing.T) {
 	miniappSvc := NewService(pool, config.Config{}, rdb, store)
 
 	userID := insertTestUser(t, ctx, pool)
-	appID := "com.example.test"
+	appID := "com.example.realtime." + uuid.NewString()
 	insertMiniappCapableDevice(t, ctx, pool, userID)
+	conversationID := createTestConversation(t, ctx, pool, userID)
 
 	// Register manifest
-	manifestID, err := miniappSvc.RegisterManifest(ctx, userID, validManifest())
+	manifestID, err := miniappSvc.RegisterManifest(ctx, userID, testManifest(appID))
 	require.NoError(t, err)
 
 	// Create session
-	sessionID, err := miniappSvc.CreateSession(ctx, CreateSessionInput{
+	session, _, err := miniappSvc.CreateSession(ctx, CreateSessionInput{
 		ManifestID:     manifestID,
 		AppID:          appID,
-		ConversationID: "",
+		ConversationID: conversationID,
 		Viewer: SessionParticipant{
 			UserID: userID,
 			Role:   "owner",
@@ -357,6 +369,8 @@ func TestUnsubscribeStopsEventDelivery(t *testing.T) {
 		TTL:                time.Hour,
 	})
 	require.NoError(t, err)
+	sessionID, _ := session["app_session_id"].(string)
+	require.NotEmpty(t, sessionID)
 
 	// Setup gateway handler
 	gh, wsURL := setupTestGateway(t, miniappSvc, rdb, pool)
@@ -428,18 +442,19 @@ func TestSubscriptionPersistencyAcrossStateUpdates(t *testing.T) {
 	miniappSvc := NewService(pool, config.Config{}, rdb, store)
 
 	userID := insertTestUser(t, ctx, pool)
-	appID := "com.example.test"
+	appID := "com.example.realtime." + uuid.NewString()
 	insertMiniappCapableDevice(t, ctx, pool, userID)
+	conversationID := createTestConversation(t, ctx, pool, userID)
 
 	// Register manifest
-	manifestID, err := miniappSvc.RegisterManifest(ctx, userID, validManifest())
+	manifestID, err := miniappSvc.RegisterManifest(ctx, userID, testManifest(appID))
 	require.NoError(t, err)
 
 	// Create session
-	sessionID, err := miniappSvc.CreateSession(ctx, CreateSessionInput{
+	session, _, err := miniappSvc.CreateSession(ctx, CreateSessionInput{
 		ManifestID:     manifestID,
 		AppID:          appID,
-		ConversationID: "",
+		ConversationID: conversationID,
 		Viewer: SessionParticipant{
 			UserID: userID,
 			Role:   "owner",
@@ -452,6 +467,8 @@ func TestSubscriptionPersistencyAcrossStateUpdates(t *testing.T) {
 		TTL:                time.Hour,
 	})
 	require.NoError(t, err)
+	sessionID, _ := session["app_session_id"].(string)
+	require.NotEmpty(t, sessionID)
 
 	// Setup gateway handler
 	gh, wsURL := setupTestGateway(t, miniappSvc, rdb, pool)
@@ -471,7 +488,7 @@ func TestSubscriptionPersistencyAcrossStateUpdates(t *testing.T) {
 	require.NoError(t, err)
 
 	// Snapshot session (state update)
-	newVersion, err := miniappSvc.SnapshotSession(ctx, sessionID, map[string]any{"v": 1}, 0, userID)
+	_, err = miniappSvc.SnapshotSession(ctx, sessionID, map[string]any{"v": 1}, 0, userID)
 	require.NoError(t, err)
 
 	// Append event 2
@@ -483,33 +500,23 @@ func TestSubscriptionPersistencyAcrossStateUpdates(t *testing.T) {
 	require.NoError(t, err)
 
 	// Collect all events from WebSocket
-	receivedEvents := []map[string]any{}
-	timeout := time.After(500 * time.Millisecond)
-	for {
-		select {
-		case <-timeout:
-			goto checkEvents
-		default:
-			msg := waitForMessageNonBlocking(t, conn, 50*time.Millisecond)
-			if msg != nil {
-				if msg["event"] == "session_event" {
-					receivedEvents = append(receivedEvents, msg)
-				}
-			}
+	storageEvents := make([]map[string]any, 0, 3)
+	deadline := time.Now().Add(2 * time.Second)
+	for len(storageEvents) < 3 && time.Now().Before(deadline) {
+		msg := waitForMessageNonBlocking(t, conn, time.Until(deadline))
+		if msg == nil {
+			break
 		}
-	}
-
-checkEvents:
-	// Should have received at least 3 events (not counting snapshot_written)
-	storageEvents := make([]map[string]any, 0)
-	for _, evt := range receivedEvents {
-		data := evt["data"].(map[string]any)
+		if msg["event"] != "session_event" {
+			continue
+		}
+		data := msg["data"].(map[string]any)
 		if data["event_type"] == EventTypeStorageUpdated {
 			storageEvents = append(storageEvents, data)
 		}
 	}
 
-	assert.GreaterOrEqual(t, len(storageEvents), 3)
+	require.Len(t, storageEvents, 3)
 
 	// Verify sequence numbers increment correctly
 	expectedSeqs := []int64{seq1, seq2, seq3}
@@ -527,7 +534,7 @@ func setupTestGateway(t *testing.T, miniappSvc *Service, redisClient *redis.Clie
 	t.Helper()
 
 	// Create token service (mock)
-	tokenSvc := token.NewService("test-secret", time.Hour)
+	tokenSvc := token.NewService("test-secret")
 
 	// Create test server
 	handler := realtime.NewHandlerWithSend(tokenSvc, nil, redisClient, nil, nil, miniappSvc)
@@ -550,8 +557,8 @@ func createWSConnectionV2(t *testing.T, wsURL string, userID string, dbPool *pgx
 
 	// Generate test token
 	ctx := context.Background()
-	tokenSvc := token.NewService("test-secret", time.Hour)
-	accessToken, err := tokenSvc.NewAccess(userID, "device-1")
+	tokenSvc := token.NewService("test-secret")
+	accessToken, err := tokenSvc.IssueAccess(userID, "device-1", time.Hour, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -623,19 +630,20 @@ func waitForMessageNonBlocking(t *testing.T, conn *websocket.Conn, timeout time.
 	}
 }
 
-
 // createTestSession creates a mini-app session with known parameters.
 func createTestSession(t *testing.T, svc *Service, userID, appID string) (string, error) {
+	conversationID := createTestConversation(t, context.Background(), svc.db, userID)
+
 	// Register manifest
-	manifestID, err := svc.RegisterManifest(context.Background(), userID, validManifest())
+	manifestID, err := svc.RegisterManifest(context.Background(), userID, testManifest(appID))
 	if err != nil {
 		return "", err
 	}
 
-	sessionID, err := svc.CreateSession(context.Background(), CreateSessionInput{
+	session, _, err := svc.CreateSession(context.Background(), CreateSessionInput{
 		ManifestID:     manifestID,
 		AppID:          appID,
-		ConversationID: "",
+		ConversationID: conversationID,
 		Viewer: SessionParticipant{
 			UserID: userID,
 			Role:   "owner",
@@ -647,5 +655,27 @@ func createTestSession(t *testing.T, svc *Service, userID, appID string) (string
 		StateSnapshot:      map[string]any{},
 		TTL:                time.Hour,
 	})
-	return sessionID, err
+	if err != nil {
+		return "", err
+	}
+	sessionID, _ := session["app_session_id"].(string)
+	if sessionID == "" {
+		return "", fmt.Errorf("app_session_id missing")
+	}
+	return sessionID, nil
+}
+
+func createTestConversation(t *testing.T, ctx context.Context, pool *pgxpool.Pool, userIDs ...string) string {
+	t.Helper()
+
+	conversationID := uuid.NewString()
+	_, err := pool.Exec(ctx, `INSERT INTO conversations (id, type) VALUES ($1, 'PRIVATE')`, conversationID)
+	require.NoError(t, err)
+	_, err = pool.Exec(ctx, `INSERT INTO conversation_counters (conversation_id) VALUES ($1)`, conversationID)
+	require.NoError(t, err)
+	for _, userID := range userIDs {
+		_, err = pool.Exec(ctx, `INSERT INTO conversation_members (conversation_id, user_id) VALUES ($1, $2::uuid)`, conversationID, userID)
+		require.NoError(t, err)
+	}
+	return conversationID
 }

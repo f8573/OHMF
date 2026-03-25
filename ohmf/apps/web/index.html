@@ -42,6 +42,21 @@
           <input id="otp-input" name="otp" type="text" inputmode="numeric" maxlength="6" placeholder="123456" required />
           <button type="submit" class="send-btn full">Verify and Continue</button>
         </form>
+
+        <div class="auth-divider" aria-hidden="true"><span>or</span></div>
+
+        <section class="auth-secondary-card" aria-labelledby="pair-device-auth-title">
+          <h2 id="pair-device-auth-title">Pair This Browser</h2>
+          <p class="auth-muted">Use a pairing code from one of your already linked devices.</p>
+          <p class="status-msg" id="pair-device-auth-status" role="status" aria-live="polite"></p>
+          <form id="pair-device-auth-form">
+            <label for="pair-device-code-input">Pairing Code</label>
+            <input id="pair-device-code-input" name="pairingCode" type="text" inputmode="numeric" maxlength="12" placeholder="Enter code" required />
+            <label for="pair-device-name-input">Device Name</label>
+            <input id="pair-device-name-input" name="deviceName" type="text" maxlength="80" placeholder="OHMF Web" value="OHMF Web" />
+            <button type="submit" class="secondary-btn full">Pair and Continue</button>
+          </form>
+        </section>
       </div>
     </section>
 
@@ -52,6 +67,7 @@
           <div class="header-actions">
             <button class="icon-btn" id="new-chat-btn" aria-label="New conversation">+</button>
             <button class="icon-btn" id="new-group-btn" aria-label="New group">Group</button>
+            <button class="icon-btn text-btn" id="linked-devices-btn" aria-label="Linked devices">Devices</button>
             <button class="icon-btn" id="logout-btn" aria-label="Logout">x</button>
           </div>
         </header>
@@ -89,6 +105,18 @@
             <button class="icon-btn" id="close-thread-btn" aria-label="Close conversation">Close</button>
           </div>
         </header>
+
+        <section class="chat-trust-panel hidden" id="chat-trust-panel" aria-label="Trust state">
+          <div class="chat-trust-head">
+            <div>
+              <p class="miniapp-config-label">Trust State</p>
+              <p class="chat-trust-summary" id="chat-trust-summary">Open a secure direct conversation to review device trust.</p>
+            </div>
+            <button type="button" class="secondary-btn compact" id="chat-trust-refresh-btn">Refresh</button>
+          </div>
+          <p class="status-msg" id="chat-trust-status" role="status" aria-live="polite"></p>
+          <div class="chat-trust-list" id="chat-trust-list"></div>
+        </section>
 
         <section class="message-list" id="message-list">
           <div class="empty-state" id="empty-state">
@@ -188,6 +216,50 @@
           </div>
         </section>
 
+        <section class="device-manager-window hidden" id="device-manager-window" aria-label="Linked devices" aria-modal="true" role="dialog">
+          <button type="button" class="message-metadata-backdrop" id="device-manager-backdrop" aria-label="Close linked devices"></button>
+          <div class="device-manager-modal">
+            <div class="miniapp-launcher-head">
+              <div>
+                <p class="miniapp-kicker">Linked Devices</p>
+                <h2 class="miniapp-title" id="device-manager-title">Pair and manage devices</h2>
+                <p class="miniapp-preview-subtitle" id="device-manager-subtitle">Start a code on this device, then pair a second device with it.</p>
+              </div>
+              <div class="miniapp-head-actions">
+                <button type="button" class="secondary-btn compact" id="device-manager-refresh-btn">Refresh</button>
+                <button type="button" class="icon-btn miniapp-close-btn" id="device-manager-close-btn" aria-label="Close linked devices">x</button>
+              </div>
+            </div>
+            <p class="status-msg" id="device-manager-status" role="status" aria-live="polite"></p>
+            <div class="device-manager-grid">
+              <section class="device-manager-panel pairing-panel">
+                <div class="device-manager-panel-head">
+                  <div>
+                    <p class="miniapp-config-label">Pair Device</p>
+                    <p class="device-manager-copy">Generate a short-lived code on this device, then enter it on the device you want to link.</p>
+                  </div>
+                  <button type="button" class="send-btn compact" id="device-manager-start-pairing-btn">Start Pairing</button>
+                </div>
+                <div class="pairing-code-card" id="pairing-code-card">
+                  <p class="pairing-code-label">No active pairing code.</p>
+                  <code class="pairing-code-value" id="pairing-code-value">Ready when you are.</code>
+                  <p class="pairing-code-expiry" id="pairing-code-expiry">Generate a code to pair another device.</p>
+                </div>
+              </section>
+
+              <section class="device-manager-panel">
+                <div class="device-manager-panel-head">
+                  <div>
+                    <p class="miniapp-config-label">Linked Devices</p>
+                    <p class="device-manager-copy">Only backend-supplied device metadata is shown here.</p>
+                  </div>
+                </div>
+                <div class="linked-device-list" id="linked-device-list"></div>
+              </section>
+            </div>
+          </div>
+        </section>
+
         <form class="composer" id="composer">
           <div class="composer-reply hidden" id="composer-reply">
             <div class="composer-reply-copy">
@@ -213,6 +285,10 @@
 
     <input id="attachment-input" type="file" class="hidden" />
 
+    <script src="./device-management.js"></script>
+    <script src="./transport-continuity.js"></script>
+    <script src="./trust-verification.js"></script>
+    <script src="./miniapp-host.js"></script>
     <script src="./asset-loader.js" data-js="./app.js"></script>
   </body>
 </html>

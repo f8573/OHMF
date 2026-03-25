@@ -43,6 +43,7 @@ const CRYPTO_DB_NAME = "ohmf.crypto";
 const CRYPTO_DB_VERSION = 1;
 const CRYPTO_DEVICE_STORE = "device_state";
 const MINIAPP_CONSENT_STORAGE_PREFIX = "ohmf.miniapp.consent.v1";
+const MINIAPP_RESTORE_STORAGE_KEY = "ohmf.miniapp.active_session.v1";
 const DECRYPTED_MESSAGE_CACHE_LIMIT = 500;
 const CRYPTO_BACKUP_NAME = "default";
 const CRYPTO_BACKUP_FORMAT = "OHMF_CRYPTO_EXPORT_V1";
@@ -75,6 +76,85 @@ const BUILTIN_DEV_MINIAPP_CATALOG = Object.freeze([
     summary: "Open-source SDK demo with shared answers and projected summaries.",
   },
 ]);
+const MINIAPP_SESSION_EVENT_TYPES = Object.freeze({
+  SESSION_CREATED: "session_created",
+  SESSION_JOINED: "session_joined",
+  STORAGE_UPDATED: "storage_updated",
+  SNAPSHOT_WRITTEN: "snapshot_written",
+  MESSAGE_PROJECTED: "message_projected",
+});
+const deviceUIHelpers = window.OHMFDeviceUI || {};
+const transportUIHelpers = window.OHMFTransportUI || {};
+const trustUIHelpers = window.OHMFTrustUI || {};
+const miniappHostHelpers = window.OHMFMiniappHost || {};
+
+function requireFeatureHelper(api, key, name) {
+  if (typeof api?.[key] !== "function") {
+    throw new Error(`Missing required helper: ${name}`);
+  }
+  return api[key];
+}
+
+const normalizeLinkedDeviceList = requireFeatureHelper(
+  deviceUIHelpers,
+  "normalizeLinkedDevices",
+  "OHMFDeviceUI.normalizeLinkedDevices"
+);
+const describePairingError = requireFeatureHelper(
+  deviceUIHelpers,
+  "describePairingError",
+  "OHMFDeviceUI.describePairingError"
+);
+const normalizeTrustDevices = requireFeatureHelper(
+  trustUIHelpers,
+  "normalizeTrustDevices",
+  "OHMFTrustUI.normalizeTrustDevices"
+);
+const summarizeTrustDevices = requireFeatureHelper(
+  trustUIHelpers,
+  "summarizeTrustDevices",
+  "OHMFTrustUI.summarizeTrustDevices"
+);
+const threadTransportSummary = requireFeatureHelper(
+  transportUIHelpers,
+  "threadTransportSummary",
+  "OHMFTransportUI.threadTransportSummary"
+);
+const messageTransportBadge = requireFeatureHelper(
+  transportUIHelpers,
+  "messageTransportBadge",
+  "OHMFTransportUI.messageTransportBadge"
+);
+const formatOutgoingTransportStatus = requireFeatureHelper(
+  transportUIHelpers,
+  "formatOutgoingStatusLabel",
+  "OHMFTransportUI.formatOutgoingStatusLabel"
+);
+const messageFailureDetail = requireFeatureHelper(
+  transportUIHelpers,
+  "messageFailureDetail",
+  "OHMFTransportUI.messageFailureDetail"
+);
+const buildMiniappRestorePayload = requireFeatureHelper(
+  miniappHostHelpers,
+  "buildRestoreState",
+  "OHMFMiniappHost.buildRestoreState"
+);
+const parseMiniappRestorePayload = requireFeatureHelper(
+  miniappHostHelpers,
+  "parseRestoreState",
+  "OHMFMiniappHost.parseRestoreState"
+);
+const normalizeMiniappSessionEvent = requireFeatureHelper(
+  miniappHostHelpers,
+  "normalizeSessionEvent",
+  "OHMFMiniappHost.normalizeSessionEvent"
+);
+const shouldRefreshMiniappSessionEvent = requireFeatureHelper(
+  miniappHostHelpers,
+  "shouldRefreshSession",
+  "OHMFMiniappHost.shouldRefreshSession"
+);
 
 const state = {
   auth: null,
@@ -123,6 +203,28 @@ const state = {
   },
   profiles: {},
   selfProfile: null,
+  deviceManager: {
+    open: false,
+    loading: false,
+    error: "",
+    devices: [],
+    lastLoadedAt: "",
+    pairCode: "",
+    pairCodeExpiresAt: "",
+    startingPairing: false,
+    revokingDeviceId: "",
+  },
+  trustPanel: {
+    threadId: "",
+    contactUserId: "",
+    loading: false,
+    error: "",
+    devices: [],
+    lastLoadedAt: "",
+    actionDeviceId: "",
+    actionKind: "",
+    requestToken: 0,
+  },
   crypto: {
     device: null,
     published: false,
@@ -139,6 +241,8 @@ let eventStreamDisabled = false;
 let realtimeSocket = null;
 let realtimeReconnectTimer = 0;
 let realtimeConnectFailures = 0;
+const desiredMiniappSessionSubscriptions = new Set();
+const liveMiniappSessionSubscriptions = new Set();
 let liveRefreshTimer = 0;
 let typingStopTimer = 0;
 let localTypingThreadId = "";
@@ -165,6 +269,10 @@ const el = {
   phoneInput: document.getElementById("phone-input"),
   phoneE164Preview: document.getElementById("phone-e164-preview"),
   otpInput: document.getElementById("otp-input"),
+  pairDeviceAuthForm: document.getElementById("pair-device-auth-form"),
+  pairDeviceAuthStatus: document.getElementById("pair-device-auth-status"),
+  pairDeviceCodeInput: document.getElementById("pair-device-code-input"),
+  pairDeviceNameInput: document.getElementById("pair-device-name-input"),
   threadList: document.getElementById("thread-list"),
   messageList: document.getElementById("message-list"),
   searchInput: document.getElementById("search-input"),
@@ -183,9 +291,25 @@ const el = {
   messageMetadataTitle: document.getElementById("message-metadata-title"),
   messageMetadataSubtitle: document.getElementById("message-metadata-subtitle"),
   messageMetadataBody: document.getElementById("message-metadata-body"),
+  deviceManagerWindow: document.getElementById("device-manager-window"),
+  deviceManagerBackdrop: document.getElementById("device-manager-backdrop"),
+  deviceManagerCloseBtn: document.getElementById("device-manager-close-btn"),
+  deviceManagerStatus: document.getElementById("device-manager-status"),
+  deviceManagerRefreshBtn: document.getElementById("device-manager-refresh-btn"),
+  deviceManagerStartPairingBtn: document.getElementById("device-manager-start-pairing-btn"),
+  pairingCodeCard: document.getElementById("pairing-code-card"),
+  pairingCodeValue: document.getElementById("pairing-code-value"),
+  pairingCodeExpiry: document.getElementById("pairing-code-expiry"),
+  linkedDeviceList: document.getElementById("linked-device-list"),
+  trustPanel: document.getElementById("chat-trust-panel"),
+  trustSummary: document.getElementById("chat-trust-summary"),
+  trustStatus: document.getElementById("chat-trust-status"),
+  trustRefreshBtn: document.getElementById("chat-trust-refresh-btn"),
+  trustList: document.getElementById("chat-trust-list"),
   backBtn: document.getElementById("back-btn"),
   newChatBtn: document.getElementById("new-chat-btn"),
   newGroupBtn: document.getElementById("new-group-btn"),
+  linkedDevicesBtn: document.getElementById("linked-devices-btn"),
   logoutBtn: document.getElementById("logout-btn"),
   newChatForm: document.getElementById("new-chat-form"),
   newCountryCodeSelect: document.getElementById("new-country-code-select"),
@@ -239,6 +363,74 @@ function formatDateTime(value) {
     minute: "2-digit",
     second: "2-digit",
   });
+}
+
+function defaultWebCapabilities() {
+  return ["MINI_APPS", "E2EE_OTT_V2", "WEB_PUSH_V1"];
+}
+
+function defaultWebDeviceName() {
+  return sanitizeText(el.pairDeviceNameInput?.value, 80) || "OHMF Web";
+}
+
+function normalizedLinkedDevices(devices) {
+  return normalizeLinkedDeviceList(devices, sanitizeText(state.auth?.deviceId, 80));
+}
+
+function setPairDeviceAuthStatus(message, isError = false) {
+  if (!el.pairDeviceAuthStatus) return;
+  el.pairDeviceAuthStatus.textContent = sanitizeText(message, 220);
+  el.pairDeviceAuthStatus.classList.toggle("error", Boolean(isError));
+}
+
+function resetDeviceManagerState() {
+  state.deviceManager = {
+    open: false,
+    loading: false,
+    error: "",
+    devices: [],
+    lastLoadedAt: "",
+    pairCode: "",
+    pairCodeExpiresAt: "",
+    startingPairing: false,
+    revokingDeviceId: "",
+  };
+}
+
+function resetTrustPanelState() {
+  state.trustPanel = {
+    threadId: "",
+    contactUserId: "",
+    loading: false,
+    error: "",
+    devices: [],
+    lastLoadedAt: "",
+    actionDeviceId: "",
+    actionKind: "",
+    requestToken: 0,
+  };
+}
+
+function deviceMetadataSummary(device) {
+  const parts = [];
+  if (device.platform) parts.push(device.platform);
+  if (device.clientVersion) parts.push(`Client ${device.clientVersion}`);
+  if (device.lastSeenAt) parts.push(`Seen ${formatDateTime(device.lastSeenAt)}`);
+  return parts.join(" · ");
+}
+
+function deviceCapabilitiesSummary(device) {
+  if (!Array.isArray(device.capabilities) || !device.capabilities.length) return "";
+  return device.capabilities.join(", ");
+}
+
+function buildTransportChip(label, tone, className = "transport-chip") {
+  const text = sanitizeText(label, 80);
+  if (!text) return null;
+  const chip = document.createElement("span");
+  chip.className = `${className} tone-${sanitizeText(tone, 16) || "pending"}`;
+  chip.textContent = text;
+  return chip;
 }
 
 function messageSnippet(message, limit = 72) {
@@ -2898,8 +3090,9 @@ async function ensureCurrentDeviceId() {
   if (state.auth?.deviceId) return state.auth.deviceId;
   const payload = await apiRequest("/v1/devices");
   const webDevice = (payload?.devices || []).find((device) => sanitizeText(device.platform, 24).toUpperCase() === "WEB");
-  if (webDevice?.device_id) {
-    authStoreSet({ ...state.auth, deviceId: sanitizeText(webDevice.device_id, 80) });
+  const deviceId = sanitizeText(webDevice?.device_id || webDevice?.id, 80);
+  if (deviceId) {
+    authStoreSet({ ...state.auth, deviceId });
     return state.auth.deviceId;
   }
   return "";
@@ -2962,6 +3155,238 @@ async function apiRequest(path, options = {}) {
     throw error;
   }
   return payload;
+}
+
+async function refreshLinkedDevices(options = {}) {
+  if (!state.auth) return;
+  const silent = Boolean(options.silent);
+  state.deviceManager.loading = true;
+  if (!silent) state.deviceManager.error = "";
+  renderDeviceManager();
+  try {
+    const payload = await apiRequest("/v1/devices", { method: "GET" });
+    state.deviceManager.devices = normalizedLinkedDevices(payload?.devices || []);
+    state.deviceManager.lastLoadedAt = nowISO();
+    state.deviceManager.error = "";
+  } catch (error) {
+    state.deviceManager.error = sanitizeText(error.message || "Unable to load linked devices.", 180);
+    if (!silent) state.deviceManager.devices = normalizedLinkedDevices([]);
+  } finally {
+    state.deviceManager.loading = false;
+    renderDeviceManager();
+  }
+}
+
+async function openDeviceManager() {
+  if (!state.auth) return;
+  state.deviceManager.open = true;
+  renderAll();
+  await refreshLinkedDevices();
+}
+
+function closeDeviceManager() {
+  if (!state.deviceManager.open) return;
+  state.deviceManager.open = false;
+  renderAll();
+}
+
+async function startPairingFromCurrentDevice() {
+  if (!state.auth || state.deviceManager.startingPairing) return;
+  state.deviceManager.startingPairing = true;
+  state.deviceManager.error = "";
+  renderDeviceManager();
+  try {
+    const payload = await apiRequest("/v1/auth/pairing/start", {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
+    state.deviceManager.pairCode = sanitizeText(payload?.pairing_code, 24);
+    state.deviceManager.pairCodeExpiresAt = sanitizeText(payload?.expires_at, 80);
+  } catch (error) {
+    state.deviceManager.error = sanitizeText(error.message || "Unable to start pairing.", 180);
+  } finally {
+    state.deviceManager.startingPairing = false;
+    renderDeviceManager();
+  }
+}
+
+async function revokeLinkedDevice(deviceId) {
+  const normalizedDeviceId = sanitizeText(deviceId, 80);
+  if (!state.auth || !normalizedDeviceId || normalizedDeviceId === sanitizeText(state.auth.deviceId, 80)) return;
+  const confirmed = window.confirm("Revoke this linked device?");
+  if (!confirmed) return;
+  state.deviceManager.revokingDeviceId = normalizedDeviceId;
+  state.deviceManager.error = "";
+  renderDeviceManager();
+  try {
+    await apiRequest(`/v1/devices/${encodeURIComponent(normalizedDeviceId)}`, { method: "DELETE" });
+    state.deviceManager.pairCode = "";
+    state.deviceManager.pairCodeExpiresAt = "";
+    await refreshLinkedDevices({ silent: true });
+  } catch (error) {
+    state.deviceManager.error = sanitizeText(error.message || "Unable to revoke linked device.", 180);
+  } finally {
+    state.deviceManager.revokingDeviceId = "";
+    renderDeviceManager();
+  }
+}
+
+function trustPanelSupportedThread(thread) {
+  return Boolean(thread && thread.kind === "dm" && otherUserIdForThread(thread));
+}
+
+function setTrustPanelTarget(thread) {
+  if (!trustPanelSupportedThread(thread)) {
+    if (state.trustPanel.threadId || state.trustPanel.contactUserId || state.trustPanel.devices.length || state.trustPanel.error) {
+      resetTrustPanelState();
+    }
+    return false;
+  }
+  const contactUserId = otherUserIdForThread(thread);
+  if (state.trustPanel.threadId === thread.id && state.trustPanel.contactUserId === contactUserId) return true;
+  resetTrustPanelState();
+  state.trustPanel.threadId = thread.id;
+  state.trustPanel.contactUserId = contactUserId;
+  return true;
+}
+
+async function fetchTrustState(contactUserId, deviceId) {
+  const query = new URLSearchParams({
+    contact_user_id: sanitizeText(contactUserId, 80),
+    contact_device_id: sanitizeText(deviceId, 80),
+  });
+  return apiRequest(`/v1/e2ee/session/trust-state?${query.toString()}`, { method: "GET" });
+}
+
+async function refreshTrustPanel(options = {}) {
+  const thread = options.thread || getActiveThread();
+  if (!state.auth || !setTrustPanelTarget(thread)) {
+    renderTrustPanel();
+    return;
+  }
+
+  const requestToken = state.trustPanel.requestToken + 1;
+  state.trustPanel.requestToken = requestToken;
+  state.trustPanel.loading = true;
+  if (!options.silent) state.trustPanel.error = "";
+  renderTrustPanel();
+
+  try {
+    const bundles = options.force ? await refetchDeviceBundles(state.trustPanel.contactUserId) : await fetchDeviceBundles(state.trustPanel.contactUserId);
+    const trustEntries = await Promise.all((Array.isArray(bundles) ? bundles : []).map(async (bundle) => {
+      const deviceId = sanitizeText(bundle?.device_id, 80);
+      if (!deviceId) return [deviceId, null];
+      const payload = await fetchTrustState(state.trustPanel.contactUserId, deviceId);
+      return [deviceId, payload];
+    }));
+    if (requestToken !== state.trustPanel.requestToken) return;
+    state.trustPanel.devices = normalizeTrustDevices(bundles, Object.fromEntries(trustEntries));
+    state.trustPanel.lastLoadedAt = nowISO();
+    state.trustPanel.error = "";
+  } catch (error) {
+    if (requestToken !== state.trustPanel.requestToken) return;
+    state.trustPanel.error = sanitizeText(error.message || "Unable to load trust state.", 180);
+    if (!options.silent) state.trustPanel.devices = [];
+  } finally {
+    if (requestToken !== state.trustPanel.requestToken) return;
+    state.trustPanel.loading = false;
+    renderTrustPanel();
+  }
+}
+
+async function verifyTrustDevice(deviceId) {
+  const device = state.trustPanel.devices.find((item) => item.deviceId === sanitizeText(deviceId, 80));
+  if (!state.auth || !device || !device.currentFingerprint || state.trustPanel.actionDeviceId) return;
+  const confirmed = window.confirm(`Verify ${device.deviceLabel} with fingerprint ${device.currentFingerprint}?`);
+  if (!confirmed) return;
+  state.trustPanel.actionDeviceId = device.deviceId;
+  state.trustPanel.actionKind = "verify";
+  state.trustPanel.error = "";
+  renderTrustPanel();
+  try {
+    await apiRequest("/v1/e2ee/session/verify", {
+      method: "POST",
+      body: JSON.stringify({
+        contact_user_id: state.trustPanel.contactUserId,
+        contact_device_id: device.deviceId,
+        fingerprint: device.currentFingerprint,
+      }),
+    });
+    await refreshTrustPanel({ thread: getActiveThread(), silent: true, force: true });
+  } catch (error) {
+    state.trustPanel.error = sanitizeText(error.message || "Unable to verify this device.", 180);
+  } finally {
+    state.trustPanel.actionDeviceId = "";
+    state.trustPanel.actionKind = "";
+    renderTrustPanel();
+  }
+}
+
+async function revokeTrustDevice(deviceId) {
+  const device = state.trustPanel.devices.find((item) => item.deviceId === sanitizeText(deviceId, 80));
+  if (!state.auth || !device || state.trustPanel.actionDeviceId) return;
+  const confirmed = window.confirm(`Revoke trust for ${device.deviceLabel}?`);
+  if (!confirmed) return;
+  state.trustPanel.actionDeviceId = device.deviceId;
+  state.trustPanel.actionKind = "revoke";
+  state.trustPanel.error = "";
+  renderTrustPanel();
+  try {
+    await apiRequest("/v1/e2ee/session/revoke", {
+      method: "POST",
+      body: JSON.stringify({
+        contact_user_id: state.trustPanel.contactUserId,
+        contact_device_id: device.deviceId,
+      }),
+    });
+    await refreshTrustPanel({ thread: getActiveThread(), silent: true, force: true });
+  } catch (error) {
+    state.trustPanel.error = sanitizeText(error.message || "Unable to revoke trust for this device.", 180);
+  } finally {
+    state.trustPanel.actionDeviceId = "";
+    state.trustPanel.actionKind = "";
+    renderTrustPanel();
+  }
+}
+
+async function completePairingOnAuthScreen(event) {
+  event.preventDefault();
+  const pairingCode = sanitizeText(el.pairDeviceCodeInput?.value, 24);
+  if (!pairingCode) {
+    setPairDeviceAuthStatus("Enter a pairing code.", true);
+    return;
+  }
+  setPairDeviceAuthStatus("Pairing this browser...");
+  try {
+    const payload = await apiRequest("/v1/auth/pairing/complete", {
+      method: "POST",
+      body: JSON.stringify({
+        pairing_code: pairingCode,
+        device: {
+          platform: "WEB",
+          device_name: defaultWebDeviceName(),
+          capabilities: defaultWebCapabilities(),
+        },
+      }),
+    });
+    if (!payload?.user_id || !payload?.device_id || !payload?.access_token || !payload?.refresh_token) {
+      throw new Error("invalid_pairing_response");
+    }
+    authStoreSet({
+      userId: sanitizeText(payload?.user_id, 80),
+      phoneE164: "",
+      deviceId: sanitizeText(payload?.device_id, 80),
+      accessToken: sanitizeText(payload?.access_token, 3000),
+      refreshToken: sanitizeText(payload?.refresh_token, 3000),
+    });
+    el.pairDeviceAuthForm.reset();
+    if (el.pairDeviceNameInput) el.pairDeviceNameInput.value = "OHMF Web";
+    setPairDeviceAuthStatus("This browser is now linked.");
+    await bootAfterAuth();
+  } catch (error) {
+    const descriptor = describePairingError(error);
+    setPairDeviceAuthStatus(`${descriptor.title} ${descriptor.message}`, true);
+  }
 }
 
 async function refreshAuthTokens() {
@@ -3118,6 +3543,61 @@ function normalizeMiniappSessionState(raw) {
     sharedConversationStorage: raw.shared_conversation_storage || raw.sharedConversationStorage || {},
     transcript: Array.isArray(raw.projected_messages || raw.transcript) ? (raw.projected_messages || raw.transcript) : [],
   };
+}
+
+function buildMiniappRestoreState() {
+  return buildMiniappRestorePayload({
+    threadId: state.activeThreadId,
+    appId: state.miniapp.manifest?.app_id,
+    appSessionId: state.miniapp.launchContext?.app_session_id,
+    popupOpen: state.miniapp.popupOpen,
+  });
+}
+
+function loadMiniappRestoreState() {
+  const raw = window.sessionStorage.getItem(MINIAPP_RESTORE_STORAGE_KEY);
+  return raw ? parseMiniappRestorePayload(raw) : null;
+}
+
+function clearMiniappRestoreState() {
+  window.sessionStorage.removeItem(MINIAPP_RESTORE_STORAGE_KEY);
+}
+
+function persistMiniappRestoreState() {
+  const payload = buildMiniappRestoreState();
+  if (!payload) {
+    clearMiniappRestoreState();
+    return;
+  }
+  window.sessionStorage.setItem(MINIAPP_RESTORE_STORAGE_KEY, JSON.stringify(payload));
+}
+
+function clearMiniappSessionSubscriptions() {
+  desiredMiniappSessionSubscriptions.clear();
+  liveMiniappSessionSubscriptions.clear();
+}
+
+function queueMiniappSessionSubscription(sessionId) {
+  const normalized = sanitizeText(sessionId, 120);
+  desiredMiniappSessionSubscriptions.clear();
+  if (!normalized) return;
+  desiredMiniappSessionSubscriptions.add(normalized);
+  flushMiniappSessionSubscriptions();
+}
+
+function flushMiniappSessionSubscriptions() {
+  if (!realtimeSocket || realtimeSocket.readyState !== window.WebSocket.OPEN) return;
+  for (const sessionId of desiredMiniappSessionSubscriptions) {
+    if (liveMiniappSessionSubscriptions.has(sessionId)) continue;
+    realtimeSocket.send(JSON.stringify({
+      event: "subscribe_session",
+      data: { session_id: sessionId },
+    }));
+  }
+}
+
+function shouldRefreshMiniappSession(rawEvent) {
+  return shouldRefreshMiniappSessionEvent(rawEvent, state.miniapp.launchContext?.app_session_id);
 }
 
 function miniappConsentKey(manifest) {
@@ -3298,6 +3778,8 @@ function applyMiniappSessionRecord(record, manifest) {
     Array.isArray(record?.capabilities_granted) && record.capabilities_granted.length ? record.capabilities_granted : (manifest.permissions || [])
   );
   state.miniapp.lastShareError = "";
+  queueMiniappSessionSubscription(state.miniapp.launchContext?.app_session_id);
+  persistMiniappRestoreState();
 }
 
 async function ensureMiniappSession() {
@@ -3347,7 +3829,7 @@ async function joinMiniappSession(sessionId) {
 
 async function persistMiniappSession(version, eventName, eventBody) {
   if (!state.miniapp.launchContext?.app_session_id) return 0;
-  const nextVersion = Math.max(1, Number(version || 0) + 1);
+  const nextVersion = Math.max(1, Number(version || 0) || 1);
   const payload = await apiRequest(`/v1/apps/sessions/${encodeURIComponent(state.miniapp.launchContext.app_session_id)}/snapshot`, {
     method: "POST",
     body: JSON.stringify({
@@ -3445,6 +3927,64 @@ function appendProjectedMiniappMessage(text, contentType = "app_event", content 
   upsertThread({ ...thread, messages: [...(thread.messages || []), message], updatedAt: message.createdAt });
   saveConversationStore();
   renderAll();
+}
+
+function pushMiniappBridgeEvent(eventName, payload) {
+  if (!state.miniapp.frameWindow || !state.miniapp.channelId) return;
+  state.miniapp.frameWindow.postMessage(
+    {
+      bridge_version: "1.0",
+      bridge_event: eventName,
+      channel: state.miniapp.channelId,
+      payload: cloneJson(payload),
+    },
+    "*"
+  );
+}
+
+async function refreshActiveMiniappSession(rawEvent) {
+  if (!shouldRefreshMiniappSession(rawEvent)) return null;
+  const event = normalizeMiniappSessionEvent(rawEvent);
+  if (!event) return null;
+  const previousVersion = Number(state.miniapp.sessionState?.stateVersion || state.miniapp.launchContext?.state_version || 0);
+  const previousPermissions = Array.from(state.miniapp.grantedPermissions).sort().join(",");
+  try {
+    const record = await apiRequest(`/v1/apps/sessions/${encodeURIComponent(event.sessionId)}`, { method: "GET" });
+    const appId = sanitizeText(record?.app_id, 120);
+    if (!appId) return null;
+    const manifest = state.miniapp.manifest?.app_id === appId ? state.miniapp.manifest : await loadMiniappManifestByAppId(appId);
+    applyMiniappSessionRecord(record, manifest);
+    const nextVersion = Number(state.miniapp.sessionState?.stateVersion || state.miniapp.launchContext?.state_version || 0);
+    if (nextVersion !== previousVersion || event.eventType === MINIAPP_SESSION_EVENT_TYPES.SNAPSHOT_WRITTEN) {
+      pushMiniappBridgeEvent("session.stateUpdated", {
+        app_session_id: event.sessionId,
+        state_version: nextVersion,
+        state_snapshot: cloneJson(state.miniapp.sessionState?.stateSnapshot || {}),
+      });
+    }
+    const nextPermissions = Array.from(state.miniapp.grantedPermissions).sort().join(",");
+    if (nextPermissions !== previousPermissions) {
+      pushMiniappBridgeEvent("session.permissionsUpdated", {
+        app_session_id: event.sessionId,
+        capabilities_granted: Array.from(state.miniapp.grantedPermissions),
+      });
+    }
+    renderAll();
+    return record;
+  } catch (error) {
+    if (error.status === 404 || error.status === 409) {
+      state.miniapp.lastShareError = "This app session is no longer available.";
+      clearMiniappRestoreState();
+      clearMiniappSessionSubscriptions();
+      if (state.miniapp.launchContext) {
+        state.miniapp.launchContext.joinable = false;
+      }
+      renderAll();
+      return null;
+    }
+    console.error(error);
+    return null;
+  }
 }
 
 function buildMiniappFrameURL() {
@@ -3545,6 +4085,20 @@ async function handleMiniappBridgeCall(message) {
       state.miniapp.launchContext.state_version = persistedVersion;
       return { key, value: cloneJson(state.miniapp.sessionState.storage[key]), state_version: persistedVersion };
     }
+    case "storage.sharedConversation.get": {
+      requireMiniappPermission("storage.shared_conversation");
+      const key = sanitizeText(message.params?.key, 80);
+      return { key, value: cloneJson(state.miniapp.sessionState.sharedConversationStorage[key]) };
+    }
+    case "storage.sharedConversation.set": {
+      requireMiniappPermission("storage.shared_conversation");
+      const key = sanitizeText(message.params?.key, 80);
+      state.miniapp.sessionState.sharedConversationStorage[key] = cloneJson(message.params?.value);
+      state.miniapp.sessionState.stateVersion += 1;
+      const persistedVersion = await persistMiniappSession(state.miniapp.sessionState.stateVersion, "SHARED_STORAGE_UPDATED", { key });
+      state.miniapp.launchContext.state_version = persistedVersion;
+      return { key, value: cloneJson(state.miniapp.sessionState.sharedConversationStorage[key]), state_version: persistedVersion };
+    }
     case "session.updateState": {
       requireMiniappPermission("realtime.session");
       const next = cloneJson(message.params || {});
@@ -3634,11 +4188,13 @@ function pickTitle(conversation) {
 function pickSubtitle(conversation) {
   if (conversation.blockedByViewer) return "Blocked by you";
   if (conversation.blockedByOther) return "Blocked";
-  if (conversation.kind === "phone") return "Phone conversation (OTT preferred)";
-  if (conversation.kind === "dm" && !conversation.e2eeReady) return "Secure messaging unavailable";
   if (conversation.kind === "group" && sanitizeText(conversation.encryptionState, 40) === "ENCRYPTED" && !conversation.e2eeReady) {
     const blockedCount = Array.isArray(conversation.e2eeBlockedMemberIds) ? conversation.e2eeBlockedMemberIds.length : 0;
     return blockedCount > 0 ? `Encrypted group waiting on ${blockedCount} member${blockedCount === 1 ? "" : "s"}` : "Encrypted group syncing";
+  }
+  if (conversation.kind === "phone" || conversation.kind === "draft_phone" || conversation.kind === "dm") {
+    const transportSummary = threadTransportSummary(conversation);
+    if (transportSummary?.subtitle) return sanitizeText(transportSummary.subtitle, 120);
   }
   if (sanitizeText(conversation.encryptionState, 40) === "ENCRYPTED") return "Encrypted conversation";
   if (conversation.kind === "group") {
@@ -4220,6 +4776,54 @@ function buildMessageMetadataSection(title) {
   return section;
 }
 
+function setStatusMessage(node, { error = "", loading = false, lastLoadedAt = "", loadingText, idleText }) {
+  if (error) {
+    node.textContent = error;
+    node.classList.add("error");
+    return;
+  }
+  if (loading) {
+    node.textContent = loadingText;
+    node.classList.remove("error");
+    return;
+  }
+  if (lastLoadedAt) {
+    node.textContent = `Last refreshed ${formatDateTime(lastLoadedAt)}.`;
+    node.classList.remove("error");
+    return;
+  }
+  node.textContent = idleText;
+  node.classList.remove("error");
+}
+
+function createTextElement(tagName, className, text) {
+  const element = document.createElement(tagName);
+  element.className = className;
+  element.textContent = text;
+  return element;
+}
+
+function createActionButton({ className, text, disabled = false, onClick }) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = className;
+  button.textContent = text;
+  button.disabled = disabled;
+  button.addEventListener("click", onClick);
+  return button;
+}
+
+function renderListContent(container, items, { loading = false, loadingText, emptyText, emptyClass, renderItem }) {
+  container.replaceChildren();
+  if (!items.length) {
+    container.appendChild(createTextElement("p", emptyClass, loading ? loadingText : emptyText));
+    return;
+  }
+  for (const item of items) {
+    container.appendChild(renderItem(item));
+  }
+}
+
 function renderMessageMetadataWindow() {
   const isOpen = Boolean(state.messageMetadata.open);
   el.messageMetadataWindow.classList.toggle("hidden", !isOpen);
@@ -4319,6 +4923,183 @@ function renderMessageMetadataWindow() {
     reactionsSection.appendChild(list);
   }
   el.messageMetadataBody.appendChild(reactionsSection);
+}
+
+function createLinkedDeviceItem(device) {
+  const item = document.createElement("article");
+  item.className = `linked-device-item${device.isCurrent ? " current" : ""}`;
+
+  const head = document.createElement("div");
+  head.className = "linked-device-head";
+
+  const summary = document.createElement("div");
+  summary.appendChild(createTextElement("p", "linked-device-name", device.deviceName));
+  summary.appendChild(createTextElement("p", "linked-device-meta", deviceMetadataSummary(device) || "Device metadata pending."));
+  head.appendChild(summary);
+
+  const badges = document.createElement("div");
+  badges.className = "linked-device-badges";
+  if (device.isCurrent) {
+    badges.appendChild(createTextElement("span", "linked-device-badge", "This browser"));
+  }
+  if (device.attestationState) {
+    badges.appendChild(createTextElement("span", "linked-device-badge", device.attestationState));
+  }
+  head.appendChild(badges);
+  item.appendChild(head);
+
+  const capabilities = deviceCapabilitiesSummary(device);
+  if (capabilities) {
+    item.appendChild(createTextElement("p", "linked-device-meta", `Capabilities: ${capabilities}`));
+  }
+
+  if (!device.isCurrent) {
+    const actions = document.createElement("div");
+    actions.className = "linked-device-actions";
+    actions.appendChild(createActionButton({
+      className: "secondary-btn compact",
+      text: state.deviceManager.revokingDeviceId === device.id ? "Revoking..." : "Revoke",
+      disabled: state.deviceManager.revokingDeviceId === device.id,
+      onClick: () => {
+        void revokeLinkedDevice(device.id);
+      },
+    }));
+    item.appendChild(actions);
+  }
+
+  return item;
+}
+
+function createTrustActionButtons(device) {
+  const actions = document.createElement("div");
+  actions.className = "chat-trust-actions";
+  const actionPending = Boolean(state.trustPanel.actionDeviceId);
+
+  if (device.canVerify) {
+    actions.appendChild(createActionButton({
+      className: "send-btn compact",
+      text: state.trustPanel.actionDeviceId === device.deviceId && state.trustPanel.actionKind === "verify"
+        ? "Verifying..."
+        : "Verify",
+      disabled: actionPending,
+      onClick: () => {
+        void verifyTrustDevice(device.deviceId);
+      },
+    }));
+  }
+  if (device.canRevoke) {
+    actions.appendChild(createActionButton({
+      className: "secondary-btn compact",
+      text: state.trustPanel.actionDeviceId === device.deviceId && state.trustPanel.actionKind === "revoke"
+        ? "Revoking..."
+        : "Revoke",
+      disabled: actionPending,
+      onClick: () => {
+        void revokeTrustDevice(device.deviceId);
+      },
+    }));
+  }
+  return actions.childNodes.length ? actions : null;
+}
+
+function createTrustDeviceItem(device) {
+  const item = document.createElement("article");
+  item.className = "chat-trust-item";
+
+  const head = document.createElement("div");
+  head.className = "chat-trust-item-head";
+
+  const summary = document.createElement("div");
+  summary.appendChild(createTextElement("p", "chat-trust-device-name", device.deviceLabel));
+  summary.appendChild(createTextElement("p", "chat-trust-fingerprint", device.currentFingerprint || "Fingerprint unavailable."));
+  head.appendChild(summary);
+
+  head.appendChild(createTextElement(
+    "span",
+    `chat-trust-badge state-${sanitizeText(device.trustState, 24).toLowerCase()}`,
+    device.trustStateLabel
+  ));
+  item.appendChild(head);
+
+  if (device.recordedFingerprint && device.recordedFingerprint !== device.currentFingerprint) {
+    item.appendChild(createTextElement("p", "chat-trust-meta", `Previously recorded fingerprint: ${device.recordedFingerprint}`));
+  }
+  if (device.warning) {
+    item.appendChild(createTextElement("p", "chat-trust-warning", device.warning));
+  }
+
+  const actions = createTrustActionButtons(device);
+  if (actions) item.appendChild(actions);
+
+  return item;
+}
+
+function renderDeviceManager() {
+  const isOpen = Boolean(state.deviceManager.open);
+  el.deviceManagerWindow.classList.toggle("hidden", !isOpen);
+  if (!isOpen) return;
+
+  setStatusMessage(el.deviceManagerStatus, {
+    error: state.deviceManager.error,
+    loading: state.deviceManager.loading,
+    lastLoadedAt: state.deviceManager.lastLoadedAt,
+    loadingText: "Refreshing linked devices...",
+    idleText: "Linked devices stay current after refresh and after new pairing events.",
+  });
+
+  el.deviceManagerRefreshBtn.disabled = state.deviceManager.loading;
+  el.deviceManagerStartPairingBtn.disabled = state.deviceManager.startingPairing;
+  el.deviceManagerStartPairingBtn.textContent = state.deviceManager.startingPairing ? "Starting..." : "Start Pairing";
+
+  if (state.deviceManager.pairCode) {
+    el.pairingCodeValue.textContent = state.deviceManager.pairCode;
+    el.pairingCodeExpiry.textContent = state.deviceManager.pairCodeExpiresAt
+      ? `Expires ${formatDateTime(state.deviceManager.pairCodeExpiresAt)}.`
+      : "Use this code on the device you want to link.";
+  } else {
+    el.pairingCodeValue.textContent = "Ready when you are.";
+    el.pairingCodeExpiry.textContent = "Generate a code to pair another device.";
+  }
+
+  renderListContent(el.linkedDeviceList, state.deviceManager.devices, {
+    loading: state.deviceManager.loading,
+    loadingText: "Loading linked devices...",
+    emptyText: "No linked devices are available yet.",
+    emptyClass: "linked-device-empty",
+    renderItem: createLinkedDeviceItem,
+  });
+}
+
+function renderTrustPanel() {
+  const thread = getActiveThread();
+  const supported = trustPanelSupportedThread(thread);
+  el.trustPanel.classList.toggle("hidden", !supported);
+  if (!supported) return;
+
+  const targetChanged = setTrustPanelTarget(thread);
+  if (targetChanged && !state.trustPanel.loading && !state.trustPanel.lastLoadedAt && !state.trustPanel.devices.length && !state.trustPanel.error) {
+    void refreshTrustPanel({ thread, silent: true }).catch((error) => {
+      console.error(error);
+    });
+  }
+
+  el.trustSummary.textContent = summarizeTrustDevices(state.trustPanel.devices) || "Review secure device trust state for this contact.";
+  setStatusMessage(el.trustStatus, {
+    error: state.trustPanel.error,
+    loading: state.trustPanel.loading,
+    lastLoadedAt: state.trustPanel.lastLoadedAt,
+    loadingText: "Refreshing trust state...",
+    idleText: "Refresh after reconnect to re-read current trust state.",
+  });
+  el.trustRefreshBtn.disabled = state.trustPanel.loading || Boolean(state.trustPanel.actionDeviceId);
+
+  renderListContent(el.trustList, state.trustPanel.devices, {
+    loading: state.trustPanel.loading,
+    loadingText: "Loading trust state...",
+    emptyText: "No secure devices are published for this contact yet.",
+    emptyClass: "chat-trust-empty",
+    renderItem: createTrustDeviceItem,
+  });
 }
 
 function setReplyTarget(thread, message) {
@@ -4873,6 +5654,11 @@ async function applyUserEvent(event) {
   }
   if (eventType === "account_device_linked") {
     const pairedDeviceID = sanitizeText(payload?.paired_device_id, 80);
+    if (state.deviceManager.open) {
+      void refreshLinkedDevices({ silent: true }).catch((error) => {
+        console.error(error);
+      });
+    }
     if (!pairedDeviceID) return;
     if (pairedDeviceID === sanitizeText(state.auth?.deviceId, 80)) {
       void restoreCryptoHistoryFromBackup({ allowRetry: true }).catch((error) => {
@@ -5122,6 +5908,17 @@ function applyTypingEvent(eventName, payload) {
 }
 
 function handleRealtimeEvent(eventName, payload) {
+  if (eventName === "subscribe_session_ack") {
+    const sessionId = sanitizeText(payload?.session_id, 120);
+    if (sessionId) {
+      liveMiniappSessionSubscriptions.add(sessionId);
+    }
+    return;
+  }
+  if (eventName === "session_event") {
+    void refreshActiveMiniappSession(payload);
+    return;
+  }
   if (eventName === "message_created") {
     void applyIncomingMessage(payload);
     return;
@@ -5211,6 +6008,8 @@ async function startRealtimeSocket() {
       }
       if (eventName === "hello_ack") {
         sendRealtimeAck();
+        liveMiniappSessionSubscriptions.clear();
+        flushMiniappSessionSubscriptions();
         return;
       }
       if (eventName === "resync_required") {
@@ -5226,6 +6025,7 @@ async function startRealtimeSocket() {
   socket.addEventListener("close", async () => {
     if (realtimeSocket === socket) {
       realtimeSocket = null;
+      liveMiniappSessionSubscriptions.clear();
       state.remoteTypingByThread = {};
       stopLocalTyping();
       if (!opened) {
@@ -5273,6 +6073,7 @@ function buildThreadItem(thread) {
   const button = document.createElement("button");
   button.type = "button";
   button.className = `thread-item${thread.id === state.activeThreadId ? " active" : ""}`;
+  const transportSummary = threadTransportSummary(thread);
 
   const avatar = document.createElement("div");
   avatar.className = "avatar";
@@ -5285,6 +6086,11 @@ function buildThreadItem(thread) {
   const name = document.createElement("p");
   name.className = "thread-name";
   name.textContent = thread.title;
+  const titleRow = document.createElement("div");
+  titleRow.className = "thread-title-row";
+  titleRow.appendChild(name);
+  const threadBadge = buildTransportChip(transportSummary?.label, transportSummary?.tone, "thread-badge");
+  if (threadBadge) titleRow.appendChild(threadBadge);
 
   const time = document.createElement("p");
   time.className = "thread-time";
@@ -5295,7 +6101,7 @@ function buildThreadItem(thread) {
   const last = thread.messages?.[thread.messages.length - 1];
   preview.textContent = last ? (last.deleted ? "Message deleted" : last.text) : (thread.previewText || "No messages yet");
 
-  meta.append(name, time);
+  meta.append(titleRow, time);
   body.append(meta, preview);
   button.append(avatar, body);
   button.addEventListener("click", async () => {
@@ -5545,6 +6351,8 @@ async function closeMiniappWindow() {
   clearMiniappLoadTimeout();
   state.miniapp.popupOpen = false;
   state.miniapp.frameWindow = null;
+  clearMiniappRestoreState();
+  clearMiniappSessionSubscriptions();
   el.miniappFrame.src = "about:blank";
 }
 
@@ -6034,6 +6842,9 @@ function renderMessages() {
     const leftMeta = document.createElement("span");
     leftMeta.textContent = stamp;
     meta.appendChild(leftMeta);
+    const transportBadge = messageTransportBadge(message);
+    const transportChip = buildTransportChip(transportBadge?.label, transportBadge?.tone);
+    if (transportChip) meta.appendChild(transportChip);
 
     if (message.direction === "out") {
       const normalizedStatus = normalizeDeliveryStatus(message.transport, message.status);
@@ -6041,7 +6852,7 @@ function renderMessages() {
         const statusNode = document.createElement("span");
         statusNode.className = `delivery-status status-${normalizedStatus.toLowerCase().replace(/_/g, "-")}`;
         const ohmfLabel = deliveryIndicatorLabel(thread, message);
-        statusNode.textContent = ohmfLabel || normalizedStatus;
+        statusNode.textContent = formatOutgoingTransportStatus(message, ohmfLabel || normalizedStatus);
         meta.appendChild(statusNode);
       }
     }
@@ -6053,6 +6864,13 @@ function renderMessages() {
     }
 
     wrap.append(bubble, meta);
+    const failureDetail = messageFailureDetail(message);
+    if (failureDetail?.label) {
+      const note = document.createElement("p");
+      note.className = `bubble-note tone-${sanitizeText(failureDetail.tone, 16) || "warning"}`;
+      note.textContent = sanitizeText(failureDetail.label, 180);
+      wrap.appendChild(note);
+    }
 
     if (reactionBadge) wrap.appendChild(reactionBadge);
     if (replyBacklink) wrap.appendChild(replyBacklink);
@@ -6081,8 +6899,10 @@ function renderMessages() {
 function renderAll() {
   renderThreadList();
   renderMessages();
+  renderTrustPanel();
   renderMiniappWindow();
   renderMessageMetadataWindow();
+  renderDeviceManager();
 }
 
 function openMobileThread() {
@@ -6616,6 +7436,9 @@ async function bootAfterAuth() {
   state.threads = [];
   state.profiles = {};
   state.selfProfile = null;
+  resetDeviceManagerState();
+  resetTrustPanelState();
+  setPairDeviceAuthStatus("");
   state.miniapp.catalog = [];
   state.miniapp.catalogLoaded = false;
   clearCryptoBackupRestoreRetry();
@@ -6648,6 +7471,9 @@ async function bootAfterAuth() {
       console.error(error);
     });
     await loadConversationsFromApi();
+    await restoreMiniappSessionAfterReload().catch((error) => {
+      console.error(error);
+    });
     const requestedConversationId = sanitizeText(new URLSearchParams(window.location.search).get("conversation_id"), 80);
     if (requestedConversationId && getThreadById(requestedConversationId)) {
       state.activeThreadId = requestedConversationId;
@@ -6680,6 +7506,8 @@ async function selectMiniapp(appId) {
   state.miniapp.frameWindow = null;
   state.miniapp.consentRequired = false;
   state.miniapp.lastShareError = "";
+  clearMiniappRestoreState();
+  clearMiniappSessionSubscriptions();
   clearMiniappLoadTimeout();
   el.miniappFrame.src = "about:blank";
   try {
@@ -6710,6 +7538,7 @@ async function openEmbeddedMiniapp() {
     startMiniappLoadTimeout();
     el.miniappFrame.setAttribute("sandbox", "allow-scripts");
     el.miniappFrame.src = buildMiniappFrameURL();
+    persistMiniappRestoreState();
     renderAll();
   } catch (error) {
     console.error(error);
@@ -6733,8 +7562,39 @@ async function resetEmbeddedMiniappSession() {
   state.miniapp.frameWindow = null;
   state.miniapp.consentRequired = false;
   state.miniapp.lastShareError = "";
+  clearMiniappRestoreState();
+  clearMiniappSessionSubscriptions();
   el.miniappFrame.src = "about:blank";
   renderAll();
+}
+
+async function restoreMiniappSessionAfterReload() {
+  const restore = loadMiniappRestoreState();
+  if (!restore) return false;
+  const thread = getThreadById(restore.threadId);
+  if (!thread) {
+    clearMiniappRestoreState();
+    return false;
+  }
+  state.activeThreadId = restore.threadId;
+  await selectMiniapp(restore.appId);
+  try {
+    const record = await fetchMiniappSession(restore.appSessionId);
+    if (!record || record.joinable === false || restore.popupOpen !== true) {
+      clearMiniappRestoreState();
+      return false;
+    }
+    state.miniapp.popupOpen = true;
+    startMiniappLoadTimeout();
+    el.miniappFrame.setAttribute("sandbox", "allow-scripts");
+    el.miniappFrame.src = buildMiniappFrameURL();
+    persistMiniappRestoreState();
+    renderAll();
+    return true;
+  } catch (error) {
+    clearMiniappRestoreState();
+    throw error;
+  }
 }
 
 function logout() {
@@ -6758,6 +7618,9 @@ function logout() {
   state.query = "";
   state.typingDraft = "";
   state.remoteTypingByThread = {};
+  resetDeviceManagerState();
+  resetTrustPanelState();
+  setPairDeviceAuthStatus("");
   state.replyTarget = null;
   state.openMessageMenu = null;
   resetMessageMetadataState();
@@ -6772,6 +7635,8 @@ function logout() {
   state.miniapp.frameWindow = null;
   state.miniapp.consentRequired = false;
   state.miniapp.lastShareError = "";
+  clearMiniappRestoreState();
+  clearMiniappSessionSubscriptions();
   clearMiniappLoadTimeout();
   state.sync.lastUserCursor = 0;
   state.profiles = {};
@@ -6791,12 +7656,18 @@ document.addEventListener("visibilitychange", () => {
   if (state.activeThreadId) {
     void syncThreadReceipts(state.activeThreadId);
   }
+  if (trustPanelSupportedThread(getActiveThread())) {
+    void refreshTrustPanel({ thread: getActiveThread(), silent: true, force: true });
+  }
 });
 
 window.addEventListener("focus", () => {
   if (!state.auth) return;
   if (state.activeThreadId) {
     void syncThreadReceipts(state.activeThreadId);
+  }
+  if (trustPanelSupportedThread(getActiveThread())) {
+    void refreshTrustPanel({ thread: getActiveThread(), silent: true, force: true });
   }
 });
 
@@ -6805,6 +7676,9 @@ window.addEventListener("online", () => {
   void syncFromCursor();
   if (!realtimeSocket) {
     startRealtimeSocket();
+  }
+  if (trustPanelSupportedThread(getActiveThread())) {
+    void refreshTrustPanel({ thread: getActiveThread(), silent: true, force: true });
   }
 });
 
@@ -6954,6 +7828,10 @@ el.newGroupBtn.addEventListener("click", async () => {
   }
 });
 
+el.linkedDevicesBtn.addEventListener("click", () => {
+  void openDeviceManager();
+});
+
 el.newChatForm.addEventListener("submit", (event) => {
   event.preventDefault();
   const phone = toE164(el.newCountryCodeSelect.value, el.newPhoneInput.value);
@@ -7050,9 +7928,21 @@ el.closeThreadBtn.addEventListener("click", async () => {
 
 el.messageMetadataBackdrop.addEventListener("click", closeMessageMetadata);
 el.messageMetadataCloseBtn.addEventListener("click", closeMessageMetadata);
+el.deviceManagerBackdrop.addEventListener("click", closeDeviceManager);
+el.deviceManagerCloseBtn.addEventListener("click", closeDeviceManager);
+el.deviceManagerRefreshBtn.addEventListener("click", () => {
+  void refreshLinkedDevices();
+});
+el.trustRefreshBtn.addEventListener("click", () => {
+  void refreshTrustPanel({ thread: getActiveThread(), force: true });
+});
+el.deviceManagerStartPairingBtn.addEventListener("click", () => {
+  void startPairingFromCurrentDevice();
+});
 
 el.phoneStartForm.addEventListener("submit", startPhoneAuth);
 el.phoneVerifyForm.addEventListener("submit", verifyPhoneAuth);
+el.pairDeviceAuthForm.addEventListener("submit", completePairingOnAuthScreen);
 el.phoneInput.addEventListener("input", updatePhonePreview);
 el.countryCodeSelect.addEventListener("change", updatePhonePreview);
 el.newPhoneInput.addEventListener("input", () => {
@@ -7119,6 +8009,10 @@ document.addEventListener("keydown", async (event) => {
     closeMessageMetadata();
     return;
   }
+  if (state.deviceManager.open) {
+    closeDeviceManager();
+    return;
+  }
   if (state.miniapp.popupOpen) {
     await closeMiniappWindow();
     renderAll();
@@ -7140,6 +8034,7 @@ async function init() {
   }
   showAuthShell();
   setAuthMessage("");
+  setPairDeviceAuthStatus("");
   renderAll();
 }
 

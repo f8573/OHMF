@@ -1,36 +1,21 @@
 package miniapp
 
 import (
-	"context"
 	"encoding/json"
-	"os"
-	"path/filepath"
-	"sort"
 	"testing"
 	"time"
 
 	miniredis "github.com/alicebob/miniredis/v2"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 	"ohmf/services/gateway/internal/config"
 	"ohmf/services/gateway/internal/replication"
+	"ohmf/services/gateway/internal/testutil"
 )
 
 func TestShareSessionPublishesRecipientFanoutAndSyncEvent(t *testing.T) {
-	dsn := os.Getenv("TEST_DATABASE_URL")
-	if dsn == "" {
-		t.Skip("skipping DB integration test; set TEST_DATABASE_URL to run")
-	}
-
-	ctx := context.Background()
-	pool, err := pgxpool.New(ctx, dsn)
-	if err != nil {
-		t.Fatalf("connect: %v", err)
-	}
+	ctx, pool := testutil.OpenAndMigrateGatewayPool(t)
 	defer pool.Close()
-
-	applyAllMigrations(t, ctx, pool)
 
 	mr, err := miniredis.Run()
 	if err != nil {
@@ -44,8 +29,9 @@ func TestShareSessionPublishesRecipientFanoutAndSyncEvent(t *testing.T) {
 	store := replication.NewStore(pool, rdb)
 	svc := NewService(pool, config.Config{}, rdb, store)
 
-	senderID := insertTestUser(t, ctx, pool)
-	recipientID := insertTestUser(t, ctx, pool)
+	senderID := testutil.InsertTestUser(t, ctx, pool)
+	recipientID := testutil.InsertTestUser(t, ctx, pool)
+	appID := "com.example.share." + uuid.NewString()
 	insertMiniappCapableDevice(t, ctx, pool, senderID)
 	insertMiniappCapableDevice(t, ctx, pool, recipientID)
 
@@ -60,7 +46,7 @@ func TestShareSessionPublishesRecipientFanoutAndSyncEvent(t *testing.T) {
 		t.Fatalf("insert members: %v", err)
 	}
 
-	manifestID, err := svc.RegisterManifest(ctx, senderID, validManifest())
+	manifestID, err := svc.RegisterManifest(ctx, senderID, testManifest(appID))
 	if err != nil {
 		t.Fatalf("register manifest: %v", err)
 	}
@@ -145,63 +131,5 @@ func TestShareSessionPublishesRecipientFanoutAndSyncEvent(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for recipient sync event publish")
-	}
-}
-
-func applyAllMigrations(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
-	t.Helper()
-
-	patterns := []string{
-		filepath.Join("..", "..", "migrations", "*.up.sql"),
-		filepath.Join("..", "migrations", "*.up.sql"),
-		filepath.Join("migrations", "*.up.sql"),
-	}
-
-	var paths []string
-	for _, pattern := range patterns {
-		matches, err := filepath.Glob(pattern)
-		if err != nil {
-			t.Fatalf("glob migrations %q: %v", pattern, err)
-		}
-		if len(matches) > 0 {
-			paths = matches
-			break
-		}
-	}
-	if len(paths) == 0 {
-		t.Fatal("no gateway migrations found")
-	}
-
-	sort.Strings(paths)
-	for _, path := range paths {
-		body, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatalf("read migration %q: %v", path, err)
-		}
-		if _, err := pool.Exec(ctx, string(body)); err != nil {
-			t.Fatalf("apply migration %q: %v", path, err)
-		}
-	}
-}
-
-func insertTestUser(t *testing.T, ctx context.Context, pool *pgxpool.Pool) string {
-	t.Helper()
-
-	var userID string
-	phone := "+test-" + uuid.NewString()
-	if err := pool.QueryRow(ctx, `INSERT INTO users (primary_phone_e164) VALUES ($1) RETURNING id::text`, phone).Scan(&userID); err != nil {
-		t.Fatalf("insert user %q: %v", phone, err)
-	}
-	return userID
-}
-
-func insertMiniappCapableDevice(t *testing.T, ctx context.Context, pool *pgxpool.Pool, userID string) {
-	t.Helper()
-
-	if _, err := pool.Exec(ctx, `
-		INSERT INTO devices (user_id, platform, device_name, capabilities)
-		VALUES ($1::uuid, 'WEB', 'OHMF Web', ARRAY['MINI_APPS'])
-	`, userID); err != nil {
-		t.Fatalf("insert mini-app capable device for %q: %v", userID, err)
 	}
 }
