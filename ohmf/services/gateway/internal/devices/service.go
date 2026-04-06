@@ -49,6 +49,17 @@ type Device struct {
 	AttestationLastError string    `json:"attestation_last_error,omitempty"`
 }
 
+type DeviceActivity struct {
+	ID              int64          `json:"id"`
+	EventType       string         `json:"event_type"`
+	CreatedAt       string         `json:"created_at"`
+	DeviceID        string         `json:"device_id,omitempty"`
+	ContactUserID   string         `json:"contact_user_id,omitempty"`
+	ContactDeviceID string         `json:"contact_device_id,omitempty"`
+	Summary         string         `json:"summary"`
+	Payload         map[string]any `json:"payload,omitempty"`
+}
+
 var ErrDeviceNotFound = errors.New("device not found")
 var ErrAttestationDisabled = errors.New("device_attestation_disabled")
 var ErrAttestationChallengeNotFound = errors.New("device_attestation_challenge_not_found")
@@ -379,6 +390,87 @@ func (s *Service) VerifyAttestation(ctx context.Context, userID, deviceID string
 	return s.GetDevice(ctx, userID, deviceID)
 }
 
+func (s *Service) ListRecentActivity(ctx context.Context, userID string, limit int) ([]DeviceActivity, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 25
+	}
+	rows, err := s.db.Query(ctx, `
+		SELECT id, event_type, payload, created_at
+		FROM security_audit_events
+		WHERE target_user_id = $1::uuid
+		  AND event_type = ANY($2::text[])
+		ORDER BY created_at DESC, id DESC
+		LIMIT $3
+	`, userID, []string{
+		"device_pairing_started",
+		"device_pairing_completed",
+		"device_revoked",
+		"device_attestation_challenge_created",
+		"device_attestation_verified",
+		"device_trust_verified",
+		"device_trust_revoked",
+	}, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]DeviceActivity, 0, limit)
+	for rows.Next() {
+		var item DeviceActivity
+		var payloadRaw []byte
+		var createdAt time.Time
+		if err := rows.Scan(&item.ID, &item.EventType, &payloadRaw, &createdAt); err != nil {
+			return nil, err
+		}
+		item.CreatedAt = createdAt.UTC().Format(time.RFC3339Nano)
+		if len(payloadRaw) > 0 {
+			item.Payload = map[string]any{}
+			if err := json.Unmarshal(payloadRaw, &item.Payload); err != nil {
+				item.Payload = map[string]any{}
+			}
+		}
+		item.DeviceID = strings.TrimSpace(stringValue(item.Payload, "device_id"))
+		item.ContactUserID = strings.TrimSpace(stringValue(item.Payload, "contact_user_id"))
+		item.ContactDeviceID = strings.TrimSpace(stringValue(item.Payload, "contact_device_id"))
+		item.Summary = summarizeDeviceActivity(item)
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func stringValue(payload map[string]any, key string) string {
+	if payload == nil {
+		return ""
+	}
+	value, _ := payload[key].(string)
+	return value
+}
+
+func summarizeDeviceActivity(item DeviceActivity) string {
+	switch item.EventType {
+	case "device_pairing_started":
+		return "Started a new pairing code."
+	case "device_pairing_completed":
+		if item.DeviceID != "" {
+			return "Linked a new device."
+		}
+		return "Completed device pairing."
+	case "device_revoked":
+		return "Revoked a linked device."
+	case "device_attestation_challenge_created":
+		return "Requested device attestation."
+	case "device_attestation_verified":
+		return "Verified device attestation."
+	case "device_trust_verified":
+		return "Verified a contact device."
+	case "device_trust_revoked":
+		return "Revoked trust for a contact device."
+	default:
+		return strings.ReplaceAll(item.EventType, "_", " ")
+	}
+}
+
 func nullableTimeString(target *string) any {
 	return newNullableTimeScanner(target)
 }
@@ -410,6 +502,10 @@ func (s *nullableTimeScanner) Scan(src any) error {
 
 // RevokeDevice deletes a device, returning ErrDeviceNotFound if device doesn't exist
 func (s *Service) RevokeDevice(ctx context.Context, userID, deviceID string) error {
+	device, err := s.GetDevice(ctx, userID, deviceID)
+	if err != nil {
+		return err
+	}
 	tag, err := s.db.Exec(ctx, `DELETE FROM devices WHERE user_id = $1 AND id = $2::uuid`, userID, deviceID)
 	if err != nil {
 		return err
@@ -417,6 +513,11 @@ func (s *Service) RevokeDevice(ctx context.Context, userID, deviceID string) err
 	if tag.RowsAffected() == 0 {
 		return ErrDeviceNotFound
 	}
+	_ = securityaudit.Append(ctx, s.db, userID, userID, "device_revoked", map[string]any{
+		"device_id":   deviceID,
+		"platform":    device.Platform,
+		"device_name": device.DeviceName,
+	})
 	return nil
 }
 

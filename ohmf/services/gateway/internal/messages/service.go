@@ -75,6 +75,10 @@ type DB interface {
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }
 
+type rowQuerier interface {
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+}
+
 type Service struct {
 	db                DB
 	useKafkaSend      bool
@@ -2487,21 +2491,28 @@ func (s *Service) MarkRead(ctx context.Context, actor, conversationID string, th
 		return ErrConversationAccess
 	}
 
-	// Insert per-message read receipts for newly read messages
-	if _, err := tx.Exec(ctx, `
-		INSERT INTO message_read_receipts(message_id, reader_user_id, read_at)
-		SELECT m.id, $1::uuid, $2
-		FROM messages m
-		WHERE m.conversation_id = $3::uuid
-		  AND m.server_order <= $4
-		  AND m.sender_user_id <> $1::uuid
-		  AND NOT EXISTS (
-		    SELECT 1 FROM message_read_receipts mrr
-		    WHERE mrr.message_id = m.id AND mrr.reader_user_id = $1::uuid
-		  )
-		ON CONFLICT(message_id, reader_user_id) DO NOTHING
-	`, actor, now, conversationID, through); err != nil {
+	sendReadReceipts, err := userSendsReadReceipts(ctx, tx, actor)
+	if err != nil {
 		return err
+	}
+
+	// Insert per-message read receipts for newly read messages
+	if sendReadReceipts {
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO message_read_receipts(message_id, reader_user_id, read_at)
+			SELECT m.id, $1::uuid, $2
+			FROM messages m
+			WHERE m.conversation_id = $3::uuid
+			  AND m.server_order <= $4
+			  AND m.sender_user_id <> $1::uuid
+			  AND NOT EXISTS (
+			    SELECT 1 FROM message_read_receipts mrr
+			    WHERE mrr.message_id = m.id AND mrr.reader_user_id = $1::uuid
+			  )
+			ON CONFLICT(message_id, reader_user_id) DO NOTHING
+		`, actor, now, conversationID, through); err != nil {
+			return err
+		}
 	}
 
 	if _, err := tx.Exec(ctx, `
@@ -2528,7 +2539,7 @@ func (s *Service) MarkRead(ctx context.Context, actor, conversationID string, th
 		return err
 	}
 
-	if s.replication != nil {
+	if s.replication != nil && sendReadReceipts {
 		if err := s.replication.AppendDomainEvent(ctx, tx, conversationID, actor, replication.DomainEventReadCheckpointAdvanced, replication.ReadCheckpointPayload{
 			ConversationID:     conversationID,
 			ReaderUserID:       actor,
@@ -2542,18 +2553,26 @@ func (s *Service) MarkRead(ctx context.Context, actor, conversationID string, th
 }
 
 // GetConversationReadStatus returns read status for all members of a conversation
-func (s *Service) GetConversationReadStatus(ctx context.Context, userID, conversationID string) (map[string]any, error) {
+func (s *Service) GetConversationReadStatus(ctx context.Context, viewerUserID, conversationID string) (map[string]any, error) {
 	// Verify caller is conversation member
-	if ok, err := s.hasMembership(ctx, s.db, userID, conversationID); err != nil {
+	if ok, err := s.hasMembership(ctx, s.db, viewerUserID, conversationID); err != nil {
 		return nil, err
 	} else if !ok {
 		return nil, ErrConversationAccess
 	}
 
 	rows, err := s.db.Query(ctx, `
-		SELECT u.id::text, u.primary_phone_e164, cm.last_read_server_order, cm.last_delivered_server_order, cm.read_at, cm.delivery_at
+		SELECT
+			u.id::text,
+			u.primary_phone_e164,
+			cm.last_read_server_order,
+			cm.last_delivered_server_order,
+			cm.read_at,
+			cm.delivery_at,
+			COALESCE(upp.send_read_receipts, TRUE) AS send_read_receipts
 		FROM conversation_members cm
 		JOIN users u ON u.id = cm.user_id
+		LEFT JOIN user_privacy_preferences upp ON upp.user_id = cm.user_id
 		WHERE cm.conversation_id = $1::uuid
 		ORDER BY cm.read_at DESC NULLS LAST, cm.delivery_at DESC NULLS LAST
 	`, conversationID)
@@ -2564,18 +2583,23 @@ func (s *Service) GetConversationReadStatus(ctx context.Context, userID, convers
 
 	members := make([]map[string]any, 0, 8)
 	for rows.Next() {
-		var userID, phone string
+		var memberUserID, phone string
 		var lastReadServerOrder int64
 		var lastDeliveredServerOrder int64
 		var readAt sql.NullTime
 		var deliveryAt sql.NullTime
+		var sendReadReceipts bool
 
-		if err := rows.Scan(&userID, &phone, &lastReadServerOrder, &lastDeliveredServerOrder, &readAt, &deliveryAt); err != nil {
+		if err := rows.Scan(&memberUserID, &phone, &lastReadServerOrder, &lastDeliveredServerOrder, &readAt, &deliveryAt, &sendReadReceipts); err != nil {
 			return nil, err
+		}
+		if memberUserID != viewerUserID && !sendReadReceipts {
+			lastReadServerOrder = 0
+			readAt = sql.NullTime{}
 		}
 
 		m := map[string]any{
-			"user_id":                     userID,
+			"user_id":                     memberUserID,
 			"phone":                       phone,
 			"last_read_server_order":      lastReadServerOrder,
 			"last_delivered_server_order": lastDeliveredServerOrder,
@@ -2590,6 +2614,40 @@ func (s *Service) GetConversationReadStatus(ctx context.Context, userID, convers
 	}
 
 	return map[string]any{"members": members}, rows.Err()
+}
+
+func (s *Service) UserSharesTyping(ctx context.Context, userID string) (bool, error) {
+	return userPreferenceFlag(ctx, s.db, userID, "share_typing")
+}
+
+func (s *Service) UserSendsReadReceipts(ctx context.Context, userID string) (bool, error) {
+	return userSendsReadReceipts(ctx, s.db, userID)
+}
+
+func userSendsReadReceipts(ctx context.Context, q rowQuerier, userID string) (bool, error) {
+	return userPreferenceFlag(ctx, q, userID, "send_read_receipts")
+}
+
+func userPreferenceFlag(ctx context.Context, q rowQuerier, userID, column string) (bool, error) {
+	query := ""
+	switch column {
+	case "send_read_receipts":
+		query = `SELECT send_read_receipts FROM user_privacy_preferences WHERE user_id = $1::uuid`
+	case "share_typing":
+		query = `SELECT share_typing FROM user_privacy_preferences WHERE user_id = $1::uuid`
+	default:
+		return false, fmt.Errorf("unsupported privacy column: %s", column)
+	}
+
+	var enabled bool
+	err := q.QueryRow(ctx, query, userID).Scan(&enabled)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return true, nil
+		}
+		return false, err
+	}
+	return enabled, nil
 }
 
 func (s *Service) DeliverPendingToUser(ctx context.Context, recipientUserID string) ([]map[string]any, error) {

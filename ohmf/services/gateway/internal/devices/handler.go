@@ -99,6 +99,20 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{"devices": ds})
 }
 
+func (h *Handler) ListActivity(w http.ResponseWriter, r *http.Request) {
+	userID, ok := middleware.UserIDFromContext(r.Context())
+	if !ok {
+		httpx.WriteError(w, r, http.StatusUnauthorized, "unauthorized", "missing auth", nil)
+		return
+	}
+	items, err := h.svc.ListRecentActivity(r.Context(), userID, 25)
+	if err != nil {
+		httpx.WriteError(w, r, http.StatusInternalServerError, "list_failed", err.Error(), nil)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
 // Revoke revokes a device
 func (h *Handler) Revoke(w http.ResponseWriter, r *http.Request) {
 	userID, ok := middleware.UserIDFromContext(r.Context())

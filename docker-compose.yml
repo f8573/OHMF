@@ -89,7 +89,7 @@ services:
       - POSTGRES_PASSWORD=dev
       - POSTGRES_DB=dev
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "dev"]
       interval: 5s

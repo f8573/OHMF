@@ -94,6 +94,9 @@ window.OHMF_RUNTIME_CONFIG = Object.freeze({
   frontend_port: "${frontend_port}",
   api_host_port: "${api_host_port}",
   api_base_url: "http://localhost:${api_host_port}",
+  developer_mode: true,
+  miniapp_sandbox_port: "${frontend_port}",
+  miniapp_sandbox_url: "http://localhost:${frontend_port}",
   asset_version: "${asset_version}",
 });
 EOF

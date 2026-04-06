@@ -728,6 +728,15 @@ func (s *Store) processTypingEvent(ctx context.Context, tx pgx.Tx, evt pendingEv
 	if err := json.Unmarshal(evt.Payload, &payload); err != nil {
 		return err
 	}
+	if strings.EqualFold(payload.State, "typing_started") {
+		sharesTyping, err := userPrivacyFlagTx(ctx, tx, payload.UserID, "share_typing")
+		if err != nil {
+			return err
+		}
+		if !sharesTyping {
+			return nil
+		}
+	}
 	meta, err := s.LoadConversationMeta(ctx, tx, payload.ConversationID)
 	if err != nil {
 		return err
@@ -770,6 +779,13 @@ func (s *Store) processReadCheckpoint(ctx context.Context, tx pgx.Tx, evt pendin
 		WHERE user_id = $2::uuid AND conversation_id = $1::uuid
 	`, payload.ConversationID, payload.ReaderUserID, payload.ThroughServerOrder); err != nil {
 		return err
+	}
+	sendReadReceipts, err := userPrivacyFlagTx(ctx, tx, payload.ReaderUserID, "send_read_receipts")
+	if err != nil {
+		return err
+	}
+	if !sendReadReceipts {
+		return nil
 	}
 	return s.emitReceiptUpdates(ctx, tx, payload.ConversationID, payload.ReaderUserID, "READ", payload.ThroughServerOrder, payload.ReadAt, deliveries)
 }
@@ -831,6 +847,28 @@ func (s *Store) emitReceiptUpdates(ctx context.Context, tx pgx.Tx, conversationI
 		deliveries[senderID] = append(deliveries[senderID], userEvent)
 	}
 	return nil
+}
+
+func userPrivacyFlagTx(ctx context.Context, tx pgx.Tx, userID, column string) (bool, error) {
+	query := ""
+	switch column {
+	case "send_read_receipts":
+		query = `SELECT send_read_receipts FROM user_privacy_preferences WHERE user_id = $1::uuid`
+	case "share_typing":
+		query = `SELECT share_typing FROM user_privacy_preferences WHERE user_id = $1::uuid`
+	default:
+		return false, fmt.Errorf("unsupported privacy column: %s", column)
+	}
+
+	var enabled bool
+	err := tx.QueryRow(ctx, query, userID).Scan(&enabled)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return true, nil
+		}
+		return false, err
+	}
+	return enabled, nil
 }
 
 func (s *Store) insertUserEventTx(ctx context.Context, tx pgx.Tx, userID, conversationID, eventType string, payload map[string]any) (Event, error) {

@@ -220,6 +220,9 @@ func TestMarkReadPersistsReceiptsAndDomainEvent(t *testing.T) {
 	mock.ExpectExec(`UPDATE conversation_members`).
 		WithArgs("conversation-1", "user-1", int64(7)).
 		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+	mock.ExpectQuery(`SELECT send_read_receipts FROM user_privacy_preferences WHERE user_id = \$1::uuid`).
+		WithArgs("user-1").
+		WillReturnRows(pgxmock.NewRows([]string{"send_read_receipts"}).AddRow(true))
 	mock.ExpectExec(`INSERT INTO message_read_receipts\(message_id, reader_user_id, read_at\)`).
 		WithArgs("user-1", pgxmock.AnyArg(), "conversation-1", int64(7)).
 		WillReturnResult(pgxmock.NewResult("INSERT", 3))
@@ -264,10 +267,11 @@ func TestGetConversationReadStatusIncludesDeliveryAndReadTimes(t *testing.T) {
 		"last_delivered_server_order",
 		"read_at",
 		"delivery_at",
+		"send_read_receipts",
 	}).
-		AddRow("user-1", "+15550001111", int64(7), int64(9), now, later).
-		AddRow("user-2", "+15550002222", int64(3), int64(4), nil, nil)
-	mock.ExpectQuery(`SELECT u.id::text, u.primary_phone_e164, cm.last_read_server_order, cm.last_delivered_server_order, cm.read_at, cm.delivery_at FROM conversation_members cm JOIN users u ON u.id = cm.user_id WHERE cm.conversation_id = \$1::uuid ORDER BY cm.read_at DESC NULLS LAST, cm.delivery_at DESC NULLS LAST`).
+		AddRow("user-1", "+15550001111", int64(7), int64(9), now, later, true).
+		AddRow("user-2", "+15550002222", int64(3), int64(4), nil, nil, true)
+	mock.ExpectQuery(`SELECT u.id::text, u.primary_phone_e164, cm.last_read_server_order, cm.last_delivered_server_order, cm.read_at, cm.delivery_at, COALESCE\(upp.send_read_receipts, TRUE\) AS send_read_receipts FROM conversation_members cm JOIN users u ON u.id = cm.user_id LEFT JOIN user_privacy_preferences upp ON upp.user_id = cm.user_id WHERE cm.conversation_id = \$1::uuid ORDER BY cm.read_at DESC NULLS LAST, cm.delivery_at DESC NULLS LAST`).
 		WithArgs("conversation-1").
 		WillReturnRows(rows)
 

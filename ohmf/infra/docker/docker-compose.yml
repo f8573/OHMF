@@ -165,8 +165,8 @@ services:
   apps:
     image: ohmf-apps:dev
     build:
-      context: ../..
-      dockerfile: services/apps/Dockerfile
+      context: ../../..
+      dockerfile: ohmf/services/apps/Dockerfile
     container_name: ohmf-apps
     depends_on:
       db:

@@ -19,6 +19,9 @@ type Preferences struct {
 	MuteUnknownSenders             bool   `json:"mute_unknown_senders"`
 	ShowPreviews                   bool   `json:"show_previews"`
 	MutedConversationNotifications bool   `json:"muted_conversation_notifications"`
+	SendReadReceipts               bool   `json:"send_read_receipts"`
+	SharePresence                  bool   `json:"share_presence"`
+	ShareTyping                    bool   `json:"share_typing"`
 }
 
 type NotificationPayload struct {
@@ -64,16 +67,24 @@ func (h *Handler) getPrefs(ctx context.Context, userID, deviceID string) (Prefer
 	`, userID, deviceID).Scan(&prefs.UserID, &prefs.DeviceID, &prefs.PushEnabled, &prefs.MuteUnknownSenders, &prefs.ShowPreviews, &prefs.MutedConversationNotifications)
 	if err != nil {
 		if err == pgx.ErrNoRows {
-			return Preferences{
+			prefs = Preferences{
 				UserID:                         userID,
 				DeviceID:                       deviceID,
 				PushEnabled:                    true,
 				ShowPreviews:                   true,
 				MutedConversationNotifications: false,
-			}, nil
+			}
+		} else {
+			return Preferences{}, err
 		}
+	}
+	privacy, err := h.getUserPrivacyPrefs(ctx, userID)
+	if err != nil {
 		return Preferences{}, err
 	}
+	prefs.SendReadReceipts = privacy.SendReadReceipts
+	prefs.SharePresence = privacy.SharePresence
+	prefs.ShareTyping = privacy.ShareTyping
 	return prefs, nil
 }
 
@@ -100,7 +111,57 @@ func (h *Handler) upsertPrefs(ctx context.Context, prefs Preferences) (Preferenc
 	`, prefs.UserID, prefs.DeviceID, prefs.PushEnabled, prefs.MuteUnknownSenders, prefs.ShowPreviews, prefs.MutedConversationNotifications); err != nil {
 		return Preferences{}, err
 	}
+	if err := h.upsertUserPrivacyPrefs(ctx, prefs); err != nil {
+		return Preferences{}, err
+	}
 	return h.getPrefs(ctx, prefs.UserID, prefs.DeviceID)
+}
+
+type userPrivacyPreferences struct {
+	SendReadReceipts bool
+	SharePresence    bool
+	ShareTyping      bool
+}
+
+func (h *Handler) getUserPrivacyPrefs(ctx context.Context, userID string) (userPrivacyPreferences, error) {
+	var prefs userPrivacyPreferences
+	err := h.db.QueryRow(ctx, `
+		SELECT send_read_receipts, share_presence, share_typing
+		FROM user_privacy_preferences
+		WHERE user_id = $1::uuid
+	`, userID).Scan(&prefs.SendReadReceipts, &prefs.SharePresence, &prefs.ShareTyping)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return userPrivacyPreferences{
+				SendReadReceipts: true,
+				SharePresence:    true,
+				ShareTyping:      true,
+			}, nil
+		}
+		return userPrivacyPreferences{}, err
+	}
+	return prefs, nil
+}
+
+func (h *Handler) upsertUserPrivacyPrefs(ctx context.Context, prefs Preferences) error {
+	_, err := h.db.Exec(ctx, `
+		INSERT INTO user_privacy_preferences (
+			user_id,
+			send_read_receipts,
+			share_presence,
+			share_typing,
+			created_at,
+			updated_at
+		)
+		VALUES ($1::uuid, $2, $3, $4, now(), now())
+		ON CONFLICT (user_id)
+		DO UPDATE SET
+			send_read_receipts = EXCLUDED.send_read_receipts,
+			share_presence = EXCLUDED.share_presence,
+			share_typing = EXCLUDED.share_typing,
+			updated_at = now()
+	`, prefs.UserID, prefs.SendReadReceipts, prefs.SharePresence, prefs.ShareTyping)
+	return err
 }
 
 func (h *Handler) DispatchPending(ctx context.Context, limit int) error {

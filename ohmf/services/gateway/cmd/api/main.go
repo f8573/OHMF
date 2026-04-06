@@ -364,6 +364,7 @@ func main() {
 			protected.Post("/conversations", convHandler.Create)
 			protected.Post("/devices", devHandler.Register)
 			protected.Get("/devices", devHandler.List)
+			protected.Get("/devices/activity", devHandler.ListActivity)
 			protected.Patch("/devices/{id}", devHandler.Update)
 			protected.Delete("/devices/{id}", devHandler.Revoke)
 			protected.Post("/devices/{id}/attestation/challenge", devHandler.CreateAttestationChallenge)

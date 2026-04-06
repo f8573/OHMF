@@ -44,7 +44,18 @@ func NewService(db db, redisClient *redis.Client) *Service {
 }
 
 func (s *Service) GetUserPresence(ctx context.Context, userID string) (UserPresence, error) {
+	return s.GetUserPresenceForViewer(ctx, userID, userID)
+}
+
+func (s *Service) GetUserPresenceForViewer(ctx context.Context, viewerUserID, userID string) (UserPresence, error) {
 	result := UserPresence{UserID: userID, Sessions: []Session{}}
+	sharePresence, err := s.userSharesPresence(ctx, userID)
+	if err != nil {
+		return result, err
+	}
+	if viewerUserID != userID && !sharePresence {
+		return result, nil
+	}
 	if s.redis == nil {
 		return result, nil
 	}
@@ -111,18 +122,49 @@ func (s *Service) GetConversationPresence(ctx context.Context, actorUserID, conv
 		if err := rows.Scan(&userID); err != nil {
 			return nil, err
 		}
-		item, err := s.GetUserPresence(ctx, userID)
+		item, err := s.GetUserPresenceForViewer(ctx, actorUserID, userID)
+		if err != nil {
+			return nil, err
+		}
+		sharePresence, err := s.userSharesPresence(ctx, userID)
 		if err != nil {
 			return nil, err
 		}
 		if s.redis != nil {
-			if watching, err := s.redis.Exists(ctx, "presence:conv:"+conversationID+":user:"+userID).Result(); err == nil && watching > 0 {
-				item.Online = true
+			if sharePresence {
+				if watching, err := s.redis.Exists(ctx, "presence:conv:"+conversationID+":user:"+userID).Result(); err == nil && watching > 0 {
+					item.Online = true
+				}
 			}
+		}
+		if actorUserID != userID && !sharePresence {
+			item.Online = false
+			item.LastSeenAt = ""
+			item.SessionCount = 0
+			item.Sessions = []Session{}
 		}
 		items = append(items, item)
 	}
 	return items, rows.Err()
+}
+
+func (s *Service) userSharesPresence(ctx context.Context, userID string) (bool, error) {
+	if s.db == nil {
+		return true, nil
+	}
+	var sharePresence bool
+	err := s.db.QueryRow(ctx, `
+		SELECT share_presence
+		FROM user_privacy_preferences
+		WHERE user_id = $1::uuid
+	`, userID).Scan(&sharePresence)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return true, nil
+		}
+		return false, err
+	}
+	return sharePresence, nil
 }
 
 func (s *Service) ensureMembership(ctx context.Context, actorUserID, conversationID string) error {

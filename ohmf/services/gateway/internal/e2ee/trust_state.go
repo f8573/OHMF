@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"ohmf/services/gateway/internal/securityaudit"
 )
 
 var ErrTrustDeviceNotFound = errors.New("trust_device_not_found")
@@ -190,6 +191,16 @@ func (sm *SessionManager) writeTrustState(
 	if _, err := sm.db.Exec(ctx, query, userID, contactUserID, contactDeviceID, trustState, currentFingerprint, signingPublicKey, verified); err != nil {
 		return nil, fmt.Errorf("write trust state: %w", err)
 	}
+	eventType := "device_trust_revoked"
+	if verified {
+		eventType = "device_trust_verified"
+	}
+	_ = securityaudit.Append(ctx, sm.db, userID, userID, eventType, map[string]any{
+		"contact_user_id":   contactUserID,
+		"contact_device_id": contactDeviceID,
+		"fingerprint":       currentFingerprint,
+		"trust_state":       normalizeStoredTrustState(trustState),
+	})
 	return sm.GetTrustStateView(ctx, userID, contactUserID, contactDeviceID)
 }
 

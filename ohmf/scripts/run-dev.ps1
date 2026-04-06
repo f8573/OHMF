@@ -74,6 +74,9 @@ function Write-RuntimeConfig {
     "  frontend_port: `"$FrontendPort`","
     "  api_host_port: `"$ApiHostPort`","
     "  api_base_url: `"http://localhost:$ApiHostPort`","
+    "  developer_mode: true,"
+    "  miniapp_sandbox_port: `"$FrontendPort`","
+    "  miniapp_sandbox_url: `"http://localhost:$FrontendPort`","
     "  asset_version: `"$AssetVersion`","
     "});"
   )

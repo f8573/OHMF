@@ -877,10 +877,24 @@ func (h *Handler) handleTypingSignal(ctx context.Context, c *client, conversatio
 		}
 		return
 	}
+	sharesTyping, err := h.messages.UserSharesTyping(ctx, c.userID)
+	if err != nil {
+		h.sendJSON(c, "error", map[string]any{"code": "server_error", "message": "privacy_check_failed"})
+		return
+	}
 	now := time.Now().UTC()
 
 	h.touchConnection(ctx, c)
 	key := "typing:conv:" + conversationID + ":user:" + c.userID
+	if eventName == "typing.started" && !sharesTyping {
+		if h.redis != nil {
+			_ = h.redis.Del(ctx, key).Err()
+		}
+		if c.typingConversations != nil {
+			delete(c.typingConversations, conversationID)
+		}
+		return
+	}
 	if eventName == "typing.started" {
 		if h.redis != nil {
 			if exists, err := h.redis.Exists(ctx, key).Result(); err == nil && exists > 0 {

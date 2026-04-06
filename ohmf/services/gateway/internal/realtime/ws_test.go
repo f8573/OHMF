@@ -33,6 +33,9 @@ func TestHandleTypingSignalBroadcastsToOtherMembers(t *testing.T) {
 	mock.ExpectQuery(`SELECT 1 FROM conversation_members WHERE conversation_id = \$1::uuid AND user_id = \$2::uuid`).
 		WithArgs("conversation-1", "user-1").
 		WillReturnRows(pgxmock.NewRows([]string{"one"}).AddRow(1))
+	mock.ExpectQuery(`SELECT share_typing FROM user_privacy_preferences WHERE user_id = \$1::uuid`).
+		WithArgs("user-1").
+		WillReturnRows(pgxmock.NewRows([]string{"share_typing"}).AddRow(true))
 	mock.ExpectQuery(`SELECT 1 FROM conversation_members WHERE conversation_id = \$1::uuid AND user_id = \$2::uuid`).
 		WithArgs("conversation-1", "user-2").
 		WillReturnRows(pgxmock.NewRows([]string{"one"}).AddRow(1))
@@ -195,6 +198,9 @@ func TestTypingStateIsCleanedUpOnDisconnect(t *testing.T) {
 	mock.ExpectQuery(`SELECT 1 FROM conversation_members WHERE conversation_id = \$1::uuid AND user_id = \$2::uuid`).
 		WithArgs("conversation-1", "user-1").
 		WillReturnRows(pgxmock.NewRows([]string{"one"}).AddRow(1))
+	mock.ExpectQuery(`SELECT share_typing FROM user_privacy_preferences WHERE user_id = \$1::uuid`).
+		WithArgs("user-1").
+		WillReturnRows(pgxmock.NewRows([]string{"share_typing"}).AddRow(true))
 
 	handler.handleTypingSignal(context.Background(), actor, "conversation-1", "typing.started", "127.0.0.1")
 	if !mr.Exists("typing:conv:conversation-1:user:user-1") {

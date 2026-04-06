@@ -66,10 +66,29 @@ func TestGatewayIntegration(t *testing.T) {
 
     // 3) Register an app via gateway
     app := map[string]interface{}{
-        "app_id": fmt.Sprintf("com.example.test.%d", time.Now().UnixNano()),
-        "entrypoint": "https://example.com/app",
-        "permissions": []string{"read"},
-        "signature": "sig",
+        "manifest": map[string]interface{}{
+            "manifest_version": "1.0",
+            "app_id": fmt.Sprintf("com.example.test.%d", time.Now().UnixNano()),
+            "name": "Integration Test App",
+            "version": "1.0.0",
+            "entrypoint": map[string]any{
+                "type": "url",
+                "url":  "https://example.com/app",
+            },
+            "message_preview": map[string]any{
+                "type": "static_image",
+                "url":  "https://example.com/preview.png",
+            },
+            "permissions": []string{"conversation.read_context"},
+            "capabilities": map[string]any{
+                "turn_based": true,
+            },
+            "signature": map[string]any{
+                "alg": "RS256",
+                "kid": "integration",
+                "sig": "placeholder",
+            },
+        },
     }
     ab, _ := json.Marshal(app)
     resp, err = client.Post(gateway+"/v1/apps/register", "application/json", bytes.NewReader(ab))
