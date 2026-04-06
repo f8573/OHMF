@@ -23,9 +23,6 @@ else
 	exit 1
 fi
 
-start_postgres
-trap stop_postgres EXIT
-
 if [ "$MODE" = "integration" ]; then
 	echo "Running integration tests via docker compose (itest)..."
 	# Use docker compose to run the itest service which runs the integration tests in-container
@@ -40,6 +37,8 @@ if [ "$MODE" = "integration" ]; then
 		exit 1
 	fi
 else
+	start_postgres
+	trap stop_postgres EXIT
 	echo "Running unit tests for ohmf module..."
 	(cd ohmf && "$GO_CMD" test ./... -v)
 fi

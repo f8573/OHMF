@@ -1,4 +1,15 @@
 {
+  "private": true,
+  "scripts": {
+    "test:list": "node ./scripts/test-gates.js list",
+    "test:unit": "node ./scripts/test-gates.js unit",
+    "test:integration": "node ./scripts/test-gates.js integration",
+    "test:web": "node ./scripts/test-gates.js web",
+    "test:e2e": "node ./scripts/test-gates.js e2e",
+    "test:live": "node ./scripts/test-gates.js live",
+    "test:perf": "node ./scripts/test-gates.js perf",
+    "test:staging": "node ./scripts/test-gates.js staging"
+  },
   "dependencies": {
     "playwright": "^1.58.2"
   }

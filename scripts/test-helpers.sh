@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+OHMF_TEST_POSTGRES_MODE="${OHMF_TEST_POSTGRES_MODE:-external}"
+
 # Locate a docker binary. Allows `docker` on PATH or common Docker Desktop Windows path.
 find_docker_cmd() {
   if [ -n "${DOCKER_CMD:-}" ]; then
@@ -24,6 +26,12 @@ find_docker_cmd() {
 
 # Start the Postgres service via docker compose and wait until it's accepting connections.
 start_postgres() {
+  if [ -n "${TEST_DATABASE_URL:-}" ] || [ -n "${POSTGRES_URL:-}" ] || [ -n "${DB_DSN:-}" ]; then
+    echo "External DB provided via environment; skipping postgres startup."
+    OHMF_TEST_POSTGRES_MODE="external"
+    return 0
+  fi
+
   DOCKER_CMD=$(find_docker_cmd) || true
 
   # If docker CLI is runnable in this environment, use it. Otherwise try PowerShell on Windows host.
@@ -67,15 +75,34 @@ start_postgres() {
     fi
   }
 
+  port_is_open() {
+    (echo >/dev/tcp/127.0.0.1/5432) >/dev/null 2>&1
+  }
+
   echo "Bringing up postgres with docker compose (or fallback to docker run)..."
   if run_docker compose up -d postgres >/dev/null 2>&1; then
     # compose-managed service
     cid=$(run_docker compose ps -q postgres)
+    OHMF_TEST_POSTGRES_MODE="compose"
   else
     echo "No 'postgres' service in compose; falling back to a standalone postgres container"
+    if port_is_open; then
+      echo "Port 5432 is already in use; assuming an external Postgres is available."
+      OHMF_TEST_POSTGRES_MODE="external"
+      return 0
+    fi
     # Start a standalone postgres container for tests
-    run_docker run -d --name ohmf_test_postgres -e POSTGRES_USER=dev -e POSTGRES_PASSWORD=dev -e POSTGRES_DB=dev -p 5432:5432 postgres:15-alpine >/dev/null
-    cid=$(run_docker ps -q -f name=ohmf_test_postgres)
+    if run_docker run -d --name ohmf_test_postgres -e POSTGRES_USER=dev -e POSTGRES_PASSWORD=dev -e POSTGRES_DB=dev -p 5432:5432 postgres:15-alpine >/dev/null 2>&1; then
+      cid=$(run_docker ps -q -f name=ohmf_test_postgres)
+      OHMF_TEST_POSTGRES_MODE="standalone"
+    elif port_is_open; then
+      echo "Port 5432 is already in use; assuming an external Postgres is available."
+      OHMF_TEST_POSTGRES_MODE="external"
+      return 0
+    else
+      echo "Could not start postgres for tests" >&2
+      return 1
+    fi
   fi
   if [ -z "$cid" ]; then
     echo "Could not determine postgres container id" >&2
@@ -96,26 +123,29 @@ start_postgres() {
 
 # Stop and remove the Postgres service created by docker compose.
 stop_postgres() {
+  if [ "${OHMF_TEST_POSTGRES_MODE:-external}" = "external" ]; then
+    return 0
+  fi
   DOCKER_CMD=$(find_docker_cmd) || true
-  if command -v powershell.exe >/dev/null 2>&1; then
+
+  if [ "${OHMF_TEST_POSTGRES_MODE:-external}" = "compose" ] && command -v powershell.exe >/dev/null 2>&1; then
     PWSH_CMD="powershell.exe"
     "$PWSH_CMD" -NoProfile -Command "docker compose stop postgres" >/dev/null 2>&1 || true
     "$PWSH_CMD" -NoProfile -Command "docker compose rm -f postgres" >/dev/null 2>&1 || true
     return 0
   fi
-  if command -v pwsh >/dev/null 2>&1; then
+  if [ "${OHMF_TEST_POSTGRES_MODE:-external}" = "compose" ] && command -v pwsh >/dev/null 2>&1; then
     PWSH_CMD="pwsh"
     "$PWSH_CMD" -NoProfile -Command "docker compose stop postgres" >/dev/null 2>&1 || true
     "$PWSH_CMD" -NoProfile -Command "docker compose rm -f postgres" >/dev/null 2>&1 || true
     return 0
   fi
-  if [ -n "$DOCKER_CMD" ]; then
+  if [ "${OHMF_TEST_POSTGRES_MODE:-external}" = "compose" ] && [ -n "$DOCKER_CMD" ]; then
     "$DOCKER_CMD" compose stop postgres >/dev/null 2>&1 || true
     "$DOCKER_CMD" compose rm -f postgres >/dev/null 2>&1 || true
+    return 0
   fi
-  # Also remove standalone test container if present
-  # Prefer using the discovered docker binary if possible
-  DOCKER_CMD=$(find_docker_cmd) || true
+
   if [ -n "$DOCKER_CMD" ]; then
     cid=$($DOCKER_CMD ps -a -q -f name=ohmf_test_postgres 2>/dev/null || true)
     if [ -n "$cid" ]; then
@@ -124,7 +154,6 @@ stop_postgres() {
     return 0
   fi
 
-  # Fallback: try PowerShell to inspect and remove the container
   if command -v powershell.exe >/dev/null 2>&1; then
     PWSH_CMD=powershell.exe
     cid=$($PWSH_CMD -NoProfile -Command "docker ps -a -q -f name=ohmf_test_postgres" 2>/dev/null || true)
@@ -143,7 +172,6 @@ stop_postgres() {
     return 0
   fi
 
-  # Last resort: system docker
   if command -v docker >/dev/null 2>&1; then
     cid=$(docker ps -a -q -f name=ohmf_test_postgres 2>/dev/null || true)
     if [ -n "$cid" ]; then

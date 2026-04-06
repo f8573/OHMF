@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [ main ]
+    branches: ["main"]
   pull_request:
-    branches: [ main ]
+    branches: ["main"]
   workflow_dispatch: {}
 
 jobs:
@@ -17,7 +17,12 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v4
         with:
-          go-version: '1.25'
+          go-version: "1.25"
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
 
       - name: Cache Go modules
         uses: actions/cache@v4
@@ -37,10 +42,10 @@ jobs:
           cd tools/validate_openapi || exit 1
           go run . -spec ../../${OPENAPI_SPEC}
 
-      - name: Run repository tests (script)
+      - name: Run fast standardized gates
         run: |
-          chmod +x ./scripts/run-tests.sh || true
-          ./scripts/run-tests.sh
+          npm run test:unit
+          npm run test:web
 
       - name: Build docker images
         run: |
@@ -48,7 +53,6 @@ jobs:
 
       - name: Run containerized integration test
         run: |
-          # Run the dedicated itest service inside the compose network.
           docker compose up --build --abort-on-container-exit --exit-code-from itest itest
 
       - name: Collect docker-compose logs on failure
@@ -69,84 +73,3 @@ jobs:
         if: always()
         run: |
           docker compose down -v
-name: CI
-
-on:
-  push:
-    branches: ["main"]
-  pull_request:
-    branches: ["main"]
-  workflow_dispatch: {}
-
-jobs:
-  build-and-test:
-    runs-on: ubuntu-latest
-    services: {}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v4
-        with:
-          go-version: '1.x'
-
-      - name: Cache Go modules
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-
-
-      - name: Run repository tests (script)
-        run: |
-          chmod +x ./scripts/run-tests.sh || true
-          ./scripts/run-tests.sh
-
-      - name: Build docker images
-        run: |
-          docker-compose build --pull
-
-      - name: Start services
-        run: |
-          docker-compose up -d
-
-      - name: Wait for gateway health
-        run: |
-          echo "Waiting for gateway..."
-          for i in {1..30}; do
-            if curl -fsS "http://localhost:8080/healthz" >/dev/null 2>&1; then
-              echo gateway healthy
-              exit 0
-            fi
-            sleep 2
-          done
-          echo "gateway did not become healthy" >&2
-          exit 1
-
-      - name: Run repository integration tests (script)
-        run: |
-          chmod +x ./scripts/run-tests.sh || true
-          ./scripts/run-tests.sh --integration
-
-      - name: Collect docker-compose logs on failure
-        if: failure()
-        run: |
-          mkdir -p ci-logs
-          docker-compose logs > ci-logs/docker-compose.log || true
-        continue-on-error: true
-
-      - name: Upload logs
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: docker-logs
-          path: ci-logs
-
-      - name: Teardown
-        if: always()
-        run: |
-          docker-compose down -v
