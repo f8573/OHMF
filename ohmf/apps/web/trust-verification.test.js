@@ -70,3 +70,17 @@ test("stale trust refresh re-reads the latest backend state", () => {
   assert.equal(refreshed[0].trustState, "REVOKED");
   assert.match(helpers.summarizeTrustDevices(refreshed), /revoked/i);
 });
+
+test("trust panel appears only for secure direct-message contexts", () => {
+  const source = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
+  assert.match(source, /function trustPanelSupportedThread\(thread\)/);
+  assert.match(source, /thread\.kind === "dm"/);
+  assert.match(source, /\(thread\.e2eeReady \|\| encryptionState === "ENCRYPTED"\)/);
+});
+
+test("trust panel styles keep the shell compact instead of consuming the chat viewport", () => {
+  const source = fs.readFileSync(path.join(__dirname, "styles.css"), "utf8");
+  assert.match(source, /\.chat-trust-list\s*\{[\s\S]*max-height:\s*8\.5rem;[\s\S]*overflow:\s*auto;/);
+  assert.match(source, /\.chat-trust-fingerprint\s*\{[\s\S]*text-overflow:\s*ellipsis;/);
+  assert.match(source, /\.chat-trust-panel \.status-msg\s*\{[\s\S]*min-height:\s*0;/);
+});

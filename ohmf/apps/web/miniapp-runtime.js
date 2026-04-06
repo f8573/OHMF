@@ -74,6 +74,12 @@ function sanitizeText(value, limit = 240) {
   return String(value || "").replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, limit);
 }
 
+function initialManifestUrl() {
+  const params = new URLSearchParams(window.location.search);
+  const requested = sanitizeText(params.get("manifest"), 300);
+  return requested || DEFAULT_MANIFEST_URL;
+}
+
 function randomId(prefix) {
   if (window.crypto && typeof window.crypto.randomUUID === "function") {
     return `${prefix}_${window.crypto.randomUUID().replace(/-/g, "")}`;
@@ -341,9 +347,24 @@ function renderPermissions() {
 function rewriteLocalDevEntrypoint(rawUrl) {
   const url = new URL(rawUrl, window.location.href);
   const localHosts = new Set(["localhost", "127.0.0.1"]);
-  if (localHosts.has(url.hostname) && localHosts.has(window.location.hostname) && url.port !== FRONTEND_PORT) {
+  if (
+    localHosts.has(url.hostname) &&
+    localHosts.has(window.location.hostname) &&
+    (url.hostname !== window.location.hostname || url.port !== FRONTEND_PORT)
+  ) {
     url.protocol = window.location.protocol;
     url.host = `${window.location.hostname}:${FRONTEND_PORT}`;
+  }
+  return url.toString();
+}
+
+function rewriteLocalDevUrl(rawUrl, portOverride = "") {
+  if (!sanitizeText(rawUrl, 400)) return rawUrl;
+  const url = new URL(rawUrl, window.location.href);
+  const localHosts = new Set(["localhost", "127.0.0.1"]);
+  if (localHosts.has(url.hostname) && localHosts.has(window.location.hostname)) {
+    url.protocol = window.location.protocol;
+    url.host = portOverride ? `${window.location.hostname}:${portOverride}` : window.location.host;
   }
   return url.toString();
 }
@@ -364,11 +385,9 @@ function validateManifest(manifest) {
 }
 
 async function fetchManifest(url) {
-  // Convert relative URLs to absolute URLs from mini-app sandbox origin
   let resolvedUrl = url;
   if (!url.startsWith("http://") && !url.startsWith("https://")) {
-    const miniappSandboxUrl = window.OHMF_RUNTIME_CONFIG?.miniapp_sandbox_url || "http://localhost:5174";
-    resolvedUrl = new URL(url, miniappSandboxUrl + "/").toString();
+    resolvedUrl = new URL(url, window.location.href).toString();
   }
   const response = await fetch(resolvedUrl, { cache: "no-store" });
   if (!response.ok) {
@@ -377,6 +396,15 @@ async function fetchManifest(url) {
   const manifest = await response.json();
   validateManifest(manifest);
   manifest.entrypoint.url = rewriteLocalDevEntrypoint(manifest.entrypoint.url);
+  if (manifest.message_preview?.url) {
+    const previewPort = String(window.OHMF_RUNTIME_CONFIG?.miniapp_sandbox_port || "5174");
+    manifest.message_preview.url = rewriteLocalDevUrl(manifest.message_preview.url, previewPort);
+  }
+  if (Array.isArray(manifest.metadata?.declared_origins)) {
+    manifest.metadata.declared_origins = manifest.metadata.declared_origins.map((origin) =>
+      rewriteLocalDevUrl(origin, String(window.OHMF_RUNTIME_CONFIG?.miniapp_sandbox_port || "5174"))
+    );
+  }
   if (!manifest.manifest_version) {
     manifest.manifest_version = "1.0";
   }
@@ -735,7 +763,7 @@ function buildFrameUrl() {
   // Use mini-app sandbox origin (separate from main app)
   // This ensures the mini-app runs in an isolated security context
   const miniappSandboxUrl = window.OHMF_RUNTIME_CONFIG?.miniapp_sandbox_url || "http://localhost:5174";
-  let baseUrl = state.manifest.entrypoint.url;
+  let baseUrl = rewriteLocalDevEntrypoint(state.manifest.entrypoint.url);
 
   // In production with isolated origin infrastructure, the app_origin would be used as:
   // const protocol = new URL(state.manifest.entrypoint.url).protocol;
@@ -746,16 +774,24 @@ function buildFrameUrl() {
   url.searchParams.set("parent_origin", window.location.origin);
   url.searchParams.set("app_id", state.manifest.app_id);
   url.searchParams.set("app_origin", state.appOrigin || ""); // P3.2: Include origin for client-side validation
+  url.searchParams.set("asset_version", window.OHMF_RUNTIME_CONFIG?.asset_version || "dev");
   return url.toString();
+}
+
+function frameSandboxFlags() {
+  const isLocal = new Set(["localhost", "127.0.0.1"]).has(window.location.hostname);
+  return isLocal && Boolean(window.OHMF_RUNTIME_CONFIG?.developer_mode)
+    ? "allow-scripts allow-same-origin"
+    : "allow-scripts";
 }
 
 function launchFrame() {
   state.channelId = randomId("chan");
   state.frameWindow = null;
   // P3.2: Sandbox attributes enforce isolation
-  // allow-scripts: required for app code execution
-  // allow-same-origin removed (P3.1): no direct host access via cookies/storage
-  el.frame.setAttribute("sandbox", "allow-scripts");
+  // Production keeps the stricter allow-scripts-only sandbox.
+  // Local developer mode adds allow-same-origin so same-origin dev mini-apps and browser tooling do not hit opaque-origin storage restrictions.
+  el.frame.setAttribute("sandbox", frameSandboxFlags());
   el.frame.src = buildFrameUrl();
   const suffix = state.sessionMode === "gateway" ? " using gateway session." : " using local fallback session.";
   const originNote = state.appOrigin ? ` (isolated: ${state.appOrigin})` : "";
@@ -765,7 +801,7 @@ function launchFrame() {
     app_origin: state.appOrigin,
     channel: state.channelId,
     mode: state.sessionMode,
-    sandbox: "allow-scripts",
+    sandbox: frameSandboxFlags(),
   });
 }
 
@@ -1053,19 +1089,29 @@ window.addEventListener("message", async (event) => {
   // In production, this validates that the iframe is running at the expected isolated origin
   if (state.appOrigin) {
     const expectedOriginUrl = new URL(`http://${state.appOrigin}`);
-    const messageOrigin = new URL(event.origin);
-    if (messageOrigin.host !== expectedOriginUrl.host) {
-      addLog("error", "runtime.invalid_origin", {
-        expected: expectedOriginUrl.host,
-        received: messageOrigin.host,
-      });
-      return;
+    if (event.origin !== "null") {
+      const messageOrigin = new URL(event.origin);
+      if (messageOrigin.host !== expectedOriginUrl.host) {
+        addLog("error", "runtime.invalid_origin", {
+          expected: expectedOriginUrl.host,
+          received: messageOrigin.host,
+        });
+        return;
+      }
     }
   } else {
-    // Fallback: validate against manifest entrypoint origin
-    if (state.manifest?.entrypoint?.url) {
+    // Fallback: validate against manifest entrypoint origin. Sandboxed iframes
+    // without allow-same-origin report an opaque "null" origin, so rely on
+    // channel and source-window correlation for the local runtime case.
+    if (event.origin !== "null" && state.manifest?.entrypoint?.url) {
       const expectedOrigin = new URL(state.manifest.entrypoint.url, window.location.href).origin;
-      if (event.origin !== expectedOrigin) return;
+      if (event.origin !== expectedOrigin) {
+        addLog("error", "runtime.invalid_origin", {
+          expected: expectedOrigin,
+          received: event.origin,
+        });
+        return;
+      }
     }
   }
 
@@ -1136,7 +1182,9 @@ el.clearSessionBtn.addEventListener("click", async () => {
 });
 
 renderLog();
-loadAndLaunch(DEFAULT_MANIFEST_URL).catch((error) => {
+const startupManifestUrl = initialManifestUrl();
+el.manifestUrl.value = startupManifestUrl;
+loadAndLaunch(startupManifestUrl).catch((error) => {
   setErrorStatus(error.message || "Failed to start runtime.");
   addLog("error", "runtime.bootstrap_failed", { message: error.message || String(error) });
 });

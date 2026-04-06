@@ -44,7 +44,11 @@
         const deviceName = sanitizeText(raw && raw.device_name, 80) || `${platform} device`;
         const clientVersion = sanitizeText(raw && raw.client_version, 40);
         const lastSeenAt = safeDateValue(raw && raw.last_seen_at);
+        const attestationType = sanitizeText(raw && raw.attestation_type, 40).toUpperCase();
         const attestationState = sanitizeText(raw && raw.attestation_state, 24).toUpperCase();
+        const attestedAt = safeDateValue(raw && raw.attested_at);
+        const attestationExpiresAt = safeDateValue(raw && raw.attestation_expires_at);
+        const attestationLastError = sanitizeText(raw && raw.attestation_last_error, 200);
         const capabilities = normalizeCapabilities(raw && raw.capabilities);
         return {
           id,
@@ -52,7 +56,11 @@
           platform,
           clientVersion,
           lastSeenAt,
+          attestationType,
           attestationState,
+          attestedAt,
+          attestationExpiresAt,
+          attestationLastError,
           capabilities,
           isCurrent: id === current,
         };

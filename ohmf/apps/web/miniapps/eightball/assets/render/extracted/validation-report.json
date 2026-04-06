@@ -1,0 +1,28 @@
+{
+  "generatedAt": "2026-04-02T19:52:30.748Z",
+  "totalOutputs": 95,
+  "previewPath": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\preview.html",
+  "validationScreenshotPath": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\validation\\atlas-preview.png",
+  "sheets": [
+    {
+      "id": "hud",
+      "sourceName": "hud-ipadhd.png",
+      "count": 65
+    },
+    {
+      "id": "hud2",
+      "sourceName": "hud2-ipadhd.png",
+      "count": 17
+    },
+    {
+      "id": "table-base",
+      "sourceName": "tableBase-ipadhd.png",
+      "count": 10
+    },
+    {
+      "id": "table-cushions",
+      "sourceName": "tableCushions-hd.png",
+      "count": 3
+    }
+  ]
+}

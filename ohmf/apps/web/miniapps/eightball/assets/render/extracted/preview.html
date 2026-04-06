@@ -1,0 +1,1217 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>8 Ball Atlas Preview</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0d1014;
+        --surface: #161b21;
+        --surface-strong: #1d242c;
+        --line: rgba(255,255,255,0.08);
+        --text: #eef2f6;
+        --muted: #98a4b1;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: "Segoe UI", system-ui, sans-serif;
+        background:
+          radial-gradient(circle at top left, rgba(151, 48, 64, 0.24), transparent 20rem),
+          linear-gradient(180deg, #0c1015, #121820 48%, #0c1015);
+        color: var(--text);
+      }
+      main {
+        max-width: 1600px;
+        margin: 0 auto;
+        padding: 24px;
+      }
+      .hero {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        align-items: end;
+        margin-bottom: 24px;
+      }
+      .hero h1 { margin: 0; font-size: 2rem; }
+      .hero p { margin: 8px 0 0; color: var(--muted); }
+      .sheet {
+        margin-bottom: 26px;
+        padding: 18px;
+        border-radius: 20px;
+        background: rgba(22, 27, 33, 0.9);
+        border: 1px solid var(--line);
+      }
+      .sheet-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        align-items: baseline;
+        margin-bottom: 14px;
+      }
+      .sheet-head h2, .sheet-head p { margin: 0; }
+      .eyebrow {
+        margin: 0 0 6px;
+        color: #f2ae4f;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        font-size: 0.75rem;
+      }
+      .count { color: var(--muted); }
+      .asset-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 14px;
+      }
+      .asset-card {
+        margin: 0;
+        padding: 12px;
+        border-radius: 16px;
+        background: var(--surface);
+        border: 1px solid var(--line);
+      }
+      .asset-frame {
+        min-height: 140px;
+        display: grid;
+        place-items: center;
+        border-radius: 12px;
+        background:
+          linear-gradient(90deg, rgba(240, 244, 249, 0.96) 0 50%, rgba(27, 34, 43, 0.96) 50% 100%),
+          linear-gradient(45deg, rgba(0,0,0,0.08) 25%, transparent 25%, transparent 75%, rgba(0,0,0,0.08) 75%),
+          linear-gradient(45deg, rgba(255,255,255,0.12) 25%, transparent 25%, transparent 75%, rgba(255,255,255,0.12) 75%);
+        background-position: 0 0, 0 0, 10px 10px;
+        background-size: auto, 20px 20px, 20px 20px;
+        overflow: hidden;
+        border: 1px solid rgba(255,255,255,0.08);
+      }
+      img {
+        display: block;
+        max-width: 100%;
+        max-height: 220px;
+        object-fit: contain;
+      }
+      figcaption {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        margin-top: 10px;
+        font-size: 0.88rem;
+        color: var(--muted);
+      }
+      figcaption strong {
+        color: var(--text);
+        font-size: 0.92rem;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header class="hero">
+        <div>
+          <h1>8 Ball Atlas Extract Preview</h1>
+          <p>Crop, save, validate artifacts generated from the source atlas and table-part sheets.</p>
+        </div>
+        <p>95 total extracts</p>
+      </header>
+      
+        <section class="sheet">
+          <header class="sheet-head">
+            <div>
+              <p class="eyebrow">hud</p>
+              <h2>hud-ipadhd.png</h2>
+            </div>
+            <p class="count">65 extracts</p>
+          </header>
+          <div class="asset-grid">
+            
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud/hud-component-01.png" alt="hud-component-01" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>hud-component-01</strong>
+                <span>209×1597</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud/hud-component-02.png" alt="hud-component-02" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>hud-component-02</strong>
+                <span>573×596</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud/hud-component-03.png" alt="hud-component-03" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>hud-component-03</strong>
+                <span>79×76</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud/hud-component-04.png" alt="hud-component-04" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>hud-component-04</strong>
+                <span>239×1628</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud/hud-component-05.png" alt="hud-component-05" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>hud-component-05</strong>
+                <span>224×1549</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud/hud-component-06.png" alt="hud-component-06" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>hud-component-06</strong>
+                <span>273×1686</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud/hud-component-07.png" alt="hud-component-07" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>hud-component-07</strong>
+                <span>252×247</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud/hud-component-08.png" alt="hud-component-08" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>hud-component-08</strong>
+                <span>88×70</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud/hud-component-09.png" alt="hud-component-09" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>hud-component-09</strong>
+                <span>69×55</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud/hud-component-10.png" alt="hud-component-10" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>hud-component-10</strong>
+                <span>62×62</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud/hud-component-11.png" alt="hud-component-11" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>hud-component-11</strong>
+                <span>196×196</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud/hud-component-12.png" alt="hud-component-12" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>hud-component-12</strong>
+                <span>165×18</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud/hud-component-13.png" alt="hud-component-13" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>hud-component-13</strong>
+                <span>208×166</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud/hud-component-14.png" alt="hud-component-14" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>hud-component-14</strong>
+                <span>55×1617</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud/hud-component-15.png" alt="hud-component-15" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>hud-component-15</strong>
+                <span>196×194</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud/hud-component-16.png" alt="hud-component-16" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>hud-component-16</strong>
+                <span>104×543</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud/hud-component-17.png" alt="hud-component-17" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>hud-component-17</strong>
+                <span>152×107</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud/hud-component-18.png" alt="hud-component-18" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>hud-component-18</strong>
+                <span>144×144</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud/hud-component-19.png" alt="hud-component-19" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>hud-component-19</strong>
+                <span>193×193</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud/hud-component-20.png" alt="hud-component-20" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>hud-component-20</strong>
+                <span>116×114</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud/hud-component-21.png" alt="hud-component-21" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>hud-component-21</strong>
+                <span>137×113</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud/hud-component-22.png" alt="hud-component-22" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>hud-component-22</strong>
+                <span>137×138</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud/hud-component-23.png" alt="hud-component-23" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>hud-component-23</strong>
+                <span>117×116</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud/hud-component-24.png" alt="hud-component-24" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>hud-component-24</strong>
+                <span>138×137</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud/hud-component-25.png" alt="hud-component-25" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>hud-component-25</strong>
+                <span>123×123</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud/hud-component-26.png" alt="hud-component-26" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>hud-component-26</strong>
+                <span>178×110</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud/hud-component-27.png" alt="hud-component-27" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>hud-component-27</strong>
+                <span>467×52</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud/hud-component-28.png" alt="hud-component-28" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>hud-component-28</strong>
+                <span>64×64</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud/hud-component-29.png" alt="hud-component-29" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>hud-component-29</strong>
+                <span>117×116</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud/hud-component-30.png" alt="hud-component-30" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>hud-component-30</strong>
+                <span>116×114</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud/hud-component-31.png" alt="hud-component-31" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>hud-component-31</strong>
+                <span>137×116</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud/hud-component-32.png" alt="hud-component-32" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>hud-component-32</strong>
+                <span>137×114</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud/hud-component-33.png" alt="hud-component-33" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>hud-component-33</strong>
+                <span>124×22</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud/hud-component-34.png" alt="hud-component-34" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>hud-component-34</strong>
+                <span>40×480</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud/hud-component-35.png" alt="hud-component-35" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>hud-component-35</strong>
+                <span>69×507</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud/hud-component-36.png" alt="hud-component-36" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>hud-component-36</strong>
+                <span>59×82</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud/hud-component-37.png" alt="hud-component-37" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>hud-component-37</strong>
+                <span>928×153</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud/hud-component-38.png" alt="hud-component-38" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>hud-component-38</strong>
+                <span>122×111</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud/hud-component-39.png" alt="hud-component-39" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>hud-component-39</strong>
+                <span>117×116</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud/hud-component-40.png" alt="hud-component-40" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>hud-component-40</strong>
+                <span>138×114</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud/hud-component-41.png" alt="hud-component-41" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>hud-component-41</strong>
+                <span>64×64</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud/hud-component-42.png" alt="hud-component-42" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>hud-component-42</strong>
+                <span>138×138</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud/hud-component-43.png" alt="hud-component-43" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>hud-component-43</strong>
+                <span>64×64</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud/hud-component-44.png" alt="hud-component-44" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>hud-component-44</strong>
+                <span>64×64</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud/hud-component-45.png" alt="hud-component-45" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>hud-component-45</strong>
+                <span>522×246</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud/hud-component-46.png" alt="hud-component-46" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>hud-component-46</strong>
+                <span>224×169</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud/hud-component-47.png" alt="hud-component-47" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>hud-component-47</strong>
+                <span>64×64</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud/hud-component-48.png" alt="hud-component-48" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>hud-component-48</strong>
+                <span>64×64</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud/hud-component-49.png" alt="hud-component-49" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>hud-component-49</strong>
+                <span>127×127</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud/hud-component-50.png" alt="hud-component-50" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>hud-component-50</strong>
+                <span>208×180</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud/hud-component-51.png" alt="hud-component-51" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>hud-component-51</strong>
+                <span>64×64</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud/hud-component-52.png" alt="hud-component-52" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>hud-component-52</strong>
+                <span>164×164</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud/hud-component-53.png" alt="hud-component-53" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>hud-component-53</strong>
+                <span>129×103</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud/hud-component-54.png" alt="hud-component-54" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>hud-component-54</strong>
+                <span>64×64</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud/hud-component-55.png" alt="hud-component-55" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>hud-component-55</strong>
+                <span>64×64</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud/hud-component-56.png" alt="hud-component-56" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>hud-component-56</strong>
+                <span>64×60</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud/hud-component-57.png" alt="hud-component-57" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>hud-component-57</strong>
+                <span>64×64</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud/hud-component-58.png" alt="hud-component-58" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>hud-component-58</strong>
+                <span>64×64</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud/hud-component-59.png" alt="hud-component-59" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>hud-component-59</strong>
+                <span>64×64</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud/hud-component-60.png" alt="hud-component-60" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>hud-component-60</strong>
+                <span>64×64</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud/hud-component-61.png" alt="hud-component-61" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>hud-component-61</strong>
+                <span>146×66</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud/hud-component-62.png" alt="hud-component-62" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>hud-component-62</strong>
+                <span>68×55</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud/hud-component-63.png" alt="hud-component-63" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>hud-component-63</strong>
+                <span>68×55</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud/hud-component-64.png" alt="hud-component-64" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>hud-component-64</strong>
+                <span>64×64</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud/hud-component-65.png" alt="hud-component-65" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>hud-component-65</strong>
+                <span>62×57</span>
+              </figcaption>
+            </figure>
+          
+          </div>
+        </section>
+      
+
+        <section class="sheet">
+          <header class="sheet-head">
+            <div>
+              <p class="eyebrow">hud2</p>
+              <h2>hud2-ipadhd.png</h2>
+            </div>
+            <p class="count">17 extracts</p>
+          </header>
+          <div class="asset-grid">
+            
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud2/cue-ball-close.png" alt="cue-ball-close" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>cue-ball-close</strong>
+                <span>943×943</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud2/cue-ball-wide.png" alt="cue-ball-wide" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>cue-ball-wide</strong>
+                <span>829×829</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud2/ball-10.png" alt="ball-10" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>ball-10</strong>
+                <span>348×348</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud2/ball-11.png" alt="ball-11" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>ball-11</strong>
+                <span>348×348</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud2/ball-12.png" alt="ball-12" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>ball-12</strong>
+                <span>348×348</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud2/ball-15.png" alt="ball-15" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>ball-15</strong>
+                <span>348×348</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud2/ball-5.png" alt="ball-5" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>ball-5</strong>
+                <span>348×348</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud2/ball-13.png" alt="ball-13" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>ball-13</strong>
+                <span>348×348</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud2/ball-14.png" alt="ball-14" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>ball-14</strong>
+                <span>348×348</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud2/ball-1.png" alt="ball-1" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>ball-1</strong>
+                <span>348×348</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud2/ball-3.png" alt="ball-3" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>ball-3</strong>
+                <span>348×348</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud2/ball-7.png" alt="ball-7" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>ball-7</strong>
+                <span>348×347</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud2/ball-2.png" alt="ball-2" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>ball-2</strong>
+                <span>348×348</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud2/ball-4.png" alt="ball-4" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>ball-4</strong>
+                <span>348×348</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud2/ball-6.png" alt="ball-6" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>ball-6</strong>
+                <span>348×348</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud2/ball-8.png" alt="ball-8" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>ball-8</strong>
+                <span>347×288</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="hud2/ball-9.png" alt="ball-9" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>ball-9</strong>
+                <span>348×348</span>
+              </figcaption>
+            </figure>
+          
+          </div>
+        </section>
+      
+
+        <section class="sheet">
+          <header class="sheet-head">
+            <div>
+              <p class="eyebrow">table-base</p>
+              <h2>tableBase-ipadhd.png</h2>
+            </div>
+            <p class="count">10 extracts</p>
+          </header>
+          <div class="asset-grid">
+            
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="table-parts/table-base/pocket-arc-large-top-left.png" alt="pocket-arc-large-top-left" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>pocket-arc-large-top-left</strong>
+                <span>109×109</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="table-parts/table-base/pocket-glow-large-top.png" alt="pocket-glow-large-top" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>pocket-glow-large-top</strong>
+                <span>98×98</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="table-parts/table-base/pocket-arc-small-top-right.png" alt="pocket-arc-small-top-right" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>pocket-arc-small-top-right</strong>
+                <span>79×57</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="table-parts/table-base/pocket-glow-small-right.png" alt="pocket-glow-small-right" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>pocket-glow-small-right</strong>
+                <span>87×60</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="table-parts/table-base/pocket-arc-large-mid-left.png" alt="pocket-arc-large-mid-left" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>pocket-arc-large-mid-left</strong>
+                <span>105×105</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="table-parts/table-base/pocket-arc-medium-mid.png" alt="pocket-arc-medium-mid" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>pocket-arc-medium-mid</strong>
+                <span>90×90</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="table-parts/table-base/pocket-ring-large-bottom.png" alt="pocket-ring-large-bottom" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>pocket-ring-large-bottom</strong>
+                <span>65×66</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="table-parts/table-base/pocket-ring-medium-bottom.png" alt="pocket-ring-medium-bottom" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>pocket-ring-medium-bottom</strong>
+                <span>66×66</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="table-parts/table-base/pocket-arc-small-bottom-right.png" alt="pocket-arc-small-bottom-right" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>pocket-arc-small-bottom-right</strong>
+                <span>52×69</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="table-parts/table-base/pocket-arc-large-bottom-left.png" alt="pocket-arc-large-bottom-left" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>pocket-arc-large-bottom-left</strong>
+                <span>96×64</span>
+              </figcaption>
+            </figure>
+          
+          </div>
+        </section>
+      
+
+        <section class="sheet">
+          <header class="sheet-head">
+            <div>
+              <p class="eyebrow">table-cushions</p>
+              <h2>tableCushions-hd.png</h2>
+            </div>
+            <p class="count">3 extracts</p>
+          </header>
+          <div class="asset-grid">
+            
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="table-parts/table-cushions/cushion-top.png" alt="cushion-top" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>cushion-top</strong>
+                <span>410×26</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="table-parts/table-cushions/cushion-middle.png" alt="cushion-middle" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>cushion-middle</strong>
+                <span>406×26</span>
+              </figcaption>
+            </figure>
+          
+
+            <figure class="asset-card">
+              <div class="asset-frame">
+                <img src="table-parts/table-cushions/cushion-bottom.png" alt="cushion-bottom" loading="lazy" />
+              </div>
+              <figcaption>
+                <strong>cushion-bottom</strong>
+                <span>405×25</span>
+              </figcaption>
+            </figure>
+          
+          </div>
+        </section>
+      
+    </main>
+  </body>
+</html>

@@ -5,22 +5,24 @@ const path = require("node:path");
 
 const helpers = require("./permissions.js");
 
-test("eightball index loads the permission helper before booting the app", () => {
+test("eightball index loads rules and permissions before booting the app", () => {
   const html = fs.readFileSync(path.join(__dirname, "index.html"), "utf8");
+  assert.match(html, /<script src="\.\/rules\.js"><\/script>/);
   assert.match(html, /<script src="\.\/permissions\.js"><\/script>/);
 });
 
-test("blocked actions stay visible when the host denies required capabilities", () => {
+test("blocked actions disable every mandatory host capability", () => {
   const blocked = helpers.describeBlockedActions([
     "conversation.read_context",
     "storage.session",
   ]);
 
-  assert.equal(blocked.askDisabled, true);
-  assert.equal(blocked.sendDisabled, true);
+  assert.equal(blocked.writeDisabled, true);
+  assert.equal(blocked.projectDisabled, true);
   assert.equal(blocked.draftDisabled, false);
   assert.equal(blocked.refreshDisabled, false);
-  assert.match(blocked.blockedSummary, /Blocked: host denied/i);
+  assert.equal(blocked.missing.join(","), "conversation.send_message,realtime.session");
+  assert.equal(blocked.blockedSummary, "Blocked: host denied projecting the latest summary, recording shots.");
 });
 
 test("permission denial copy names the blocked capability", () => {
@@ -29,6 +31,5 @@ test("permission denial copy names the blocked capability", () => {
     details: { required_capability: "conversation.send_message" },
   });
 
-  assert.match(message, /conversation\.send_message/);
-  assert.match(message, /Blocked:/);
+  assert.equal(message, "Blocked: host denied conversation.send_message.");
 });

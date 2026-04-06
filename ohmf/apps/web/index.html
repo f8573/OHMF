@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: http://localhost:5174; font-src 'self'; connect-src 'self' http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:* https: http:; frame-src http://localhost:5174; object-src 'none'; base-uri 'none'; form-action 'self'" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob: http://localhost:* http://127.0.0.1:*; font-src 'self'; connect-src 'self' http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:* https: http:; frame-src 'self' http://localhost:* http://127.0.0.1:*; object-src 'none'; base-uri 'none'; form-action 'self'" />
     <meta name="referrer" content="no-referrer" />
     <meta http-equiv="Permissions-Policy" content="camera=(), microphone=(), geolocation=()" />
     <meta name="theme-color" content="#111111" />
@@ -99,24 +99,9 @@
             <p class="chat-subtitle" id="chat-subtitle">No active thread</p>
           </div>
           <div class="chat-actions">
-            <button class="icon-btn" id="nickname-btn" aria-label="Set nickname">Aa</button>
-            <button class="icon-btn" id="group-encryption-btn" aria-label="Enable group encryption">Lock</button>
-            <button class="icon-btn" id="block-btn" aria-label="Block user">Block</button>
-            <button class="icon-btn" id="close-thread-btn" aria-label="Close conversation">Close</button>
+            <button class="icon-btn text-btn" id="conversation-settings-btn" aria-label="Conversation settings">Settings</button>
           </div>
         </header>
-
-        <section class="chat-trust-panel hidden" id="chat-trust-panel" aria-label="Trust state">
-          <div class="chat-trust-head">
-            <div>
-              <p class="miniapp-config-label">Trust State</p>
-              <p class="chat-trust-summary" id="chat-trust-summary">Open a secure direct conversation to review device trust.</p>
-            </div>
-            <button type="button" class="secondary-btn compact" id="chat-trust-refresh-btn">Refresh</button>
-          </div>
-          <p class="status-msg" id="chat-trust-status" role="status" aria-live="polite"></p>
-          <div class="chat-trust-list" id="chat-trust-list"></div>
-        </section>
 
         <section class="message-list" id="message-list">
           <div class="empty-state" id="empty-state">
@@ -216,6 +201,50 @@
           </div>
         </section>
 
+        <section class="conversation-settings-window hidden" id="conversation-settings-window" aria-label="Conversation settings" aria-modal="true" role="dialog">
+          <button type="button" class="message-metadata-backdrop" id="conversation-settings-backdrop" aria-label="Close conversation settings"></button>
+          <div class="conversation-settings-modal">
+            <div class="miniapp-launcher-head">
+              <div>
+                <p class="miniapp-kicker">Conversation Settings</p>
+                <h2 class="miniapp-title" id="conversation-settings-title">Thread settings</h2>
+                <p class="miniapp-preview-subtitle" id="conversation-settings-subtitle">Manage this conversation without crowding the message view.</p>
+              </div>
+              <button type="button" class="icon-btn miniapp-close-btn" id="conversation-settings-close-btn" aria-label="Close conversation settings">x</button>
+            </div>
+
+            <div class="conversation-settings-grid">
+              <section class="device-manager-panel conversation-settings-panel">
+                <div class="device-manager-panel-head">
+                  <div>
+                    <p class="miniapp-config-label">Actions</p>
+                    <p class="device-manager-copy" id="conversation-settings-copy">Change conversation-specific controls here.</p>
+                  </div>
+                </div>
+                <div class="conversation-settings-actions">
+                  <button type="button" class="secondary-btn compact" id="nickname-btn">Nickname</button>
+                  <button type="button" class="secondary-btn compact" id="group-details-btn">Group Details</button>
+                  <button type="button" class="secondary-btn compact" id="group-encryption-btn">Lock</button>
+                  <button type="button" class="secondary-btn compact" id="block-btn">Block</button>
+                  <button type="button" class="secondary-btn compact" id="close-thread-btn">Close Conversation</button>
+                </div>
+              </section>
+
+              <section class="chat-trust-panel hidden" id="chat-trust-panel" aria-label="Trust state">
+                <div class="chat-trust-head">
+                  <div>
+                    <p class="miniapp-config-label">Trust State</p>
+                    <p class="chat-trust-summary" id="chat-trust-summary">Open a secure direct conversation to review device trust.</p>
+                  </div>
+                  <button type="button" class="secondary-btn compact" id="chat-trust-refresh-btn">Refresh</button>
+                </div>
+                <p class="status-msg" id="chat-trust-status" role="status" aria-live="polite"></p>
+                <div class="chat-trust-list" id="chat-trust-list"></div>
+              </section>
+            </div>
+          </div>
+        </section>
+
         <section class="device-manager-window hidden" id="device-manager-window" aria-label="Linked devices" aria-modal="true" role="dialog">
           <button type="button" class="message-metadata-backdrop" id="device-manager-backdrop" aria-label="Close linked devices"></button>
           <div class="device-manager-modal">
@@ -256,6 +285,101 @@
                 </div>
                 <div class="linked-device-list" id="linked-device-list"></div>
               </section>
+
+              <section class="device-manager-panel">
+                <div class="device-manager-panel-head">
+                  <div>
+                    <p class="miniapp-config-label">Privacy</p>
+                    <p class="device-manager-copy">Control read receipts and visibility before the web client emits those signals.</p>
+                  </div>
+                </div>
+                <div class="device-settings-list">
+                  <label class="device-setting-row">
+                    <span>
+                      <strong>Send read receipts</strong>
+                      <small>Marking a thread read will notify others.</small>
+                    </span>
+                    <input type="checkbox" id="privacy-read-receipts-toggle" />
+                  </label>
+                  <label class="device-setting-row">
+                    <span>
+                      <strong>Share presence</strong>
+                      <small>Other devices and contacts can see when you were last active.</small>
+                    </span>
+                    <input type="checkbox" id="privacy-presence-toggle" />
+                  </label>
+                  <label class="device-setting-row">
+                    <span>
+                      <strong>Share typing</strong>
+                      <small>Typing indicators are emitted only when this stays on.</small>
+                    </span>
+                    <input type="checkbox" id="privacy-typing-toggle" />
+                  </label>
+                </div>
+                <p class="linked-device-meta" id="privacy-settings-status">Privacy settings follow your account.</p>
+              </section>
+
+              <section class="device-manager-panel device-activity-panel">
+                <div class="device-manager-panel-head">
+                  <div>
+                    <p class="miniapp-config-label">Recent Activity</p>
+                    <p class="device-manager-copy">Pairing, revocation, trust, and attestation changes land here.</p>
+                  </div>
+                </div>
+                <div class="device-activity-list" id="device-activity-list"></div>
+              </section>
+            </div>
+          </div>
+        </section>
+
+        <section class="group-manager-window hidden" id="group-manager-window" aria-label="Group details" aria-modal="true" role="dialog">
+          <button type="button" class="message-metadata-backdrop" id="group-manager-backdrop" aria-label="Close group details"></button>
+          <div class="device-manager-modal group-manager-modal">
+            <div class="miniapp-launcher-head">
+              <div>
+                <p class="miniapp-kicker">Group Details</p>
+                <h2 class="miniapp-title" id="group-manager-title">Manage this group</h2>
+                <p class="miniapp-preview-subtitle" id="group-manager-subtitle">Rename the group, update its image, and manage members.</p>
+              </div>
+              <div class="miniapp-head-actions">
+                <button type="button" class="secondary-btn compact" id="group-manager-refresh-btn">Refresh</button>
+                <button type="button" class="icon-btn miniapp-close-btn" id="group-manager-close-btn" aria-label="Close group details">x</button>
+              </div>
+            </div>
+            <p class="status-msg" id="group-manager-status" role="status" aria-live="polite"></p>
+            <div class="group-manager-grid">
+              <section class="device-manager-panel">
+                <div class="device-manager-panel-head">
+                  <div>
+                    <p class="miniapp-config-label">Metadata</p>
+                    <p class="device-manager-copy" id="group-manager-role-summary">Loading group role details.</p>
+                  </div>
+                  <div class="group-manager-actions">
+                    <button type="button" class="secondary-btn compact" id="group-manager-rename-btn">Rename</button>
+                    <button type="button" class="secondary-btn compact" id="group-manager-image-btn">Image</button>
+                    <button type="button" class="secondary-btn compact" id="group-manager-add-btn">Add Member</button>
+                    <button type="button" class="secondary-btn compact" id="group-manager-leave-btn">Leave</button>
+                  </div>
+                </div>
+                <div class="group-manager-summary-card">
+                  <p class="group-manager-avatar" id="group-manager-avatar">#</p>
+                  <div>
+                    <p class="linked-device-name" id="group-manager-name">Group</p>
+                    <p class="linked-device-meta" id="group-manager-meta">No metadata loaded yet.</p>
+                    <p class="linked-device-meta" id="group-manager-image-value">No group image set.</p>
+                  </div>
+                </div>
+              </section>
+
+              <section class="device-manager-panel">
+                <div class="device-manager-panel-head">
+                  <div>
+                    <p class="miniapp-config-label">Members</p>
+                    <p class="device-manager-copy">Use mentions from here or remove members if you can manage the group.</p>
+                  </div>
+                </div>
+                <div class="linked-device-list" id="group-member-list"></div>
+              </section>
             </div>
           </div>
         </section>
@@ -267,6 +391,18 @@
               <p class="composer-reply-text" id="composer-reply-text"></p>
             </div>
             <button type="button" class="icon-btn composer-reply-cancel" id="composer-reply-cancel" aria-label="Cancel reply">x</button>
+          </div>
+          <div class="composer-attachment hidden" id="composer-attachment">
+            <div class="composer-attachment-preview" id="composer-attachment-preview"></div>
+            <div class="composer-attachment-copy">
+              <p class="composer-reply-label" id="composer-attachment-label">Attachment ready</p>
+              <p class="composer-reply-text" id="composer-attachment-text"></p>
+              <p class="linked-device-meta" id="composer-attachment-status">Pick a file to preview it before sending.</p>
+            </div>
+            <div class="group-manager-actions">
+              <button type="button" class="secondary-btn compact" id="composer-attachment-cancel">Cancel</button>
+              <button type="button" class="send-btn compact" id="composer-attachment-send">Send File</button>
+            </div>
           </div>
           <div class="composer-main">
             <button type="button" class="icon-btn attach-btn" id="attach-btn" aria-label="Attachment and apps">+</button>

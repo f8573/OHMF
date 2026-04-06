@@ -1,0 +1,12 @@
+{
+  "generatedAt": "2026-04-03T15:44:42.723Z",
+  "sourceImage": "C:/Users/James/Downloads/test.png",
+  "sourceWidth": 3542,
+  "sourceHeight": 980,
+  "outputWidth": 1771,
+  "outputHeight": 980,
+  "outputs": {
+    "frame": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\table\\singletableLondon-frame.png",
+    "pockets": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\table\\singletableLondon-pockets.png"
+  }
+}

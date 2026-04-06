@@ -1,0 +1,1576 @@
+{
+  "generatedAt": "2026-04-02T19:52:30.748Z",
+  "totalOutputs": 95,
+  "sheets": [
+    {
+      "id": "hud",
+      "sourceName": "hud-ipadhd.png",
+      "sourcePath": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\source\\atlas\\hud-ipadhd.png",
+      "sourceSize": {
+        "width": 2193,
+        "height": 2265
+      },
+      "outputDir": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud",
+      "outputs": [
+        {
+          "name": "hud-component-01",
+          "index": 1,
+          "area": 326561,
+          "width": 209,
+          "height": 1597,
+          "sourceRect": {
+            "x": 929,
+            "y": 1,
+            "width": 209,
+            "height": 1597
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud\\hud-component-01.png",
+          "fileName": "hud-component-01.png",
+          "relativePath": "hud/hud-component-01.png"
+        },
+        {
+          "name": "hud-component-02",
+          "index": 2,
+          "area": 336848,
+          "width": 573,
+          "height": 596,
+          "sourceRect": {
+            "x": 1170,
+            "y": 1,
+            "width": 573,
+            "height": 596
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud\\hud-component-02.png",
+          "fileName": "hud-component-02.png",
+          "relativePath": "hud/hud-component-02.png"
+        },
+        {
+          "name": "hud-component-03",
+          "index": 3,
+          "area": 3178,
+          "width": 79,
+          "height": 76,
+          "sourceRect": {
+            "x": 2086,
+            "y": 5,
+            "width": 79,
+            "height": 76
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud\\hud-component-03.png",
+          "fileName": "hud-component-03.png",
+          "relativePath": "hud/hud-component-03.png"
+        },
+        {
+          "name": "hud-component-04",
+          "index": 4,
+          "area": 380938,
+          "width": 239,
+          "height": 1628,
+          "sourceRect": {
+            "x": 685,
+            "y": 7,
+            "width": 239,
+            "height": 1628
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud\\hud-component-04.png",
+          "fileName": "hud-component-04.png",
+          "relativePath": "hud/hud-component-04.png"
+        },
+        {
+          "name": "hud-component-05",
+          "index": 5,
+          "area": 339109,
+          "width": 224,
+          "height": 1549,
+          "sourceRect": {
+            "x": 424,
+            "y": 20,
+            "width": 224,
+            "height": 1549
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud\\hud-component-05.png",
+          "fileName": "hud-component-05.png",
+          "relativePath": "hud/hud-component-05.png"
+        },
+        {
+          "name": "hud-component-06",
+          "index": 6,
+          "area": 451012,
+          "width": 273,
+          "height": 1686,
+          "sourceRect": {
+            "x": 60,
+            "y": 22,
+            "width": 273,
+            "height": 1686
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud\\hud-component-06.png",
+          "fileName": "hud-component-06.png",
+          "relativePath": "hud/hud-component-06.png"
+        },
+        {
+          "name": "hud-component-07",
+          "index": 7,
+          "area": 59561,
+          "width": 252,
+          "height": 247,
+          "sourceRect": {
+            "x": 1804,
+            "y": 23,
+            "width": 252,
+            "height": 247
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud\\hud-component-07.png",
+          "fileName": "hud-component-07.png",
+          "relativePath": "hud/hud-component-07.png"
+        },
+        {
+          "name": "hud-component-08",
+          "index": 8,
+          "area": 3717,
+          "width": 88,
+          "height": 70,
+          "sourceRect": {
+            "x": 2083,
+            "y": 85,
+            "width": 88,
+            "height": 70
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud\\hud-component-08.png",
+          "fileName": "hud-component-08.png",
+          "relativePath": "hud/hud-component-08.png"
+        },
+        {
+          "name": "hud-component-09",
+          "index": 9,
+          "area": 2264,
+          "width": 69,
+          "height": 55,
+          "sourceRect": {
+            "x": 2089,
+            "y": 162,
+            "width": 69,
+            "height": 55
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud\\hud-component-09.png",
+          "fileName": "hud-component-09.png",
+          "relativePath": "hud/hud-component-09.png"
+        },
+        {
+          "name": "hud-component-10",
+          "index": 10,
+          "area": 2687,
+          "width": 62,
+          "height": 62,
+          "sourceRect": {
+            "x": 2090,
+            "y": 235,
+            "width": 62,
+            "height": 62
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud\\hud-component-10.png",
+          "fileName": "hud-component-10.png",
+          "relativePath": "hud/hud-component-10.png"
+        },
+        {
+          "name": "hud-component-11",
+          "index": 11,
+          "area": 35594,
+          "width": 196,
+          "height": 196,
+          "sourceRect": {
+            "x": 1755,
+            "y": 318,
+            "width": 196,
+            "height": 196
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud\\hud-component-11.png",
+          "fileName": "hud-component-11.png",
+          "relativePath": "hud/hud-component-11.png"
+        },
+        {
+          "name": "hud-component-12",
+          "index": 12,
+          "area": 2226,
+          "width": 165,
+          "height": 18,
+          "sourceRect": {
+            "x": 1965,
+            "y": 478,
+            "width": 165,
+            "height": 18
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud\\hud-component-12.png",
+          "fileName": "hud-component-12.png",
+          "relativePath": "hud/hud-component-12.png"
+        },
+        {
+          "name": "hud-component-13",
+          "index": 13,
+          "area": 13330,
+          "width": 208,
+          "height": 166,
+          "sourceRect": {
+            "x": 1170,
+            "y": 596,
+            "width": 208,
+            "height": 166
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud\\hud-component-13.png",
+          "fileName": "hud-component-13.png",
+          "relativePath": "hud/hud-component-13.png"
+        },
+        {
+          "name": "hud-component-14",
+          "index": 14,
+          "area": 68622,
+          "width": 55,
+          "height": 1617,
+          "sourceRect": {
+            "x": 2117,
+            "y": 620,
+            "width": 55,
+            "height": 1617
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud\\hud-component-14.png",
+          "fileName": "hud-component-14.png",
+          "relativePath": "hud/hud-component-14.png"
+        },
+        {
+          "name": "hud-component-15",
+          "index": 15,
+          "area": 6243,
+          "width": 196,
+          "height": 194,
+          "sourceRect": {
+            "x": 1690,
+            "y": 1098,
+            "width": 196,
+            "height": 194
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud\\hud-component-15.png",
+          "fileName": "hud-component-15.png",
+          "relativePath": "hud/hud-component-15.png"
+        },
+        {
+          "name": "hud-component-16",
+          "index": 16,
+          "area": 27503,
+          "width": 104,
+          "height": 543,
+          "sourceRect": {
+            "x": 1584,
+            "y": 1101,
+            "width": 104,
+            "height": 543
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud\\hud-component-16.png",
+          "fileName": "hud-component-16.png",
+          "relativePath": "hud/hud-component-16.png"
+        },
+        {
+          "name": "hud-component-17",
+          "index": 17,
+          "area": 8927,
+          "width": 152,
+          "height": 107,
+          "sourceRect": {
+            "x": 1895,
+            "y": 1106,
+            "width": 152,
+            "height": 107
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud\\hud-component-17.png",
+          "fileName": "hud-component-17.png",
+          "relativePath": "hud/hud-component-17.png"
+        },
+        {
+          "name": "hud-component-18",
+          "index": 18,
+          "area": 15473,
+          "width": 144,
+          "height": 144,
+          "sourceRect": {
+            "x": 1885,
+            "y": 1223,
+            "width": 144,
+            "height": 144
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud\\hud-component-18.png",
+          "fileName": "hud-component-18.png",
+          "relativePath": "hud/hud-component-18.png"
+        },
+        {
+          "name": "hud-component-19",
+          "index": 19,
+          "area": 11605,
+          "width": 193,
+          "height": 193,
+          "sourceRect": {
+            "x": 1690,
+            "y": 1291,
+            "width": 193,
+            "height": 193
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud\\hud-component-19.png",
+          "fileName": "hud-component-19.png",
+          "relativePath": "hud/hud-component-19.png"
+        },
+        {
+          "name": "hud-component-20",
+          "index": 20,
+          "area": 11781,
+          "width": 116,
+          "height": 114,
+          "sourceRect": {
+            "x": 1897,
+            "y": 1379,
+            "width": 116,
+            "height": 114
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud\\hud-component-20.png",
+          "fileName": "hud-component-20.png",
+          "relativePath": "hud/hud-component-20.png"
+        },
+        {
+          "name": "hud-component-21",
+          "index": 21,
+          "area": 2085,
+          "width": 137,
+          "height": 113,
+          "sourceRect": {
+            "x": 1886,
+            "y": 1390,
+            "width": 137,
+            "height": 113
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud\\hud-component-21.png",
+          "fileName": "hud-component-21.png",
+          "relativePath": "hud/hud-component-21.png"
+        },
+        {
+          "name": "hud-component-22",
+          "index": 22,
+          "area": 3345,
+          "width": 137,
+          "height": 138,
+          "sourceRect": {
+            "x": 1692,
+            "y": 1485,
+            "width": 137,
+            "height": 138
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud\\hud-component-22.png",
+          "fileName": "hud-component-22.png",
+          "relativePath": "hud/hud-component-22.png"
+        },
+        {
+          "name": "hud-component-23",
+          "index": 23,
+          "area": 12325,
+          "width": 117,
+          "height": 116,
+          "sourceRect": {
+            "x": 1702,
+            "y": 1496,
+            "width": 117,
+            "height": 116
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud\\hud-component-23.png",
+          "fileName": "hud-component-23.png",
+          "relativePath": "hud/hud-component-23.png"
+        },
+        {
+          "name": "hud-component-24",
+          "index": 24,
+          "area": 16994,
+          "width": 138,
+          "height": 137,
+          "sourceRect": {
+            "x": 1885,
+            "y": 1503,
+            "width": 138,
+            "height": 137
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud\\hud-component-24.png",
+          "fileName": "hud-component-24.png",
+          "relativePath": "hud/hud-component-24.png"
+        },
+        {
+          "name": "hud-component-25",
+          "index": 25,
+          "area": 5613,
+          "width": 123,
+          "height": 123,
+          "sourceRect": {
+            "x": 545,
+            "y": 1590,
+            "width": 123,
+            "height": 123
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud\\hud-component-25.png",
+          "fileName": "hud-component-25.png",
+          "relativePath": "hud/hud-component-25.png"
+        },
+        {
+          "name": "hud-component-26",
+          "index": 26,
+          "area": 16810,
+          "width": 178,
+          "height": 110,
+          "sourceRect": {
+            "x": 365,
+            "y": 1600,
+            "width": 178,
+            "height": 110
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud\\hud-component-26.png",
+          "fileName": "hud-component-26.png",
+          "relativePath": "hud/hud-component-26.png"
+        },
+        {
+          "name": "hud-component-27",
+          "index": 27,
+          "area": 22157,
+          "width": 467,
+          "height": 52,
+          "sourceRect": {
+            "x": 680,
+            "y": 1641,
+            "width": 467,
+            "height": 52
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud\\hud-component-27.png",
+          "fileName": "hud-component-27.png",
+          "relativePath": "hud/hud-component-27.png"
+        },
+        {
+          "name": "hud-component-28",
+          "index": 28,
+          "area": 2824,
+          "width": 64,
+          "height": 64,
+          "sourceRect": {
+            "x": 1861,
+            "y": 1645,
+            "width": 64,
+            "height": 64
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud\\hud-component-28.png",
+          "fileName": "hud-component-28.png",
+          "relativePath": "hud/hud-component-28.png"
+        },
+        {
+          "name": "hud-component-29",
+          "index": 29,
+          "area": 12287,
+          "width": 117,
+          "height": 116,
+          "sourceRect": {
+            "x": 1594,
+            "y": 1658,
+            "width": 117,
+            "height": 116
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud\\hud-component-29.png",
+          "fileName": "hud-component-29.png",
+          "relativePath": "hud/hud-component-29.png"
+        },
+        {
+          "name": "hud-component-30",
+          "index": 30,
+          "area": 11808,
+          "width": 116,
+          "height": 114,
+          "sourceRect": {
+            "x": 1735,
+            "y": 1658,
+            "width": 116,
+            "height": 114
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud\\hud-component-30.png",
+          "fileName": "hud-component-30.png",
+          "relativePath": "hud/hud-component-30.png"
+        },
+        {
+          "name": "hud-component-31",
+          "index": 31,
+          "area": 2090,
+          "width": 137,
+          "height": 116,
+          "sourceRect": {
+            "x": 1724,
+            "y": 1666,
+            "width": 137,
+            "height": 116
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud\\hud-component-31.png",
+          "fileName": "hud-component-31.png",
+          "relativePath": "hud/hud-component-31.png"
+        },
+        {
+          "name": "hud-component-32",
+          "index": 32,
+          "area": 2026,
+          "width": 137,
+          "height": 114,
+          "sourceRect": {
+            "x": 1584,
+            "y": 1670,
+            "width": 137,
+            "height": 114
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud\\hud-component-32.png",
+          "fileName": "hud-component-32.png",
+          "relativePath": "hud/hud-component-32.png"
+        },
+        {
+          "name": "hud-component-33",
+          "index": 33,
+          "area": 2084,
+          "width": 124,
+          "height": 22,
+          "sourceRect": {
+            "x": 678,
+            "y": 1693,
+            "width": 124,
+            "height": 22
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud\\hud-component-33.png",
+          "fileName": "hud-component-33.png",
+          "relativePath": "hud/hud-component-33.png"
+        },
+        {
+          "name": "hud-component-34",
+          "index": 34,
+          "area": 16210,
+          "width": 40,
+          "height": 480,
+          "sourceRect": {
+            "x": 1057,
+            "y": 1731,
+            "width": 40,
+            "height": 480
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud\\hud-component-34.png",
+          "fileName": "hud-component-34.png",
+          "relativePath": "hud/hud-component-34.png"
+        },
+        {
+          "name": "hud-component-35",
+          "index": 35,
+          "area": 16401,
+          "width": 69,
+          "height": 507,
+          "sourceRect": {
+            "x": 979,
+            "y": 1739,
+            "width": 69,
+            "height": 507
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud\\hud-component-35.png",
+          "fileName": "hud-component-35.png",
+          "relativePath": "hud/hud-component-35.png"
+        },
+        {
+          "name": "hud-component-36",
+          "index": 36,
+          "area": 4290,
+          "width": 59,
+          "height": 82,
+          "sourceRect": {
+            "x": 1097,
+            "y": 1743,
+            "width": 59,
+            "height": 82
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud\\hud-component-36.png",
+          "fileName": "hud-component-36.png",
+          "relativePath": "hud/hud-component-36.png"
+        },
+        {
+          "name": "hud-component-37",
+          "index": 37,
+          "area": 32702,
+          "width": 928,
+          "height": 153,
+          "sourceRect": {
+            "x": 22,
+            "y": 1751,
+            "width": 928,
+            "height": 153
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud\\hud-component-37.png",
+          "fileName": "hud-component-37.png",
+          "relativePath": "hud/hud-component-37.png"
+        },
+        {
+          "name": "hud-component-38",
+          "index": 38,
+          "area": 7156,
+          "width": 122,
+          "height": 111,
+          "sourceRect": {
+            "x": 1723,
+            "y": 1782,
+            "width": 122,
+            "height": 111
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud\\hud-component-38.png",
+          "fileName": "hud-component-38.png",
+          "relativePath": "hud/hud-component-38.png"
+        },
+        {
+          "name": "hud-component-39",
+          "index": 39,
+          "area": 12224,
+          "width": 117,
+          "height": 116,
+          "sourceRect": {
+            "x": 1592,
+            "y": 1798,
+            "width": 117,
+            "height": 116
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud\\hud-component-39.png",
+          "fileName": "hud-component-39.png",
+          "relativePath": "hud/hud-component-39.png"
+        },
+        {
+          "name": "hud-component-40",
+          "index": 40,
+          "area": 2317,
+          "width": 138,
+          "height": 114,
+          "sourceRect": {
+            "x": 1582,
+            "y": 1810,
+            "width": 138,
+            "height": 114
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud\\hud-component-40.png",
+          "fileName": "hud-component-40.png",
+          "relativePath": "hud/hud-component-40.png"
+        },
+        {
+          "name": "hud-component-41",
+          "index": 41,
+          "area": 2877,
+          "width": 64,
+          "height": 64,
+          "sourceRect": {
+            "x": 1097,
+            "y": 1837,
+            "width": 64,
+            "height": 64
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud\\hud-component-41.png",
+          "fileName": "hud-component-41.png",
+          "relativePath": "hud/hud-component-41.png"
+        },
+        {
+          "name": "hud-component-42",
+          "index": 42,
+          "area": 16637,
+          "width": 138,
+          "height": 138,
+          "sourceRect": {
+            "x": 1378,
+            "y": 1872,
+            "width": 138,
+            "height": 138
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud\\hud-component-42.png",
+          "fileName": "hud-component-42.png",
+          "relativePath": "hud/hud-component-42.png"
+        },
+        {
+          "name": "hud-component-43",
+          "index": 43,
+          "area": 2815,
+          "width": 64,
+          "height": 64,
+          "sourceRect": {
+            "x": 1515,
+            "y": 1872,
+            "width": 64,
+            "height": 64
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud\\hud-component-43.png",
+          "fileName": "hud-component-43.png",
+          "relativePath": "hud/hud-component-43.png"
+        },
+        {
+          "name": "hud-component-44",
+          "index": 44,
+          "area": 2813,
+          "width": 64,
+          "height": 64,
+          "sourceRect": {
+            "x": 1097,
+            "y": 1900,
+            "width": 64,
+            "height": 64
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud\\hud-component-44.png",
+          "fileName": "hud-component-44.png",
+          "relativePath": "hud/hud-component-44.png"
+        },
+        {
+          "name": "hud-component-45",
+          "index": 45,
+          "area": 125356,
+          "width": 522,
+          "height": 246,
+          "sourceRect": {
+            "x": 1,
+            "y": 1903,
+            "width": 522,
+            "height": 246
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud\\hud-component-45.png",
+          "fileName": "hud-component-45.png",
+          "relativePath": "hud/hud-component-45.png"
+        },
+        {
+          "name": "hud-component-46",
+          "index": 46,
+          "area": 35919,
+          "width": 224,
+          "height": 169,
+          "sourceRect": {
+            "x": 746,
+            "y": 1903,
+            "width": 224,
+            "height": 169
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud\\hud-component-46.png",
+          "fileName": "hud-component-46.png",
+          "relativePath": "hud/hud-component-46.png"
+        },
+        {
+          "name": "hud-component-47",
+          "index": 47,
+          "area": 2811,
+          "width": 64,
+          "height": 64,
+          "sourceRect": {
+            "x": 1515,
+            "y": 1935,
+            "width": 64,
+            "height": 64
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud\\hud-component-47.png",
+          "fileName": "hud-component-47.png",
+          "relativePath": "hud/hud-component-47.png"
+        },
+        {
+          "name": "hud-component-48",
+          "index": 48,
+          "area": 2836,
+          "width": 64,
+          "height": 64,
+          "sourceRect": {
+            "x": 1097,
+            "y": 1963,
+            "width": 64,
+            "height": 64
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud\\hud-component-48.png",
+          "fileName": "hud-component-48.png",
+          "relativePath": "hud/hud-component-48.png"
+        },
+        {
+          "name": "hud-component-49",
+          "index": 49,
+          "area": 6460,
+          "width": 127,
+          "height": 127,
+          "sourceRect": {
+            "x": 1377,
+            "y": 2009,
+            "width": 127,
+            "height": 127
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud\\hud-component-49.png",
+          "fileName": "hud-component-49.png",
+          "relativePath": "hud/hud-component-49.png"
+        },
+        {
+          "name": "hud-component-50",
+          "index": 50,
+          "area": 15388,
+          "width": 208,
+          "height": 180,
+          "sourceRect": {
+            "x": 1170,
+            "y": 2014,
+            "width": 208,
+            "height": 180
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud\\hud-component-50.png",
+          "fileName": "hud-component-50.png",
+          "relativePath": "hud/hud-component-50.png"
+        },
+        {
+          "name": "hud-component-51",
+          "index": 51,
+          "area": 2813,
+          "width": 64,
+          "height": 64,
+          "sourceRect": {
+            "x": 1097,
+            "y": 2026,
+            "width": 64,
+            "height": 64
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud\\hud-component-51.png",
+          "fileName": "hud-component-51.png",
+          "relativePath": "hud/hud-component-51.png"
+        },
+        {
+          "name": "hud-component-52",
+          "index": 52,
+          "area": 19734,
+          "width": 164,
+          "height": 164,
+          "sourceRect": {
+            "x": 522,
+            "y": 2072,
+            "width": 164,
+            "height": 164
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud\\hud-component-52.png",
+          "fileName": "hud-component-52.png",
+          "relativePath": "hud/hud-component-52.png"
+        },
+        {
+          "name": "hud-component-53",
+          "index": 53,
+          "area": 8294,
+          "width": 129,
+          "height": 103,
+          "sourceRect": {
+            "x": 700,
+            "y": 2072,
+            "width": 129,
+            "height": 103
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud\\hud-component-53.png",
+          "fileName": "hud-component-53.png",
+          "relativePath": "hud/hud-component-53.png"
+        },
+        {
+          "name": "hud-component-54",
+          "index": 54,
+          "area": 2812,
+          "width": 64,
+          "height": 64,
+          "sourceRect": {
+            "x": 850,
+            "y": 2072,
+            "width": 64,
+            "height": 64
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud\\hud-component-54.png",
+          "fileName": "hud-component-54.png",
+          "relativePath": "hud/hud-component-54.png"
+        },
+        {
+          "name": "hud-component-55",
+          "index": 55,
+          "area": 2841,
+          "width": 64,
+          "height": 64,
+          "sourceRect": {
+            "x": 1097,
+            "y": 2089,
+            "width": 64,
+            "height": 64
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud\\hud-component-55.png",
+          "fileName": "hud-component-55.png",
+          "relativePath": "hud/hud-component-55.png"
+        },
+        {
+          "name": "hud-component-56",
+          "index": 56,
+          "area": 2560,
+          "width": 64,
+          "height": 60,
+          "sourceRect": {
+            "x": 850,
+            "y": 2135,
+            "width": 64,
+            "height": 60
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud\\hud-component-56.png",
+          "fileName": "hud-component-56.png",
+          "relativePath": "hud/hud-component-56.png"
+        },
+        {
+          "name": "hud-component-57",
+          "index": 57,
+          "area": 2819,
+          "width": 64,
+          "height": 64,
+          "sourceRect": {
+            "x": 1097,
+            "y": 2152,
+            "width": 64,
+            "height": 64
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud\\hud-component-57.png",
+          "fileName": "hud-component-57.png",
+          "relativePath": "hud/hud-component-57.png"
+        },
+        {
+          "name": "hud-component-58",
+          "index": 58,
+          "area": 2834,
+          "width": 64,
+          "height": 64,
+          "sourceRect": {
+            "x": 319,
+            "y": 2163,
+            "width": 64,
+            "height": 64
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud\\hud-component-58.png",
+          "fileName": "hud-component-58.png",
+          "relativePath": "hud/hud-component-58.png"
+        },
+        {
+          "name": "hud-component-59",
+          "index": 59,
+          "area": 2853,
+          "width": 64,
+          "height": 64,
+          "sourceRect": {
+            "x": 382,
+            "y": 2163,
+            "width": 64,
+            "height": 64
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud\\hud-component-59.png",
+          "fileName": "hud-component-59.png",
+          "relativePath": "hud/hud-component-59.png"
+        },
+        {
+          "name": "hud-component-60",
+          "index": 60,
+          "area": 2845,
+          "width": 64,
+          "height": 64,
+          "sourceRect": {
+            "x": 445,
+            "y": 2163,
+            "width": 64,
+            "height": 64
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud\\hud-component-60.png",
+          "fileName": "hud-component-60.png",
+          "relativePath": "hud/hud-component-60.png"
+        },
+        {
+          "name": "hud-component-61",
+          "index": 61,
+          "area": 7165,
+          "width": 146,
+          "height": 66,
+          "sourceRect": {
+            "x": 8,
+            "y": 2169,
+            "width": 146,
+            "height": 66
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud\\hud-component-61.png",
+          "fileName": "hud-component-61.png",
+          "relativePath": "hud/hud-component-61.png"
+        },
+        {
+          "name": "hud-component-62",
+          "index": 62,
+          "area": 2294,
+          "width": 68,
+          "height": 55,
+          "sourceRect": {
+            "x": 165,
+            "y": 2169,
+            "width": 68,
+            "height": 55
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud\\hud-component-62.png",
+          "fileName": "hud-component-62.png",
+          "relativePath": "hud/hud-component-62.png"
+        },
+        {
+          "name": "hud-component-63",
+          "index": 63,
+          "area": 2252,
+          "width": 68,
+          "height": 55,
+          "sourceRect": {
+            "x": 245,
+            "y": 2169,
+            "width": 68,
+            "height": 55
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud\\hud-component-63.png",
+          "fileName": "hud-component-63.png",
+          "relativePath": "hud/hud-component-63.png"
+        },
+        {
+          "name": "hud-component-64",
+          "index": 64,
+          "area": 2839,
+          "width": 64,
+          "height": 64,
+          "sourceRect": {
+            "x": 1170,
+            "y": 2193,
+            "width": 64,
+            "height": 64
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud\\hud-component-64.png",
+          "fileName": "hud-component-64.png",
+          "relativePath": "hud/hud-component-64.png"
+        },
+        {
+          "name": "hud-component-65",
+          "index": 65,
+          "area": 2204,
+          "width": 62,
+          "height": 57,
+          "sourceRect": {
+            "x": 687,
+            "y": 2200,
+            "width": 62,
+            "height": 57
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud\\hud-component-65.png",
+          "fileName": "hud-component-65.png",
+          "relativePath": "hud/hud-component-65.png"
+        }
+      ]
+    },
+    {
+      "id": "hud2",
+      "sourceName": "hud2-ipadhd.png",
+      "sourcePath": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\source\\atlas\\hud2-ipadhd.png",
+      "sourceSize": {
+        "width": 1900,
+        "height": 2002
+      },
+      "outputDir": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud2",
+      "outputs": [
+        {
+          "name": "cue-ball-close",
+          "index": 1,
+          "area": 695549,
+          "width": 943,
+          "height": 943,
+          "sourceRect": {
+            "x": 951,
+            "y": 2,
+            "width": 943,
+            "height": 943
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud2\\cue-ball-close.png",
+          "fileName": "cue-ball-close.png",
+          "relativePath": "hud2/cue-ball-close.png"
+        },
+        {
+          "name": "cue-ball-wide",
+          "index": 2,
+          "area": 537307,
+          "width": 829,
+          "height": 829,
+          "sourceRect": {
+            "x": 62,
+            "y": 62,
+            "width": 829,
+            "height": 829
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud2\\cue-ball-wide.png",
+          "fileName": "cue-ball-wide.png",
+          "relativePath": "hud2/cue-ball-wide.png"
+        },
+        {
+          "name": "ball-10",
+          "index": 3,
+          "area": 89774,
+          "width": 348,
+          "height": 348,
+          "sourceRect": {
+            "x": 2,
+            "y": 951,
+            "width": 348,
+            "height": 348
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud2\\ball-10.png",
+          "fileName": "ball-10.png",
+          "relativePath": "hud2/ball-10.png"
+        },
+        {
+          "name": "ball-11",
+          "index": 4,
+          "area": 91054,
+          "width": 348,
+          "height": 348,
+          "sourceRect": {
+            "x": 351,
+            "y": 951,
+            "width": 348,
+            "height": 348
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud2\\ball-11.png",
+          "fileName": "ball-11.png",
+          "relativePath": "hud2/ball-11.png"
+        },
+        {
+          "name": "ball-12",
+          "index": 5,
+          "area": 89636,
+          "width": 348,
+          "height": 348,
+          "sourceRect": {
+            "x": 700,
+            "y": 951,
+            "width": 348,
+            "height": 348
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud2\\ball-12.png",
+          "fileName": "ball-12.png",
+          "relativePath": "hud2/ball-12.png"
+        },
+        {
+          "name": "ball-15",
+          "index": 6,
+          "area": 90069,
+          "width": 348,
+          "height": 348,
+          "sourceRect": {
+            "x": 1049,
+            "y": 951,
+            "width": 348,
+            "height": 348
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud2\\ball-15.png",
+          "fileName": "ball-15.png",
+          "relativePath": "hud2/ball-15.png"
+        },
+        {
+          "name": "ball-5",
+          "index": 7,
+          "area": 91751,
+          "width": 348,
+          "height": 348,
+          "sourceRect": {
+            "x": 1398,
+            "y": 951,
+            "width": 348,
+            "height": 348
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud2\\ball-5.png",
+          "fileName": "ball-5.png",
+          "relativePath": "hud2/ball-5.png"
+        },
+        {
+          "name": "ball-13",
+          "index": 8,
+          "area": 89964,
+          "width": 348,
+          "height": 348,
+          "sourceRect": {
+            "x": 2,
+            "y": 1300,
+            "width": 348,
+            "height": 348
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud2\\ball-13.png",
+          "fileName": "ball-13.png",
+          "relativePath": "hud2/ball-13.png"
+        },
+        {
+          "name": "ball-14",
+          "index": 9,
+          "area": 89207,
+          "width": 348,
+          "height": 348,
+          "sourceRect": {
+            "x": 351,
+            "y": 1300,
+            "width": 348,
+            "height": 348
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud2\\ball-14.png",
+          "fileName": "ball-14.png",
+          "relativePath": "hud2/ball-14.png"
+        },
+        {
+          "name": "ball-1",
+          "index": 10,
+          "area": 93093,
+          "width": 348,
+          "height": 348,
+          "sourceRect": {
+            "x": 700,
+            "y": 1300,
+            "width": 348,
+            "height": 348
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud2\\ball-1.png",
+          "fileName": "ball-1.png",
+          "relativePath": "hud2/ball-1.png"
+        },
+        {
+          "name": "ball-3",
+          "index": 11,
+          "area": 90215,
+          "width": 348,
+          "height": 348,
+          "sourceRect": {
+            "x": 1049,
+            "y": 1300,
+            "width": 348,
+            "height": 348
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud2\\ball-3.png",
+          "fileName": "ball-3.png",
+          "relativePath": "hud2/ball-3.png"
+        },
+        {
+          "name": "ball-7",
+          "index": 12,
+          "area": 92441,
+          "width": 348,
+          "height": 347,
+          "sourceRect": {
+            "x": 1398,
+            "y": 1300,
+            "width": 348,
+            "height": 347
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud2\\ball-7.png",
+          "fileName": "ball-7.png",
+          "relativePath": "hud2/ball-7.png"
+        },
+        {
+          "name": "ball-2",
+          "index": 13,
+          "area": 91118,
+          "width": 348,
+          "height": 348,
+          "sourceRect": {
+            "x": 2,
+            "y": 1649,
+            "width": 348,
+            "height": 348
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud2\\ball-2.png",
+          "fileName": "ball-2.png",
+          "relativePath": "hud2/ball-2.png"
+        },
+        {
+          "name": "ball-4",
+          "index": 14,
+          "area": 91604,
+          "width": 348,
+          "height": 348,
+          "sourceRect": {
+            "x": 351,
+            "y": 1649,
+            "width": 348,
+            "height": 348
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud2\\ball-4.png",
+          "fileName": "ball-4.png",
+          "relativePath": "hud2/ball-4.png"
+        },
+        {
+          "name": "ball-6",
+          "index": 15,
+          "area": 89882,
+          "width": 348,
+          "height": 348,
+          "sourceRect": {
+            "x": 700,
+            "y": 1649,
+            "width": 348,
+            "height": 348
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud2\\ball-6.png",
+          "fileName": "ball-6.png",
+          "relativePath": "hud2/ball-6.png"
+        },
+        {
+          "name": "ball-8",
+          "index": 16,
+          "area": 67636,
+          "width": 347,
+          "height": 288,
+          "sourceRect": {
+            "x": 1050,
+            "y": 1649,
+            "width": 347,
+            "height": 288
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud2\\ball-8.png",
+          "fileName": "ball-8.png",
+          "relativePath": "hud2/ball-8.png"
+        },
+        {
+          "name": "ball-9",
+          "index": 17,
+          "area": 91431,
+          "width": 348,
+          "height": 348,
+          "sourceRect": {
+            "x": 1398,
+            "y": 1649,
+            "width": 348,
+            "height": 348
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\hud2\\ball-9.png",
+          "fileName": "ball-9.png",
+          "relativePath": "hud2/ball-9.png"
+        }
+      ]
+    },
+    {
+      "id": "table-base",
+      "sourceName": "tableBase-ipadhd.png",
+      "sourcePath": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\source\\table-parts\\tableBase-ipadhd.png",
+      "sourceSize": {
+        "width": 313,
+        "height": 298
+      },
+      "outputDir": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\table-parts\\table-base",
+      "outputs": [
+        {
+          "name": "pocket-arc-large-top-left",
+          "index": 1,
+          "area": 3106,
+          "width": 109,
+          "height": 109,
+          "sourceRect": {
+            "x": 3,
+            "y": 3,
+            "width": 109,
+            "height": 109
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\table-parts\\table-base\\pocket-arc-large-top-left.png",
+          "fileName": "pocket-arc-large-top-left.png",
+          "relativePath": "table-parts/table-base/pocket-arc-large-top-left.png"
+        },
+        {
+          "name": "pocket-glow-large-top",
+          "index": 2,
+          "area": 4537,
+          "width": 98,
+          "height": 98,
+          "sourceRect": {
+            "x": 115,
+            "y": 3,
+            "width": 98,
+            "height": 98
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\table-parts\\table-base\\pocket-glow-large-top.png",
+          "fileName": "pocket-glow-large-top.png",
+          "relativePath": "table-parts/table-base/pocket-glow-large-top.png"
+        },
+        {
+          "name": "pocket-arc-small-top-right",
+          "index": 3,
+          "area": 2325,
+          "width": 79,
+          "height": 57,
+          "sourceRect": {
+            "x": 228,
+            "y": 4,
+            "width": 79,
+            "height": 57
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\table-parts\\table-base\\pocket-arc-small-top-right.png",
+          "fileName": "pocket-arc-small-top-right.png",
+          "relativePath": "table-parts/table-base/pocket-arc-small-top-right.png"
+        },
+        {
+          "name": "pocket-glow-small-right",
+          "index": 4,
+          "area": 2953,
+          "width": 87,
+          "height": 60,
+          "sourceRect": {
+            "x": 212,
+            "y": 115,
+            "width": 87,
+            "height": 60
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\table-parts\\table-base\\pocket-glow-small-right.png",
+          "fileName": "pocket-glow-small-right.png",
+          "relativePath": "table-parts/table-base/pocket-glow-small-right.png"
+        },
+        {
+          "name": "pocket-arc-large-mid-left",
+          "index": 5,
+          "area": 4926,
+          "width": 105,
+          "height": 105,
+          "sourceRect": {
+            "x": 5,
+            "y": 116,
+            "width": 105,
+            "height": 105
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\table-parts\\table-base\\pocket-arc-large-mid-left.png",
+          "fileName": "pocket-arc-large-mid-left.png",
+          "relativePath": "table-parts/table-base/pocket-arc-large-mid-left.png"
+        },
+        {
+          "name": "pocket-arc-medium-mid",
+          "index": 6,
+          "area": 4001,
+          "width": 90,
+          "height": 90,
+          "sourceRect": {
+            "x": 116,
+            "y": 116,
+            "width": 90,
+            "height": 90
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\table-parts\\table-base\\pocket-arc-medium-mid.png",
+          "fileName": "pocket-arc-medium-mid.png",
+          "relativePath": "table-parts/table-base/pocket-arc-medium-mid.png"
+        },
+        {
+          "name": "pocket-ring-large-bottom",
+          "index": 7,
+          "area": 2673,
+          "width": 65,
+          "height": 66,
+          "sourceRect": {
+            "x": 116,
+            "y": 210,
+            "width": 65,
+            "height": 66
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\table-parts\\table-base\\pocket-ring-large-bottom.png",
+          "fileName": "pocket-ring-large-bottom.png",
+          "relativePath": "table-parts/table-base/pocket-ring-large-bottom.png"
+        },
+        {
+          "name": "pocket-ring-medium-bottom",
+          "index": 8,
+          "area": 2682,
+          "width": 66,
+          "height": 66,
+          "sourceRect": {
+            "x": 185,
+            "y": 210,
+            "width": 66,
+            "height": 66
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\table-parts\\table-base\\pocket-ring-medium-bottom.png",
+          "fileName": "pocket-ring-medium-bottom.png",
+          "relativePath": "table-parts/table-base/pocket-ring-medium-bottom.png"
+        },
+        {
+          "name": "pocket-arc-small-bottom-right",
+          "index": 9,
+          "area": 1949,
+          "width": 52,
+          "height": 69,
+          "sourceRect": {
+            "x": 255,
+            "y": 211,
+            "width": 52,
+            "height": 69
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\table-parts\\table-base\\pocket-arc-small-bottom-right.png",
+          "fileName": "pocket-arc-small-bottom-right.png",
+          "relativePath": "table-parts/table-base/pocket-arc-small-bottom-right.png"
+        },
+        {
+          "name": "pocket-arc-large-bottom-left",
+          "index": 10,
+          "area": 2530,
+          "width": 96,
+          "height": 64,
+          "sourceRect": {
+            "x": 4,
+            "y": 226,
+            "width": 96,
+            "height": 64
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\table-parts\\table-base\\pocket-arc-large-bottom-left.png",
+          "fileName": "pocket-arc-large-bottom-left.png",
+          "relativePath": "table-parts/table-base/pocket-arc-large-bottom-left.png"
+        }
+      ]
+    },
+    {
+      "id": "table-cushions",
+      "sourceName": "tableCushions-hd.png",
+      "sourcePath": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\source\\table-parts\\tableCushions-hd.png",
+      "sourceSize": {
+        "width": 428,
+        "height": 96
+      },
+      "outputDir": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\table-parts\\table-cushions",
+      "outputs": [
+        {
+          "name": "cushion-top",
+          "index": 1,
+          "area": 9594,
+          "width": 410,
+          "height": 26,
+          "sourceRect": {
+            "x": 7,
+            "y": 6,
+            "width": 410,
+            "height": 26
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\table-parts\\table-cushions\\cushion-top.png",
+          "fileName": "cushion-top.png",
+          "relativePath": "table-parts/table-cushions/cushion-top.png"
+        },
+        {
+          "name": "cushion-middle",
+          "index": 2,
+          "area": 9553,
+          "width": 406,
+          "height": 26,
+          "sourceRect": {
+            "x": 9,
+            "y": 36,
+            "width": 406,
+            "height": 26
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\table-parts\\table-cushions\\cushion-middle.png",
+          "fileName": "cushion-middle.png",
+          "relativePath": "table-parts/table-cushions/cushion-middle.png"
+        },
+        {
+          "name": "cushion-bottom",
+          "index": 3,
+          "area": 9140,
+          "width": 405,
+          "height": 25,
+          "sourceRect": {
+            "x": 6,
+            "y": 66,
+            "width": 405,
+            "height": 25
+          },
+          "path": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\table-parts\\table-cushions\\cushion-bottom.png",
+          "fileName": "cushion-bottom.png",
+          "relativePath": "table-parts/table-cushions/cushion-bottom.png"
+        }
+      ]
+    }
+  ],
+  "previewPath": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\preview.html",
+  "validationScreenshotPath": "C:\\Users\\James\\Downloads\\Messages\\ohmf\\apps\\web\\miniapps\\eightball\\assets\\render\\extracted\\validation\\atlas-preview.png"
+}

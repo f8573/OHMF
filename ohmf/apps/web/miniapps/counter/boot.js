@@ -1,3 +1,11 @@
-const assetVersion = encodeURIComponent(window.parent?.OHMF_RUNTIME_CONFIG?.asset_version || "dev");
+let assetVersion = "dev";
+const runtimeParams = new URLSearchParams(window.location.search);
 
-await import(`./app.js?v=${assetVersion}`);
+try {
+  assetVersion =
+    runtimeParams.get("asset_version")
+    || window.OHMF_RUNTIME_CONFIG?.asset_version
+    || assetVersion;
+} catch {}
+
+await import(`./app.js?v=${encodeURIComponent(assetVersion)}`);

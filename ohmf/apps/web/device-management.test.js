@@ -53,7 +53,11 @@ test("linked-device normalization keeps current device first and converges after
   assert.equal(initial[0].id, "device-a");
   assert.equal(initial[0].isCurrent, true);
   assert.deepEqual(Object.keys(initial[1]).sort(), [
+    "attestationExpiresAt",
+    "attestationLastError",
     "attestationState",
+    "attestationType",
+    "attestedAt",
     "capabilities",
     "clientVersion",
     "deviceName",

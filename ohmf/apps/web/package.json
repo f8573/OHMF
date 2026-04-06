@@ -1,0 +1,24 @@
+{
+  "name": "ohmf-web-tests",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "dev": "py dev_server.py",
+    "extract:eightball:assets": "node ./miniapps/eightball/tools/extract-atlas-assets.mjs",
+    "recrop:eightball:hud": "node ./miniapps/eightball/tools/recrop-hud-components.mjs",
+    "split:eightball:table": "node ./miniapps/eightball/tools/split-table-reference.mjs",
+    "test:unit": "node --test device-management.test.js miniapp-host.test.js shell-contract.test.js transport-continuity.test.js trust-verification.test.js miniapps/eightball/layout.test.js miniapps/eightball/permissions.test.js miniapps/eightball/rules.test.js",
+    "test:e2e": "playwright test",
+    "test:e2e:live": "node ./e2e/run-live.js",
+    "test:e2e:headed": "playwright test --headed",
+    "test:e2e:debug": "playwright test --debug",
+    "test:smoke": "playwright test --grep @smoke",
+    "test:qa": "npm run test:unit && npm run test:e2e"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.0"
+  },
+  "dependencies": {
+    "three": "^0.183.2"
+  }
+}

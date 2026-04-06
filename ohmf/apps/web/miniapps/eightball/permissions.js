@@ -7,6 +7,13 @@
 }(typeof globalThis !== "undefined" ? globalThis : this, function createEightballPermissions() {
   "use strict";
 
+  const CAPABILITY_ACTIONS = Object.freeze({
+    "realtime.session": "recording shots",
+    "conversation.send_message": "projecting the latest summary",
+    "storage.session": "saving local notes",
+    "conversation.read_context": "refreshing conversation context",
+  });
+
   function sanitizeText(value, limit) {
     const normalized = String(value == null ? "" : value).replace(/[\u0000-\u001f\u007f]/g, "").trim();
     if (!normalized) return "";
@@ -21,26 +28,23 @@
   }
 
   function describeBlockedActions(granted) {
-    const missingAsk = missingCapabilities(granted, ["realtime.session"]);
-    const missingSend = missingCapabilities(granted, ["conversation.send_message"]);
+    const missingWrite = missingCapabilities(granted, ["realtime.session"]);
+    const missingProject = missingCapabilities(granted, ["conversation.send_message"]);
     const missingDraft = missingCapabilities(granted, ["storage.session"]);
     const missingRefresh = missingCapabilities(granted, ["conversation.read_context"]);
-    const notices = [];
-    if (missingAsk.length) notices.push("asking new questions");
-    if (missingSend.length) notices.push("sending answers to the thread");
-    if (missingDraft.length) notices.push("saving draft questions");
-    if (missingRefresh.length) notices.push("refreshing conversation context");
+    const missing = Array.from(new Set([
+      ...missingWrite,
+      ...missingProject,
+      ...missingDraft,
+      ...missingRefresh,
+    ])).sort();
+    const notices = missing.map((capability) => CAPABILITY_ACTIONS[capability] || capability);
     return {
-      askDisabled: missingAsk.length > 0,
-      sendDisabled: missingSend.length > 0,
+      writeDisabled: missingWrite.length > 0,
+      projectDisabled: missingProject.length > 0,
       draftDisabled: missingDraft.length > 0,
       refreshDisabled: missingRefresh.length > 0,
-      missing: Array.from(new Set([
-        ...missingAsk,
-        ...missingSend,
-        ...missingDraft,
-        ...missingRefresh,
-      ])).sort(),
+      missing,
       blockedSummary: notices.length ? `Blocked: host denied ${notices.join(", ")}.` : "",
     };
   }

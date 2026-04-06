@@ -33,6 +33,7 @@
     frontend_port: resolvedFrontendPort,
     api_host_port: resolvedAPIHostPort,
     api_base_url: normalizeAPIBaseURL(storedAPIBaseURL),
+    developer_mode: Boolean(runtimeConfig.developer_mode),
     use_real_otp_provider: Boolean(runtimeConfig.use_real_otp_provider),
     web_push_enabled: Boolean(runtimeConfig.web_push_enabled),
     web_push_vapid_public_key: String(runtimeConfig.web_push_vapid_public_key || ""),

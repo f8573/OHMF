@@ -5,85 +5,313 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'self'"
+      content="default-src 'self'; script-src 'self' http://localhost:* http://127.0.0.1:*; style-src 'self' http://localhost:* http://127.0.0.1:*; img-src 'self' data: http://localhost:* http://127.0.0.1:*; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'self'"
     />
     <meta name="referrer" content="no-referrer" />
-    <title>Mystic 8-Ball</title>
+    <title>8 Ball Pool</title>
     <script src="../../runtime-config.js"></script>
     <script src="../../asset-loader.js" data-css="./styles.css"></script>
   </head>
   <body>
     <main id="app-shell" class="app-shell">
       <header class="hero">
-        <div>
+        <div class="hero-copy">
           <p class="eyebrow">Open Mini-App SDK Example</p>
-          <h1>Mystic 8-Ball</h1>
-          <p class="subcopy">Uses launch context, session storage, shared session state, recent conversation context, and projected messages.</p>
+          <h1>8 Ball Pool</h1>
+          <p class="subcopy">
+            Shared rack state, pocket calling, turn flow, and thread projection in a player-facing match UI.
+          </p>
         </div>
-        <p id="status-pill" class="status-pill">Finding the future...</p>
+        <div class="hero-status">
+          <p id="status-pill" class="status-pill">Rack ready.</p>
+          <div class="status-row">
+            <p id="phase-pill" class="phase-pill">Waiting</p>
+            <p id="turn-pill" class="turn-pill">Waiting to start</p>
+          </div>
+        </div>
       </header>
 
-      <section class="stage-grid">
-        <article class="ball-card">
-          <div class="ball-shell">
-            <div class="ball-core">
-              <p class="ball-label">Answer</p>
-              <p id="answer-text" class="answer-text">Ask a question</p>
+      <section class="game-layout">
+        <article class="table-panel">
+          <section class="game-stage">
+            <section class="match-hud" aria-label="Match status">
+              <article class="match-player match-player-left">
+                <div class="match-player-head">
+                  <div>
+                    <p id="match-player-left-name" class="match-player-name">Player 1</p>
+                    <p id="match-player-left-meta" class="match-player-meta">Open table</p>
+                  </div>
+                  <p id="match-player-left-badge" class="match-player-badge">Waiting</p>
+                </div>
+                <div id="match-player-left-targets" class="match-player-targets"></div>
+              </article>
+
+              <section class="match-center">
+                <p class="label">Match Flow</p>
+                <strong id="match-center-status" class="match-center-status">Rack the match to begin.</strong>
+                <p id="match-center-copy" class="match-center-copy">Seat two players and break the rack.</p>
+              </section>
+
+              <article class="match-player match-player-right">
+                <div class="match-player-head">
+                  <div>
+                    <p id="match-player-right-name" class="match-player-name">Player 2</p>
+                    <p id="match-player-right-meta" class="match-player-meta">Open table</p>
+                  </div>
+                  <p id="match-player-right-badge" class="match-player-badge">Waiting</p>
+                </div>
+                <div id="match-player-right-targets" class="match-player-targets"></div>
+              </article>
+            </section>
+
+            <div class="stage-main">
+              <div class="table-frame">
+                <div class="table-head">
+                  <div>
+                    <p class="table-kicker">Table View</p>
+                    <p id="table-summary" class="table-summary">Start the match to seat players and break the rack.</p>
+                  </div>
+                  <div class="table-meta">
+                    <p id="viewer-line" class="meta-line">Viewer: unavailable</p>
+                    <p id="participants-line" class="meta-line">Players: unavailable</p>
+                  </div>
+                </div>
+
+                <div class="playfield-shell">
+                  <div class="playfield" id="playfield">
+                    <canvas id="playfield-canvas" class="playfield-canvas" aria-label="Rendered pool table"></canvas>
+                    <div id="pocket-map" class="pocket-map" aria-label="Called pocket selector"></div>
+                    <div id="table-balls" class="table-balls" aria-label="Rendered pool balls"></div>
+                    <div id="playfield-status" class="playfield-status" hidden></div>
+                  </div>
+                </div>
+
+                <div class="stage-footer">
+                  <div class="rack-summary">
+                    <div class="rack-track">
+                      <div id="rack-progress" class="rack-progress"></div>
+                    </div>
+                    <div class="rack-details">
+                      <p id="legal-target-line" class="meta-line">Open table.</p>
+                      <p id="shared-line" class="meta-line">No summary projected yet.</p>
+                    </div>
+                  </div>
+
+                  <div class="tray-grid">
+                    <section class="tray-card">
+                      <div class="tray-head">
+                        <p class="label">Solids</p>
+                        <p id="solids-owner" class="tray-owner">Open</p>
+                      </div>
+                      <div id="solids-tray" class="ball-tray" aria-label="Solids tray"></div>
+                    </section>
+                    <section class="tray-card">
+                      <div class="tray-head">
+                        <p class="label">Stripes</p>
+                        <p id="stripes-owner" class="tray-owner">Open</p>
+                      </div>
+                      <div id="stripes-tray" class="ball-tray" aria-label="Stripes tray"></div>
+                    </section>
+                  </div>
+                </div>
+              </div>
             </div>
-          </div>
-          <div class="button-strip">
-            <button id="ask-btn" type="button">Shake 8-Ball</button>
-            <button id="send-btn" type="button">Send To Thread</button>
-          </div>
-        </article>
 
-        <article class="card">
-          <p class="label">Question</p>
-          <label class="sr-only" for="question-input">Question</label>
-          <textarea id="question-input" rows="4" maxlength="220" placeholder="Will the SDK demo make sense?"></textarea>
-          <div class="meta-block">
-            <p id="viewer-line" class="meta-line">Viewer: unavailable</p>
-            <p id="participants-line" class="meta-line">Participants: unavailable</p>
-          </div>
-        </article>
+            <aside class="control-dock">
+              <section class="control-card">
+            <div class="card-head">
+              <div>
+                <p class="label">Shot Composer</p>
+                <h2 id="instruction-line" class="card-title">Rack the match to begin.</h2>
+              </div>
+              <p id="count-line" class="meta-badge">Turn 0</p>
+            </div>
 
-        <article class="card">
-          <p class="label">Shared Session</p>
-          <p id="shared-line" class="meta-line">No shared answer yet.</p>
-          <p id="count-line" class="meta-line">Questions asked: 0</p>
-          <div class="button-strip">
-            <button id="refresh-btn" type="button">Refresh Context</button>
-            <button id="load-draft-btn" type="button">Load Draft</button>
-            <button id="save-draft-btn" type="button">Save Draft</button>
-          </div>
+            <div class="choice-grid" id="action-grid">
+              <label class="choice-chip">
+                <input type="radio" name="shot-action" value="pocket" checked />
+                <span>Pot Ball</span>
+              </label>
+              <label class="choice-chip">
+                <input type="radio" name="shot-action" value="miss" />
+                <span>Miss</span>
+              </label>
+              <label class="choice-chip">
+                <input type="radio" name="shot-action" value="scratch" />
+                <span>Scratch</span>
+              </label>
+              <label class="choice-chip">
+                <input type="radio" name="shot-action" value="eight" />
+                <span>Sink 8</span>
+              </label>
+            </div>
+
+            <details class="advanced-shot-card">
+              <summary>Shot details</summary>
+
+              <div id="claim-group-row" class="field-row">
+                <label class="field">
+                  <span>Claim group</span>
+                  <select id="claim-group-select">
+                    <option value="solids">Solids</option>
+                    <option value="stripes">Stripes</option>
+                  </select>
+                </label>
+              </div>
+
+              <div id="pocket-count-row" class="field-row split">
+                <label class="field">
+                  <span>Your balls pocketed</span>
+                  <input id="own-pocketed-input" type="number" min="0" max="7" step="1" value="1" />
+                </label>
+                <label class="field">
+                  <span>Opponent balls pocketed</span>
+                  <input id="opponent-pocketed-input" type="number" min="0" max="7" step="1" value="0" />
+                </label>
+              </div>
+
+              <div id="break-count-row" class="field-row">
+                <label class="field">
+                  <span>Other balls on the break</span>
+                  <input id="break-pocketed-input" type="number" min="0" max="7" step="1" value="1" />
+                </label>
+              </div>
+            </details>
+
+            <div class="field-row">
+              <div class="pocket-call-card">
+                <div class="pocket-call-head">
+                  <span>Called pocket</span>
+                  <strong id="called-pocket-label">Foot Right</strong>
+                </div>
+                <p class="meta-line">Tap a pocket on the table to update the current call.</p>
+              </div>
+            </div>
+
+            <div class="shot-tools">
+              <section class="tool-panel">
+                <div class="tool-panel-head">
+                  <div>
+                    <p class="label">Pot indicators</p>
+                    <strong id="pot-indicator-label" class="tool-value">Foot Right selected</strong>
+                  </div>
+                </div>
+                <div id="pot-indicator-grid" class="pot-indicator-grid" aria-label="Pocket indicator selector"></div>
+                <p class="meta-line">Use the same called-pocket flow as a standard pool HUD.</p>
+              </section>
+
+              <section class="tool-panel cue-controls-panel">
+                <div class="tool-panel-head">
+                  <div>
+                    <p class="label">Cue controls</p>
+                    <strong class="tool-value">Aim, power, and english</strong>
+                  </div>
+                </div>
+
+                <label class="field cue-angle-field">
+                  <span>Cue aim angle</span>
+                  <div class="range-field">
+                    <input id="cue-angle-input" type="range" min="-180" max="180" step="1" value="0" />
+                    <strong id="cue-angle-label">0°</strong>
+                  </div>
+                </label>
+                <div class="angle-legend" aria-hidden="true">
+                  <span>Left cut</span>
+                  <span>Center line</span>
+                  <span>Right cut</span>
+                </div>
+
+                <div class="field cue-spin-field">
+                  <span>Cue ball aim selector</span>
+                  <div id="cue-ball-selector" class="cue-ball-selector" aria-label="Cue ball english selector">
+                    <div class="cue-ball-selector-surface"></div>
+                    <div class="cue-ball-selector-axis cue-ball-selector-axis-x"></div>
+                    <div class="cue-ball-selector-axis cue-ball-selector-axis-y"></div>
+                    <div id="cue-spin-marker" class="cue-spin-marker"></div>
+                  </div>
+                </div>
+                <div class="cue-spin-row">
+                  <strong id="cue-spin-label" class="tool-value">Center ball</strong>
+                  <button id="cue-spin-reset-btn" type="button" class="secondary-button">Reset english</button>
+                </div>
+
+                <label class="field cue-power-field">
+                  <span>Cue power</span>
+                  <div class="cue-power-stack">
+                    <div class="power-hud" aria-hidden="true">
+                      <div class="power-hud-track">
+                        <img id="cue-power-shell-art" class="power-hud-shell-art" alt="" />
+                        <div class="power-hud-fill-clip">
+                          <img id="cue-power-fill-art" class="power-hud-fill-art" alt="" />
+                        </div>
+                        <img id="cue-power-overlay-art" class="power-hud-overlay-art" alt="" />
+                      </div>
+                    </div>
+                    <div class="range-field">
+                      <input id="cue-power-input" type="range" min="0" max="100" step="1" value="62" />
+                      <strong id="cue-power-label">62%</strong>
+                    </div>
+                  </div>
+                  <div class="cue-power-meter" aria-hidden="true">
+                    <div id="cue-power-meter-fill" class="cue-power-meter-fill"></div>
+                  </div>
+                </label>
+              </section>
+            </div>
+
+            <div class="button-grid">
+              <button id="start-btn" type="button">Rack Match</button>
+              <button id="submit-shot-btn" type="button">Submit Shot</button>
+              <button id="refresh-btn" type="button">Refresh</button>
+              <button id="project-btn" type="button">Project Status</button>
+            </div>
+
+            <div class="helper-grid">
+              <section class="helper-tile">
+                <p class="helper-label">Turn clock</p>
+                <strong id="turn-timer-label" class="helper-value">00:00</strong>
+                <p id="turn-owner-line" class="helper-copy">Waiting for the next shooter.</p>
+              </section>
+              <section class="helper-tile">
+                <p class="helper-label">Balls potted</p>
+                <strong id="potted-summary-line" class="helper-value">0 object balls down</strong>
+                <p id="group-summary-line" class="helper-copy">Solids 0 | Stripes 0</p>
+              </section>
+              <section class="helper-tile">
+                <p class="helper-label">Rack helper</p>
+                <strong id="eightball-status-line" class="helper-value">8-ball closed</strong>
+                <p id="helper-shot-line" class="helper-copy">Select a pocket and record the shot result.</p>
+              </section>
+            </div>
+              </section>
+            </aside>
+          </section>
         </article>
       </section>
 
-      <section class="history-grid">
-        <article class="card">
-          <p class="label">Recent Answers</p>
-          <ul id="history-list" class="stack-list"></ul>
-        </article>
-
-        <article class="card">
-          <p class="label">Recent Thread Messages</p>
-          <ul id="message-list" class="stack-list"></ul>
-        </article>
-      </section>
+      <div class="legacy-panels" hidden aria-hidden="true">
+        <div id="scoreboard" class="scoreboard"></div>
+        <ul id="history-list" class="history-list"></ul>
+        <ul id="message-list" class="history-list compact"></ul>
+      </div>
     </main>
 
     <section id="preview-shell" class="preview-shell" hidden>
       <div class="preview-card">
-        <p class="preview-kicker">Mystic 8-Ball</p>
-        <div class="preview-ball">
-          <div class="preview-answer-wrap">
-            <p id="preview-answer-text" class="preview-answer-text">Reply hazy, try again.</p>
+        <p class="preview-kicker">8 Ball Pool</p>
+        <div class="preview-table">
+          <div class="preview-ball-grid">
+            <span class="preview-ball solid">1</span>
+            <span class="preview-ball stripe">11</span>
+            <span class="preview-ball black">8</span>
           </div>
+          <p id="preview-answer-text" class="preview-answer-text">Open the table.</p>
         </div>
-        <p id="preview-caption" class="preview-caption">Shared answer ready for the thread.</p>
+        <p id="preview-caption" class="preview-caption">Shared match state ready for the thread.</p>
       </div>
     </section>
 
+    <script src="./rules.js"></script>
     <script src="./permissions.js"></script>
     <script type="module" src="./boot.js"></script>
   </body>

@@ -72,8 +72,8 @@ const BUILTIN_DEV_MINIAPP_CATALOG = Object.freeze([
   {
     appId: "app.ohmf.eightball",
     manifestUrl: "./miniapps/eightball/manifest.json",
-    title: "Mystic 8-Ball",
-    summary: "Open-source SDK demo with shared answers and projected summaries.",
+    title: "8 Ball Pool",
+    summary: "Turn-based pool demo with shared table state, reconnect, and projected turns.",
   },
 ]);
 const MINIAPP_SESSION_EVENT_TYPES = Object.freeze({
@@ -166,6 +166,7 @@ const state = {
   remoteTypingByThread: {},
   replyTarget: null,
   openMessageMenu: null,
+  conversationSettingsOpen: false,
   messageMetadata: {
     open: false,
     threadId: "",
@@ -208,12 +209,35 @@ const state = {
     loading: false,
     error: "",
     devices: [],
+    activity: [],
+    activityLoading: false,
     lastLoadedAt: "",
     pairCode: "",
     pairCodeExpiresAt: "",
     startingPairing: false,
     revokingDeviceId: "",
   },
+  privacy: {
+    loading: false,
+    saving: false,
+    loaded: false,
+    error: "",
+    prefs: {
+      sendReadReceipts: true,
+      sharePresence: true,
+      shareTyping: true,
+    },
+  },
+  groupManager: {
+    open: false,
+    loading: false,
+    error: "",
+    threadId: "",
+    actionUserId: "",
+    lastLoadedAt: "",
+  },
+  attachmentDraft: null,
+  attachmentPreviewCache: {},
   trustPanel: {
     threadId: "",
     contactUserId: "",
@@ -283,6 +307,13 @@ const el = {
   composerReplyLabel: document.getElementById("composer-reply-label"),
   composerReplyText: document.getElementById("composer-reply-text"),
   composerReplyCancel: document.getElementById("composer-reply-cancel"),
+  composerAttachment: document.getElementById("composer-attachment"),
+  composerAttachmentPreview: document.getElementById("composer-attachment-preview"),
+  composerAttachmentLabel: document.getElementById("composer-attachment-label"),
+  composerAttachmentText: document.getElementById("composer-attachment-text"),
+  composerAttachmentStatus: document.getElementById("composer-attachment-status"),
+  composerAttachmentCancel: document.getElementById("composer-attachment-cancel"),
+  composerAttachmentSend: document.getElementById("composer-attachment-send"),
   composerInput: document.getElementById("composer-input"),
   emptyState: document.getElementById("empty-state"),
   messageMetadataWindow: document.getElementById("message-metadata-window"),
@@ -301,11 +332,40 @@ const el = {
   pairingCodeValue: document.getElementById("pairing-code-value"),
   pairingCodeExpiry: document.getElementById("pairing-code-expiry"),
   linkedDeviceList: document.getElementById("linked-device-list"),
+  privacyReadReceiptsToggle: document.getElementById("privacy-read-receipts-toggle"),
+  privacyPresenceToggle: document.getElementById("privacy-presence-toggle"),
+  privacyTypingToggle: document.getElementById("privacy-typing-toggle"),
+  privacySettingsStatus: document.getElementById("privacy-settings-status"),
+  deviceActivityList: document.getElementById("device-activity-list"),
+  groupManagerWindow: document.getElementById("group-manager-window"),
+  groupManagerBackdrop: document.getElementById("group-manager-backdrop"),
+  groupManagerCloseBtn: document.getElementById("group-manager-close-btn"),
+  groupManagerRefreshBtn: document.getElementById("group-manager-refresh-btn"),
+  groupManagerStatus: document.getElementById("group-manager-status"),
+  groupManagerTitle: document.getElementById("group-manager-title"),
+  groupManagerSubtitle: document.getElementById("group-manager-subtitle"),
+  groupManagerRoleSummary: document.getElementById("group-manager-role-summary"),
+  groupManagerName: document.getElementById("group-manager-name"),
+  groupManagerMeta: document.getElementById("group-manager-meta"),
+  groupManagerImageValue: document.getElementById("group-manager-image-value"),
+  groupManagerAvatar: document.getElementById("group-manager-avatar"),
+  groupManagerRenameBtn: document.getElementById("group-manager-rename-btn"),
+  groupManagerImageBtn: document.getElementById("group-manager-image-btn"),
+  groupManagerAddBtn: document.getElementById("group-manager-add-btn"),
+  groupManagerLeaveBtn: document.getElementById("group-manager-leave-btn"),
+  groupMemberList: document.getElementById("group-member-list"),
   trustPanel: document.getElementById("chat-trust-panel"),
   trustSummary: document.getElementById("chat-trust-summary"),
   trustStatus: document.getElementById("chat-trust-status"),
   trustRefreshBtn: document.getElementById("chat-trust-refresh-btn"),
   trustList: document.getElementById("chat-trust-list"),
+  conversationSettingsBtn: document.getElementById("conversation-settings-btn"),
+  conversationSettingsWindow: document.getElementById("conversation-settings-window"),
+  conversationSettingsBackdrop: document.getElementById("conversation-settings-backdrop"),
+  conversationSettingsCloseBtn: document.getElementById("conversation-settings-close-btn"),
+  conversationSettingsTitle: document.getElementById("conversation-settings-title"),
+  conversationSettingsSubtitle: document.getElementById("conversation-settings-subtitle"),
+  conversationSettingsCopy: document.getElementById("conversation-settings-copy"),
   backBtn: document.getElementById("back-btn"),
   newChatBtn: document.getElementById("new-chat-btn"),
   newGroupBtn: document.getElementById("new-group-btn"),
@@ -315,6 +375,7 @@ const el = {
   newCountryCodeSelect: document.getElementById("new-country-code-select"),
   newPhoneInput: document.getElementById("new-phone-input"),
   nicknameBtn: document.getElementById("nickname-btn"),
+  groupDetailsBtn: document.getElementById("group-details-btn"),
   groupEncryptionBtn: document.getElementById("group-encryption-btn"),
   blockBtn: document.getElementById("block-btn"),
   closeThreadBtn: document.getElementById("close-thread-btn"),
@@ -389,6 +450,8 @@ function resetDeviceManagerState() {
     loading: false,
     error: "",
     devices: [],
+    activity: [],
+    activityLoading: false,
     lastLoadedAt: "",
     pairCode: "",
     pairCodeExpiresAt: "",
@@ -471,7 +534,7 @@ function sanitizeText(value, limit = 1000) {
 function normalizePreviewURL(value) {
   if (!value) return "";
   try {
-    const url = new URL(String(value), window.location.href);
+    const url = new URL(rewriteLocalDevAssetURL(String(value)), window.location.href);
     if (url.protocol !== "http:" && url.protocol !== "https:") return "";
     return url.toString();
   } catch {
@@ -564,7 +627,111 @@ function makeIdempotencyKey(prefix = "msg") {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-async function uploadMediaFile(file) {
+function formatFileSize(value) {
+  const bytes = Number(value || 0);
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  let index = 0;
+  let size = bytes;
+  while (size >= 1024 && index < units.length - 1) {
+    size /= 1024;
+    index += 1;
+  }
+  return `${size >= 10 || index === 0 ? Math.round(size) : size.toFixed(1)} ${units[index]}`;
+}
+
+function attachmentKindFromMime(mimeType) {
+  const normalized = sanitizeText(mimeType, 200).toLowerCase();
+  if (normalized.startsWith("image/")) return "image";
+  if (normalized.startsWith("video/")) return "video";
+  if (normalized.startsWith("audio/")) return "audio";
+  return "file";
+}
+
+function attachmentSupportsInlinePreview(descriptor) {
+  return attachmentKindFromMime(descriptor?.mime_type || descriptor?.stored_mime_type) !== "file";
+}
+
+function attachmentPreviewCacheKey(descriptor) {
+  return sanitizeText(descriptor?.attachment_id || descriptor?.id || descriptor?.message_id, 120);
+}
+
+function releaseObjectUrl(value) {
+  const url = sanitizeText(value, 4000);
+  if (!url.startsWith("blob:")) return;
+  try {
+    URL.revokeObjectURL(url);
+  } catch {}
+}
+
+function cloneAttachmentDraft(draft) {
+  if (!draft) return null;
+  return {
+    ...draft,
+    uploaded: draft.uploaded ? { ...draft.uploaded } : null,
+  };
+}
+
+function setAttachmentDraft(nextDraft) {
+  const previous = state.attachmentDraft;
+  if (previous?.previewUrl && previous.previewUrl !== nextDraft?.previewUrl) {
+    releaseObjectUrl(previous.previewUrl);
+  }
+  state.attachmentDraft = nextDraft ? cloneAttachmentDraft(nextDraft) : null;
+}
+
+function createAttachmentDraft(file, threadId) {
+  const fileName = sanitizeText(file?.name || "attachment", 140);
+  const mimeType = sanitizeText(file?.type || "application/octet-stream", 200) || "application/octet-stream";
+  return {
+    id: randomId("attachment"),
+    threadId: sanitizeText(threadId, 80),
+    file,
+    fileName,
+    mimeType,
+    sizeBytes: Number(file?.size || 0),
+    kind: attachmentKindFromMime(mimeType),
+    previewUrl: attachmentKindFromMime(mimeType) !== "file" ? URL.createObjectURL(file) : "",
+    progress: 0,
+    status: "ready",
+    error: "",
+    uploaded: null,
+  };
+}
+
+function updateAttachmentDraft(patch) {
+  if (!state.attachmentDraft) return;
+  setAttachmentDraft({ ...state.attachmentDraft, ...patch });
+}
+
+function uploadBinaryToSignedUrl(init, body, onProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open(init?.method || "PUT", init?.upload_url);
+    const headers = init?.headers && typeof init.headers === "object" ? init.headers : {};
+    for (const [key, value] of Object.entries(headers)) {
+      if (value != null) xhr.setRequestHeader(key, String(value));
+    }
+    if (typeof onProgress === "function") {
+      xhr.upload.onprogress = (event) => {
+        if (!event.lengthComputable) return;
+        onProgress(Math.max(0, Math.min(100, Math.round((event.loaded / event.total) * 100))));
+      };
+    }
+    xhr.onerror = () => reject(new Error("upload failed"));
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        if (typeof onProgress === "function") onProgress(100);
+        resolve();
+      } else {
+        reject(new Error("upload failed"));
+      }
+    };
+    xhr.send(body);
+  });
+}
+
+async function uploadMediaFile(file, options = {}) {
   if (!file) throw new Error("no file");
   const buffer = await file.arrayBuffer();
   const checksum = await sha256Hex(buffer);
@@ -583,12 +750,11 @@ async function uploadMediaFile(file) {
   const attachmentId = init?.attachment_id;
   if (!uploadUrl) throw new Error("no upload url returned");
 
-  const response = await fetch(uploadUrl, {
+  await uploadBinaryToSignedUrl({
+    upload_url: uploadUrl,
     method: init?.method || "PUT",
     headers: init?.headers || { "Content-Type": file.type || "application/octet-stream" },
-    body: buffer,
-  });
-  if (!response.ok) throw new Error("upload failed");
+  }, buffer, options.onProgress);
   if (!token) throw new Error("missing upload token");
   await apiRequest(`/v1/media/uploads/${encodeURIComponent(token)}/complete`, {
     method: "POST",
@@ -634,10 +800,10 @@ async function decryptAttachmentBytes(buffer, descriptor) {
   return window.crypto.subtle.decrypt({ name: "AES-GCM", iv: base64ToBytes(fileNonce) }, key, buffer);
 }
 
-async function uploadEncryptedMediaFile(thread, file) {
-  if (!thread || thread.kind !== "dm") return uploadMediaFile(file);
+async function uploadEncryptedMediaFile(thread, file, options = {}) {
+  if (!thread || thread.kind !== "dm") return uploadMediaFile(file, options);
   const recipients = await ensureEncryptedConversation(thread);
-  if (!recipients) return uploadMediaFile(file);
+  if (!recipients) return uploadMediaFile(file, options);
 
   const sourceBuffer = await file.arrayBuffer();
   const encrypted = await encryptAttachmentBytes(sourceBuffer);
@@ -657,12 +823,11 @@ async function uploadEncryptedMediaFile(thread, file) {
   const attachmentId = init?.attachment_id;
   if (!uploadUrl) throw new Error("no upload url returned");
 
-  const response = await fetch(uploadUrl, {
+  await uploadBinaryToSignedUrl({
+    upload_url: uploadUrl,
     method: init?.method || "PUT",
     headers: init?.headers || { "Content-Type": "application/octet-stream" },
-    body: encrypted.ciphertext,
-  });
-  if (!response.ok) throw new Error("upload failed");
+  }, encrypted.ciphertext, options.onProgress);
   if (!token) throw new Error("missing upload token");
   await apiRequest(`/v1/media/uploads/${encodeURIComponent(token)}/complete`, {
     method: "POST",
@@ -3063,6 +3228,11 @@ function setAuthError(message) {
   el.authStatus.classList.add("error");
 } // removed: boolean auth status flag split into named helpers
 
+function handleUnauthorizedSession(message = "Session expired. Sign in again.") {
+  logout();
+  setAuthError(message);
+}
+
 function syncAuthHint() {
   if (!el.authHint) return;
   el.authHint.innerHTML = "";
@@ -3135,8 +3305,13 @@ async function apiRequest(path, options = {}) {
   };
 
   let response = await request();
-  if (response.status === 401 && state.auth?.refreshToken && await refreshAuthTokens()) {
-    response = await request();
+  if (response.status === 401) {
+    const refreshed = state.auth?.refreshToken ? await refreshAuthTokens() : false;
+    if (refreshed) {
+      response = await request();
+    } else if (state.auth) {
+      handleUnauthorizedSession();
+    }
   }
 
   const text = await response.text();
@@ -3155,6 +3330,91 @@ async function apiRequest(path, options = {}) {
     throw error;
   }
   return payload;
+}
+
+function normalizedPrivacyPreferences(raw) {
+  return {
+    sendReadReceipts: raw?.send_read_receipts !== false && raw?.sendReadReceipts !== false,
+    sharePresence: raw?.share_presence !== false && raw?.sharePresence !== false,
+    shareTyping: raw?.share_typing !== false && raw?.shareTyping !== false,
+  };
+}
+
+async function loadPrivacyPreferences(options = {}) {
+  if (!state.auth) return state.privacy.prefs;
+  const silent = Boolean(options.silent);
+  if (!silent) state.privacy.loading = true;
+  state.privacy.error = "";
+  renderDeviceManager();
+  try {
+    const payload = await apiRequest("/v1/notifications/preferences", { method: "GET" });
+    state.privacy.prefs = normalizedPrivacyPreferences(payload);
+    state.privacy.loaded = true;
+  } catch (error) {
+    state.privacy.error = sanitizeText(error.message || "Unable to load privacy settings.", 180);
+  } finally {
+    state.privacy.loading = false;
+    renderDeviceManager();
+  }
+  return state.privacy.prefs;
+}
+
+async function savePrivacyPreferences(nextPrefs) {
+  if (!state.auth) return;
+  state.privacy.saving = true;
+  state.privacy.error = "";
+  state.privacy.prefs = { ...state.privacy.prefs, ...nextPrefs };
+  renderDeviceManager();
+  try {
+    const current = await apiRequest("/v1/notifications/preferences", { method: "GET" });
+    const payload = await apiRequest("/v1/notifications/preferences", {
+      method: "PUT",
+      body: JSON.stringify({
+        push_enabled: current?.push_enabled !== false,
+        mute_unknown_senders: Boolean(current?.mute_unknown_senders),
+        show_previews: current?.show_previews !== false,
+        muted_conversation_notifications: Boolean(current?.muted_conversation_notifications),
+        send_read_receipts: Boolean(state.privacy.prefs.sendReadReceipts),
+        share_presence: Boolean(state.privacy.prefs.sharePresence),
+        share_typing: Boolean(state.privacy.prefs.shareTyping),
+      }),
+    });
+    state.privacy.prefs = normalizedPrivacyPreferences(payload);
+    state.privacy.loaded = true;
+  } catch (error) {
+    state.privacy.error = sanitizeText(error.message || "Unable to save privacy settings.", 180);
+    throw error;
+  } finally {
+    state.privacy.saving = false;
+    renderDeviceManager();
+  }
+}
+
+function normalizeDeviceActivityItems(rawItems) {
+  return Array.isArray(rawItems) ? rawItems.map((item) => ({
+    id: Number(item?.id || 0),
+    eventType: sanitizeText(item?.event_type, 80),
+    createdAt: sanitizeText(item?.created_at, 80),
+    deviceId: sanitizeText(item?.device_id, 80),
+    summary: sanitizeText(item?.summary, 180) || "Activity updated.",
+  })).filter((item) => item.summary) : [];
+}
+
+async function refreshDeviceActivity(options = {}) {
+  if (!state.auth) return;
+  state.deviceManager.activityLoading = true;
+  if (!options.silent) state.deviceManager.error = "";
+  renderDeviceManager();
+  try {
+    const payload = await apiRequest("/v1/devices/activity", { method: "GET" });
+    state.deviceManager.activity = normalizeDeviceActivityItems(payload?.items);
+  } catch (error) {
+    state.deviceManager.error = sanitizeText(error.message || "Unable to load device activity.", 180);
+    if (!options.silent) state.deviceManager.activity = [];
+  } finally {
+    state.deviceManager.activityLoading = false;
+    renderDeviceManager();
+  }
 }
 
 async function refreshLinkedDevices(options = {}) {
@@ -3181,12 +3441,28 @@ async function openDeviceManager() {
   if (!state.auth) return;
   state.deviceManager.open = true;
   renderAll();
-  await refreshLinkedDevices();
+  await Promise.all([
+    refreshLinkedDevices(),
+    refreshDeviceActivity({ silent: true }),
+    loadPrivacyPreferences({ silent: true }),
+  ]);
 }
 
 function closeDeviceManager() {
   if (!state.deviceManager.open) return;
   state.deviceManager.open = false;
+  renderAll();
+}
+
+function openConversationSettings() {
+  if (!getActiveThread()) return;
+  state.conversationSettingsOpen = true;
+  renderAll();
+}
+
+function closeConversationSettings() {
+  if (!state.conversationSettingsOpen) return;
+  state.conversationSettingsOpen = false;
   renderAll();
 }
 
@@ -3232,7 +3508,13 @@ async function revokeLinkedDevice(deviceId) {
 }
 
 function trustPanelSupportedThread(thread) {
-  return Boolean(thread && thread.kind === "dm" && otherUserIdForThread(thread));
+  const encryptionState = sanitizeText(thread?.encryptionState, 40);
+  return Boolean(
+    thread
+    && thread.kind === "dm"
+    && otherUserIdForThread(thread)
+    && (thread.e2eeReady || encryptionState === "ENCRYPTED")
+  );
 }
 
 function setTrustPanelTarget(thread) {
@@ -3479,11 +3761,37 @@ function miniappSupportReason(thread = getActiveThread()) {
 function rewriteLocalDevEntrypoint(rawUrl) {
   const url = new URL(rawUrl, window.location.href);
   const localHosts = new Set(["localhost", "127.0.0.1"]);
-  if (localHosts.has(url.hostname) && localHosts.has(window.location.hostname) && url.port !== window.location.port) {
+  if (
+    localHosts.has(url.hostname) &&
+    localHosts.has(window.location.hostname) &&
+    (url.hostname !== window.location.hostname || url.port !== window.location.port)
+  ) {
     url.protocol = window.location.protocol;
     url.host = `${window.location.hostname}:${window.location.port}`;
   }
   return url.toString();
+}
+
+function rewriteLocalDevAssetURL(rawUrl) {
+  const url = new URL(rawUrl, window.location.href);
+  const localHosts = new Set(["localhost", "127.0.0.1"]);
+  if (
+    localHosts.has(url.hostname) &&
+    localHosts.has(window.location.hostname) &&
+    (url.hostname !== window.location.hostname || url.port !== window.location.port)
+  ) {
+    url.protocol = window.location.protocol;
+    url.host = `${window.location.hostname}:${window.location.port}`;
+  }
+  return url.toString();
+}
+
+function miniappSandboxBaseURL() {
+  return window.OHMF_RUNTIME_CONFIG?.miniapp_sandbox_url || window.location.origin;
+}
+
+function miniappFrameSandboxFlags() {
+  return "allow-scripts";
 }
 
 function shouldBootstrapBuiltinMiniapps() {
@@ -3497,6 +3805,9 @@ function normalizeMiniappCatalogEntry(raw) {
   const manifest = raw?.manifest && typeof raw.manifest === "object" ? cloneJson(raw.manifest) : null;
   if (manifest?.entrypoint?.url) {
     manifest.entrypoint.url = rewriteLocalDevEntrypoint(manifest.entrypoint.url);
+  }
+  if (manifest?.message_preview?.url) {
+    manifest.message_preview.url = rewriteLocalDevAssetURL(manifest.message_preview.url);
   }
   const install = raw?.install && typeof raw.install === "object" ? raw.install : {};
   return {
@@ -3660,14 +3971,16 @@ async function fetchMiniappManifest(manifestUrl) {
   // Convert relative URLs to absolute URLs from mini-app sandbox origin
   let resolvedUrl = manifestUrl;
   if (!manifestUrl.startsWith("http://") && !manifestUrl.startsWith("https://")) {
-    const miniappSandboxUrl = window.OHMF_RUNTIME_CONFIG?.miniapp_sandbox_url || "http://localhost:5174";
-    resolvedUrl = new URL(manifestUrl, miniappSandboxUrl + "/").toString();
+    resolvedUrl = new URL(manifestUrl, miniappSandboxBaseURL() + "/").toString();
   }
   const response = await fetch(resolvedUrl, { cache: "no-store" });
   if (!response.ok) throw new Error(`Manifest request failed with ${response.status}`);
   const manifest = await response.json();
   if (!manifest?.app_id || !manifest?.entrypoint?.url) throw new Error("invalid_manifest");
   manifest.entrypoint.url = rewriteLocalDevEntrypoint(manifest.entrypoint.url);
+  if (manifest?.message_preview?.url) {
+    manifest.message_preview.url = rewriteLocalDevAssetURL(manifest.message_preview.url);
+  }
   return manifest;
 }
 
@@ -3684,15 +3997,25 @@ async function bootstrapBuiltinMiniappCatalog() {
 }
 
 async function ensureMiniappManifestRegistered(manifest) {
-  const catalog = await apiRequest("/v1/apps", { method: "GET" });
+  const appId = sanitizeText(manifest?.app_id, 120);
+  const devQuery = shouldBootstrapBuiltinMiniapps() ? "?developer_mode=1" : "";
+  const catalog = await apiRequest(`/v1/apps${devQuery}`, { method: "GET" });
   const existing = Array.isArray(catalog?.items)
-    ? catalog.items.find((item) => sanitizeText(item?.manifest?.app_id || item?.app_id, 120) === sanitizeText(manifest?.app_id, 120))
+    ? catalog.items.find((item) => sanitizeText(item?.manifest?.app_id || item?.app_id, 120) === appId)
     : null;
   if (existing) {
     return existing;
   }
-  await apiRequest("/v1/apps/register", { method: "POST", body: JSON.stringify({ manifest }) });
-  return apiRequest(`/v1/apps/${encodeURIComponent(manifest.app_id)}`, { method: "GET" });
+  try {
+    await apiRequest("/v1/apps/register", { method: "POST", body: JSON.stringify({ manifest }) });
+  } catch (error) {
+    const errorCode = sanitizeText(error?.code, 80);
+    const errorMessage = sanitizeText(error?.message, 220).toLowerCase();
+    if (errorCode !== "invalid_manifest" || !errorMessage.includes("already published")) {
+      throw error;
+    }
+  }
+  return apiRequest(`/v1/apps/${encodeURIComponent(appId)}${devQuery}`, { method: "GET" });
 }
 
 async function loadMiniappCatalog(options = {}) {
@@ -3724,6 +4047,9 @@ async function loadMiniappManifestByAppId(appId) {
   const manifest = response?.manifest;
   if (!manifest?.app_id || !manifest?.entrypoint?.url) throw new Error("invalid_manifest");
   manifest.entrypoint.url = rewriteLocalDevEntrypoint(manifest.entrypoint.url);
+  if (manifest?.message_preview?.url) {
+    manifest.message_preview.url = rewriteLocalDevAssetURL(manifest.message_preview.url);
+  }
   return manifest;
 }
 
@@ -3827,24 +4153,45 @@ async function joinMiniappSession(sessionId) {
   return record;
 }
 
+function buildMiniappSnapshotRequest(nextVersion) {
+  return {
+    state: {
+      snapshot: cloneJson(state.miniapp.sessionState?.stateSnapshot || {}),
+      session_storage: cloneJson(state.miniapp.sessionState?.storage || {}),
+      shared_conversation_storage: cloneJson(state.miniapp.sessionState?.sharedConversationStorage || {}),
+      projected_messages: cloneJson(state.miniapp.sessionState?.transcript || []),
+    },
+    state_version: nextVersion,
+    capabilities_granted: Array.from(state.miniapp.grantedPermissions),
+  };
+}
+
 async function persistMiniappSession(version, eventName, eventBody) {
   if (!state.miniapp.launchContext?.app_session_id) return 0;
-  const nextVersion = Math.max(1, Number(version || 0) || 1);
-  const payload = await apiRequest(`/v1/apps/sessions/${encodeURIComponent(state.miniapp.launchContext.app_session_id)}/snapshot`, {
-    method: "POST",
-    body: JSON.stringify({
-      state: {
-        snapshot: cloneJson(state.miniapp.sessionState?.stateSnapshot || {}),
-        session_storage: cloneJson(state.miniapp.sessionState?.storage || {}),
-        shared_conversation_storage: cloneJson(state.miniapp.sessionState?.sharedConversationStorage || {}),
-        projected_messages: cloneJson(state.miniapp.sessionState?.transcript || []),
-      },
-      state_version: nextVersion,
-      capabilities_granted: Array.from(state.miniapp.grantedPermissions),
-    }),
-  });
+  const sessionId = sanitizeText(state.miniapp.launchContext.app_session_id, 120);
+  let nextVersion = Math.max(1, Number(version || 0) || 1);
+  let payload;
+  try {
+    payload = await apiRequest(`/v1/apps/sessions/${encodeURIComponent(sessionId)}/snapshot`, {
+      method: "POST",
+      body: JSON.stringify(buildMiniappSnapshotRequest(nextVersion)),
+    });
+  } catch (error) {
+    if (error?.code !== "state_version_conflict") {
+      throw error;
+    }
+    const latest = await apiRequest(`/v1/apps/sessions/${encodeURIComponent(sessionId)}`, { method: "GET" });
+    nextVersion = Math.max(
+      nextVersion + 1,
+      Number(latest?.state_version || latest?.launch_context?.state_version || 0) + 1
+    );
+    payload = await apiRequest(`/v1/apps/sessions/${encodeURIComponent(sessionId)}/snapshot`, {
+      method: "POST",
+      body: JSON.stringify(buildMiniappSnapshotRequest(nextVersion)),
+    });
+  }
   if (eventName) {
-    await apiRequest(`/v1/apps/sessions/${encodeURIComponent(state.miniapp.launchContext.app_session_id)}/events`, {
+    await apiRequest(`/v1/apps/sessions/${encodeURIComponent(sessionId)}/events`, {
       method: "POST",
       body: JSON.stringify({ event_name: eventName, body: eventBody || {} }),
     });
@@ -3989,12 +4336,13 @@ async function refreshActiveMiniappSession(rawEvent) {
 
 function buildMiniappFrameURL() {
   // Build URL relative to mini-app sandbox origin (separate from main app)
-  const miniappSandboxUrl = window.OHMF_RUNTIME_CONFIG?.miniapp_sandbox_url || "http://localhost:5174";
-  const url = new URL(state.miniapp.manifest.entrypoint.url, miniappSandboxUrl + "/");
+  const entrypointUrl = rewriteLocalDevEntrypoint(state.miniapp.manifest.entrypoint.url);
+  const url = new URL(entrypointUrl, miniappSandboxBaseURL() + "/");
   state.miniapp.channelId = randomId("chan");
   url.searchParams.set("channel", state.miniapp.channelId);
   url.searchParams.set("parent_origin", window.location.origin);
   url.searchParams.set("app_id", state.miniapp.manifest.app_id);
+  url.searchParams.set("asset_version", sanitizeText(window.OHMF_RUNTIME_CONFIG?.asset_version, 80) || "dev");
   return url.toString();
 }
 
@@ -4217,9 +4565,12 @@ function mapConversation(item) {
     id: sanitizeText(item.conversation_id, 80),
     kind,
     serverTitle: sanitizeText(item.title, 80),
+    avatarUrl: sanitizeText(item.avatar_url, 2000),
+    description: sanitizeText(item.description, 240),
     title: "",
     subtitle: "",
     nickname: sanitizeText(item.nickname, 80),
+    viewerRole: sanitizeText(item.viewer_role, 24).toUpperCase() || "MEMBER",
     encryptionState: sanitizeText(item.encryption_state, 40),
     encryptionEpoch: Number(item.encryption_epoch || 1),
     mlsEnabled: Boolean(item.mls_enabled),
@@ -4824,6 +5175,30 @@ function renderListContent(container, items, { loading = false, loadingText, emp
   }
 }
 
+function deviceAttestationSummary(device) {
+  const stateLabel = sanitizeText(device?.attestationState, 40);
+  const typeLabel = sanitizeText(device?.attestationType, 40);
+  const parts = [];
+  if (typeLabel) parts.push(typeLabel);
+  if (device?.attestedAt) parts.push(`Verified ${formatDateTime(device.attestedAt)}`);
+  if (device?.attestationExpiresAt) parts.push(`Expires ${formatDateTime(device.attestationExpiresAt)}`);
+  if (!parts.length && stateLabel) parts.push(stateLabel);
+  return parts.join(" · ");
+}
+
+function createDeviceActivityItem(item) {
+  const card = document.createElement("article");
+  card.className = "device-activity-item";
+  card.appendChild(createTextElement("p", "device-activity-summary", item.summary));
+  if (item.createdAt) {
+    card.appendChild(createTextElement("p", "linked-device-meta", formatDateTime(item.createdAt)));
+  }
+  if (item.deviceId) {
+    card.appendChild(createTextElement("p", "linked-device-meta", `Device ${item.deviceId.slice(0, 12)}`));
+  }
+  return card;
+}
+
 function renderMessageMetadataWindow() {
   const isOpen = Boolean(state.messageMetadata.open);
   el.messageMetadataWindow.classList.toggle("hidden", !isOpen);
@@ -4952,6 +5327,13 @@ function createLinkedDeviceItem(device) {
   if (capabilities) {
     item.appendChild(createTextElement("p", "linked-device-meta", `Capabilities: ${capabilities}`));
   }
+  const attestation = deviceAttestationSummary(device);
+  if (attestation) {
+    item.appendChild(createTextElement("p", "linked-device-meta", `Attestation: ${attestation}`));
+  }
+  if (device.attestationLastError) {
+    item.appendChild(createTextElement("p", "linked-device-meta", `Last attestation error: ${device.attestationLastError}`));
+  }
 
   if (!device.isCurrent) {
     const actions = document.createElement("div");
@@ -5050,6 +5432,18 @@ function renderDeviceManager() {
   el.deviceManagerRefreshBtn.disabled = state.deviceManager.loading;
   el.deviceManagerStartPairingBtn.disabled = state.deviceManager.startingPairing;
   el.deviceManagerStartPairingBtn.textContent = state.deviceManager.startingPairing ? "Starting..." : "Start Pairing";
+  el.privacyReadReceiptsToggle.checked = privacyAllowsReadReceipts();
+  el.privacyPresenceToggle.checked = state.privacy.prefs.sharePresence !== false;
+  el.privacyTypingToggle.checked = privacyAllowsTyping();
+  el.privacyReadReceiptsToggle.disabled = state.privacy.loading || state.privacy.saving;
+  el.privacyPresenceToggle.disabled = state.privacy.loading || state.privacy.saving;
+  el.privacyTypingToggle.disabled = state.privacy.loading || state.privacy.saving;
+  el.privacySettingsStatus.textContent = state.privacy.error
+    || (state.privacy.saving
+      ? "Saving privacy settings..."
+      : state.privacy.loaded
+      ? "Privacy settings follow your account."
+      : "Privacy settings will load when the panel refreshes.");
 
   if (state.deviceManager.pairCode) {
     el.pairingCodeValue.textContent = state.deviceManager.pairCode;
@@ -5067,6 +5461,13 @@ function renderDeviceManager() {
     emptyText: "No linked devices are available yet.",
     emptyClass: "linked-device-empty",
     renderItem: createLinkedDeviceItem,
+  });
+  renderListContent(el.deviceActivityList, state.deviceManager.activity, {
+    loading: state.deviceManager.activityLoading,
+    loadingText: "Loading device activity...",
+    emptyText: "No recent device events yet.",
+    emptyClass: "linked-device-empty",
+    renderItem: createDeviceActivityItem,
   });
 }
 
@@ -5102,6 +5503,45 @@ function renderTrustPanel() {
   });
 }
 
+function renderConversationSettings() {
+  const thread = getActiveThread();
+  const isOpen = Boolean(state.conversationSettingsOpen && thread);
+  el.conversationSettingsWindow.classList.toggle("hidden", !isOpen);
+  if (!thread) {
+    state.conversationSettingsOpen = false;
+    if (el.conversationSettingsBtn) el.conversationSettingsBtn.disabled = true;
+    return;
+  }
+
+  const targetUserId = otherUserIdForThread(thread);
+  const isDraft = thread.kind === "draft_phone";
+  const isGroup = thread.kind === "group";
+  const encryptedGroup = isGroup && sanitizeText(thread.encryptionState, 40) === "ENCRYPTED";
+
+  if (el.conversationSettingsBtn) {
+    el.conversationSettingsBtn.disabled = false;
+  }
+  if (!isOpen) return;
+
+  el.conversationSettingsTitle.textContent = sanitizeText(thread.title, 120) || "Thread settings";
+  el.conversationSettingsSubtitle.textContent = isGroup
+    ? "Manage group controls, encryption, and shared trust state from one place."
+    : "Manage conversation actions and secure trust details from one place.";
+  el.conversationSettingsCopy.textContent = isDraft
+    ? "This draft is not saved yet, so most thread actions stay disabled until the conversation exists."
+    : isGroup
+    ? "Group administration, encryption, and lifecycle controls live here."
+    : "Nickname, safety, trust, and lifecycle controls live here.";
+
+  el.nicknameBtn.disabled = isDraft;
+  el.groupDetailsBtn.disabled = !isGroup;
+  el.groupEncryptionBtn.disabled = !isGroup || encryptedGroup;
+  el.groupEncryptionBtn.textContent = isGroup ? (encryptedGroup ? "Encryption On" : "Enable Encryption") : "Enable Encryption";
+  el.blockBtn.disabled = !targetUserId;
+  el.blockBtn.textContent = thread.blockedByViewer ? "Unblock User" : "Block User";
+  el.closeThreadBtn.disabled = isDraft;
+}
+
 function setReplyTarget(thread, message) {
   state.replyTarget = {
     threadId: thread.id,
@@ -5126,11 +5566,55 @@ function clearReplyTargetWithoutRender() {
   state.replyTarget = null;
 } // removed: boolean render flag split into named reply clearers
 
+function parseMentionsForThread(thread, text) {
+  if (!thread || thread.kind !== "group") return [];
+  const mentions = [];
+  const candidates = [];
+  for (const userId of thread.participants || []) {
+    if (!userId || userId === state.auth?.userId) continue;
+    const label = labelForUser(userId);
+    if (!label) continue;
+    candidates.push({ userId, label });
+  }
+  candidates.sort((left, right) => right.label.length - left.label.length);
+  const taken = [];
+  for (const candidate of candidates) {
+    const pattern = new RegExp(`@${candidate.label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?=\\s|$)`, "g");
+    let match;
+    while ((match = pattern.exec(text))) {
+      const start = match.index;
+      const end = start + match[0].length;
+      if (taken.some((range) => start < range.end && end > range.start)) continue;
+      taken.push({ start, end });
+      mentions.push({
+        user_id: candidate.userId,
+        display: candidate.label,
+        start,
+        end,
+      });
+    }
+  }
+  return mentions.sort((left, right) => left.start - right.start);
+}
+
+function insertMentionToken(userId) {
+  const thread = getActiveThread();
+  if (!thread || thread.kind !== "group") return;
+  const token = `@${labelForUser(userId, { fallback: "Member" })} `;
+  const current = el.composerInput.value || "";
+  el.composerInput.value = current && !current.endsWith(" ") ? `${current} ${token}` : `${current}${token}`;
+  state.typingDraft = sanitizeText(el.composerInput.value, 1000);
+  el.composerInput.focus();
+  syncLocalTypingSignal();
+}
+
 function composerMessageContent(rawText) {
   const text = sanitizeText(rawText, 1000);
   if (!text) return null;
   const content = { text };
   const activeThread = getActiveThread();
+  const mentions = parseMentionsForThread(activeThread, text);
+  if (mentions.length) content.mentions = mentions;
   const replyTarget = state.replyTarget;
   if (!activeThread || !replyTarget || replyTarget.threadId !== activeThread.id) return content;
   const replyReference = normalizeReplyReference(replyTarget.reference);
@@ -5154,6 +5638,47 @@ function renderComposerReply(thread) {
   el.composerReplyLabel.textContent = `Replying to ${state.replyTarget.label}`;
   el.composerReplyText.textContent = state.replyTarget.snippet;
   el.composerReply.classList.remove("hidden");
+}
+
+function renderAttachmentDraft() {
+  const draft = state.attachmentDraft;
+  const thread = getActiveThread();
+  const visible = Boolean(draft && thread && draft.threadId === thread.id);
+  el.composerAttachment.classList.toggle("hidden", !visible);
+  if (!visible) return;
+
+  el.composerAttachmentPreview.replaceChildren();
+  if (draft.kind === "image" && draft.previewUrl) {
+    const image = document.createElement("img");
+    image.src = draft.previewUrl;
+    image.alt = draft.fileName;
+    el.composerAttachmentPreview.appendChild(image);
+  } else if (draft.kind === "video" && draft.previewUrl) {
+    const video = document.createElement("video");
+    video.src = draft.previewUrl;
+    video.muted = true;
+    video.playsInline = true;
+    el.composerAttachmentPreview.appendChild(video);
+  } else {
+    el.composerAttachmentPreview.textContent = draft.kind.toUpperCase();
+  }
+
+  el.composerAttachmentLabel.textContent = draft.status === "failed"
+    ? "Attachment failed"
+    : draft.status === "uploading"
+    ? "Uploading attachment"
+    : draft.uploaded
+    ? "Attachment ready"
+    : "Attachment preview";
+  el.composerAttachmentText.textContent = `${draft.fileName} | ${formatFileSize(draft.sizeBytes)}`;
+  el.composerAttachmentStatus.textContent = draft.error
+    || (draft.status === "uploading"
+      ? `${draft.progress}% uploaded`
+      : draft.uploaded
+      ? "Ready to send."
+      : "Review the preview, then send it.");
+  el.composerAttachmentSend.textContent = draft.status === "failed" ? "Retry" : (draft.uploaded ? "Send File" : "Upload + Send");
+  el.composerAttachmentSend.disabled = draft.status === "uploading";
 }
 
 function visibleThreads() {
@@ -5204,7 +5729,16 @@ function typingIndicatorText(threadId) {
   return `${labels[0]}, ${labels[1]}, and ${labels.length - 2} others are typing...`;
 }
 
+function privacyAllowsReadReceipts() {
+  return state.privacy.prefs.sendReadReceipts !== false;
+}
+
+function privacyAllowsTyping() {
+  return state.privacy.prefs.shareTyping !== false;
+}
+
 function sendTypingEvent(eventName, conversationId) {
+  if (eventName !== "typing.stopped" && !privacyAllowsTyping()) return;
   if (!conversationId || !realtimeSocket || realtimeSocket.readyState !== window.WebSocket.OPEN) return;
   realtimeSocket.send(JSON.stringify({
     event: eventName,
@@ -5710,6 +6244,10 @@ async function syncFromCursor() {
     renderAll();
   } catch (error) {
     console.error(error);
+    if (Number(error?.status || 0) === 401) {
+      handleUnauthorizedSession();
+      return;
+    }
   } finally {
     liveSyncInFlight = false;
   }
@@ -5762,6 +6300,7 @@ function scheduleLiveRefreshLoop(delayMs = LIVE_SYNC_INTERVAL_MS) {
     if (!state.auth) return;
     if (!document.hidden) {
       await refreshLiveState();
+      if (!state.auth) return;
       scheduleCryptoBackupSync();
     }
     if (state.auth && !realtimeSocket) {
@@ -5786,13 +6325,18 @@ async function startEventStream() {
       credentials: "omit",
       cache: "no-store",
     });
-    if (response.status === 401 && state.auth?.refreshToken) {
-      const refreshed = await refreshAuthTokens();
+    if (response.status === 401) {
+      const refreshed = state.auth?.refreshToken ? await refreshAuthTokens() : false;
       if (refreshed) {
         eventStreamAbort = null;
         scheduleEventStreamReconnect(200);
         return;
       }
+      if (state.auth) {
+        handleUnauthorizedSession();
+      }
+      eventStreamAbort = null;
+      return;
     }
     if (response.status >= 500) {
       throw new Error(`stream_http_${response.status}`);
@@ -6047,6 +6591,16 @@ async function markConversationRead(thread) {
   if (!isForegroundThread(thread?.id)) return;
   const lastIncoming = [...(thread.messages || [])].reverse().find((msg) => msg.direction === "in" && msg.serverOrder > 0);
   if (!lastIncoming) return;
+  if (!privacyAllowsReadReceipts()) {
+    upsertThread({
+      ...thread,
+      unreadCount: 0,
+      readThroughServerOrder: Math.max(Number(thread.readThroughServerOrder || 0), Number(lastIncoming.serverOrder || 0)),
+      readStatusUpdatedAt: nowISO(),
+    });
+    saveConversationStore();
+    return;
+  }
   try {
     await apiRequest(`/v2/conversations/${encodeURIComponent(thread.id)}/read`, {
       method: "POST",
@@ -6556,7 +7110,7 @@ function buildExpandedAppCardBubble(message, joinable, previewLabel) {
       iframe.loading = "lazy";
       iframe.referrerPolicy = "no-referrer";
       iframe.title = preview.altText || previewLabel;
-      iframe.setAttribute("sandbox", "allow-scripts");
+      iframe.setAttribute("sandbox", miniappFrameSandboxFlags());
       iframe.setAttribute("tabindex", "-1");
       previewFrame.appendChild(iframe);
     } else {
@@ -6720,6 +7274,177 @@ async function downloadAttachmentMessage(message) {
   window.open(url, "_blank", "noopener");
 }
 
+async function ensureAttachmentPreviewCached(message) {
+  const descriptor = message?.content && typeof message.content === "object" ? message.content : {};
+  const cacheKey = attachmentPreviewCacheKey(descriptor);
+  if (!cacheKey || !attachmentSupportsInlinePreview(descriptor)) return null;
+  const existing = state.attachmentPreviewCache[cacheKey];
+  if (existing?.status === "ready") return existing;
+  if (existing?.status === "loading") return existing;
+
+  state.attachmentPreviewCache = {
+    ...state.attachmentPreviewCache,
+    [cacheKey]: { status: "loading", url: "", kind: attachmentKindFromMime(descriptor.mime_type || descriptor.stored_mime_type) },
+  };
+  try {
+    const payload = await apiRequest(`/v1/media/attachments/${encodeURIComponent(cacheKey)}/download`);
+    const downloadUrl = sanitizeText(payload?.download_url, 2000);
+    if (!downloadUrl) throw new Error("Missing download URL.");
+    let previewUrl = downloadUrl;
+    if (sanitizeText(descriptor.file_key, 4000) && sanitizeText(descriptor.file_nonce, 4000)) {
+      const response = await fetch(downloadUrl);
+      if (!response.ok) throw new Error("Unable to load preview.");
+      const encryptedBuffer = await response.arrayBuffer();
+      const decryptedBuffer = await decryptAttachmentBytes(encryptedBuffer, descriptor);
+      previewUrl = URL.createObjectURL(new Blob([decryptedBuffer], {
+        type: sanitizeText(descriptor.mime_type || descriptor.stored_mime_type, 200) || "application/octet-stream",
+      }));
+    }
+    state.attachmentPreviewCache = {
+      ...state.attachmentPreviewCache,
+      [cacheKey]: {
+        status: "ready",
+        url: previewUrl,
+        kind: attachmentKindFromMime(descriptor.mime_type || descriptor.stored_mime_type),
+      },
+    };
+    renderAll();
+    return state.attachmentPreviewCache[cacheKey];
+  } catch (error) {
+    state.attachmentPreviewCache = {
+      ...state.attachmentPreviewCache,
+      [cacheKey]: { status: "error", error: sanitizeText(error.message, 180) || "Preview unavailable." },
+    };
+    renderAll();
+    return state.attachmentPreviewCache[cacheKey];
+  }
+}
+
+function buildMentionFormattedBody(message) {
+  const body = document.createElement("p");
+  body.className = "bubble-body-text";
+  const text = sanitizeText(message.text, 1000);
+  const mentions = Array.isArray(message.content?.mentions) ? message.content.mentions : [];
+  if (!mentions.length) {
+    body.textContent = text;
+    return body;
+  }
+  let cursor = 0;
+  for (const mention of mentions) {
+    const start = Math.max(0, Number(mention?.start || 0));
+    const end = Math.max(start, Number(mention?.end || 0));
+    if (start > cursor) body.appendChild(document.createTextNode(text.slice(cursor, start)));
+    const chip = document.createElement("span");
+    chip.className = "mention-chip";
+    chip.textContent = text.slice(start, end) || `@${sanitizeText(mention?.display, 80)}`;
+    body.appendChild(chip);
+    cursor = end;
+  }
+  if (cursor < text.length) body.appendChild(document.createTextNode(text.slice(cursor)));
+  return body;
+}
+
+function buildAttachmentBubble(thread, message) {
+  const descriptor = message?.content && typeof message.content === "object" ? message.content : {};
+  const wrap = document.createElement("div");
+  wrap.className = "attachment-card";
+  const head = document.createElement("div");
+  head.className = "attachment-card-head";
+  const summary = document.createElement("div");
+  summary.appendChild(createTextElement("p", "attachment-card-title", sanitizeText(descriptor.file_name || message.text || "Attachment", 140)));
+  summary.appendChild(createTextElement("p", "attachment-card-meta", `${sanitizeText(descriptor.mime_type || descriptor.stored_mime_type, 60) || "File"} | ${formatFileSize(descriptor.size_bytes || descriptor.stored_size_bytes)}`));
+  head.appendChild(summary);
+  wrap.appendChild(head);
+
+  const previewFrame = document.createElement("div");
+  previewFrame.className = "attachment-card-preview";
+  const previewKey = attachmentPreviewCacheKey(descriptor);
+  const cachedPreview = previewKey ? state.attachmentPreviewCache[previewKey] : null;
+  if (previewKey && descriptor.preview_url) {
+    state.attachmentPreviewCache[previewKey] = { status: "ready", url: descriptor.preview_url, kind: attachmentKindFromMime(descriptor.mime_type) };
+  }
+  const resolvedPreview = previewKey ? state.attachmentPreviewCache[previewKey] : cachedPreview;
+  const previewKind = attachmentKindFromMime(descriptor.mime_type || descriptor.stored_mime_type);
+  if (attachmentSupportsInlinePreview(descriptor)) {
+    if (resolvedPreview?.status === "ready" && resolvedPreview.url) {
+      if (previewKind === "image") {
+        const image = document.createElement("img");
+        image.src = resolvedPreview.url;
+        image.alt = sanitizeText(descriptor.file_name || "Attachment", 140);
+        previewFrame.appendChild(image);
+      } else if (previewKind === "video") {
+        const video = document.createElement("video");
+        video.src = resolvedPreview.url;
+        video.controls = true;
+        video.playsInline = true;
+        previewFrame.appendChild(video);
+      } else if (previewKind === "audio") {
+        const audio = document.createElement("audio");
+        audio.src = resolvedPreview.url;
+        audio.controls = true;
+        previewFrame.appendChild(audio);
+      }
+    } else if (resolvedPreview?.status === "error") {
+      previewFrame.textContent = resolvedPreview.error || "Preview unavailable.";
+    } else {
+      previewFrame.textContent = "Loading preview...";
+      void ensureAttachmentPreviewCached(message);
+    }
+  } else {
+    previewFrame.textContent = "File preview unavailable.";
+  }
+  wrap.appendChild(previewFrame);
+
+  const status = document.createElement("p");
+  status.className = "attachment-card-status";
+  status.textContent = sanitizeText(message.status, 40) === OHMF_DELIVERY_STATUSES.FAIL_SEND
+    ? "Attachment send failed."
+    : sanitizeText(message.content?.encrypted, 10) === "true" || message.content?.encrypted
+    ? "Encrypted attachment."
+    : "Ready to open or download.";
+  wrap.appendChild(status);
+
+  const actions = document.createElement("div");
+  actions.className = "attachment-card-actions";
+  actions.appendChild(createActionButton({
+    className: "secondary-btn compact",
+    text: "Open",
+    onClick: async (event) => {
+      event.stopPropagation();
+      try {
+        await downloadAttachmentMessage(message);
+      } catch (error) {
+        console.error(error);
+        window.alert(sanitizeText(error.message || "Unable to open attachment.", 180));
+      }
+    },
+  }));
+  if (sanitizeText(message.status, 40) === OHMF_DELIVERY_STATUSES.FAIL_SEND && state.attachmentDraft?.uploaded?.attachment_id === descriptor.attachment_id) {
+    actions.appendChild(createActionButton({
+      className: "send-btn compact",
+      text: "Retry",
+      onClick: () => {
+        setAttachmentDraft({
+          ...state.attachmentDraft,
+          status: "failed",
+          error: "Retry this attachment from the draft tray.",
+        });
+        renderAll();
+      },
+    }));
+  }
+  wrap.appendChild(actions);
+
+  const replyPreview = buildReplyPreview(thread, message);
+  if (replyPreview) {
+    const container = document.createElement("div");
+    container.className = "bubble has-reply";
+    container.append(replyPreview, wrap);
+    return container;
+  }
+  return wrap;
+}
+
 function buildTextBubble(thread, message) {
   const bubble = document.createElement("article");
   bubble.className = `bubble ${message.direction}`;
@@ -6729,40 +7454,18 @@ function buildTextBubble(thread, message) {
   }
 
   if (isAttachmentMessage(message)) {
-    bubble.classList.add("has-reply");
-    const replyPreview = buildReplyPreview(thread, message);
-    const action = document.createElement("button");
-    action.type = "button";
-    action.className = "reply-preview";
-    const label = document.createElement("strong");
-    label.textContent = "Attachment";
-    const body = document.createElement("span");
-    body.textContent = sanitizeText(message.content?.file_name || message.text || "Download attachment", 140);
-    action.append(label, body);
-    action.addEventListener("click", async (event) => {
-      event.stopPropagation();
-      try {
-        await downloadAttachmentMessage(message);
-      } catch (error) {
-        console.error(error);
-        window.alert(sanitizeText(error.message || "Unable to download attachment.", 180));
-      }
-    });
-    if (replyPreview) bubble.append(replyPreview, action);
-    else bubble.append(action);
+    bubble.appendChild(buildAttachmentBubble(thread, message));
     return bubble;
   }
 
   const replyPreview = buildReplyPreview(thread, message);
   if (!replyPreview) {
-    bubble.textContent = message.text;
+    bubble.appendChild(buildMentionFormattedBody(message));
     return bubble;
   }
 
   bubble.classList.add("has-reply");
-  const body = document.createElement("p");
-  body.className = "bubble-body-text";
-  body.textContent = message.text;
+  const body = buildMentionFormattedBody(message);
   bubble.append(replyPreview, body);
   return bubble;
 }
@@ -6777,19 +7480,11 @@ function renderMessages() {
     && sanitizeText(thread.encryptionState, 40) === "ENCRYPTED"
     && !thread.e2eeReady
   );
-  const targetUserId = otherUserIdForThread(thread);
   if (thread && state.openMessageMenu && state.openMessageMenu.threadId !== thread.id) {
     state.openMessageMenu = null;
   }
-  el.nicknameBtn.disabled = !thread || thread?.kind === "draft_phone";
-  el.groupEncryptionBtn.disabled = !thread || thread.kind !== "group" || sanitizeText(thread.encryptionState, 40) === "ENCRYPTED";
-  el.groupEncryptionBtn.textContent = thread?.kind === "group"
-    ? (sanitizeText(thread?.encryptionState, 40) === "ENCRYPTED" ? "On" : "Lock")
-    : "Lock";
-  el.blockBtn.disabled = !thread || !targetUserId;
-  el.closeThreadBtn.disabled = !thread || thread?.kind === "draft_phone";
+  el.conversationSettingsBtn.disabled = !thread;
   el.attachBtn.disabled = !thread || blocked || encryptedGroupPending || dmEncryptionPending;
-  el.blockBtn.textContent = thread?.blockedByViewer ? "Unblock" : "Block";
   renderComposerReply(thread);
 
   if (!thread) {
@@ -6798,6 +7493,7 @@ function renderMessages() {
     el.composerInput.disabled = true;
     clearMessageMenuWithoutRender();
     closeMiniappLauncher();
+    state.conversationSettingsOpen = false;
     state.miniapp.popupOpen = false;
     el.miniappFrame.src = "about:blank";
     renderMiniappLauncher();
@@ -6899,10 +7595,13 @@ function renderMessages() {
 function renderAll() {
   renderThreadList();
   renderMessages();
+  renderAttachmentDraft();
   renderTrustPanel();
+  renderConversationSettings();
   renderMiniappWindow();
   renderMessageMetadataWindow();
   renderDeviceManager();
+  renderGroupManager();
 }
 
 function openMobileThread() {
@@ -7087,6 +7786,139 @@ async function enableGroupEncryption(thread) {
   return updateConversationMetadata(thread.id, { encryption_state: "ENCRYPTED" });
 }
 
+function viewerCanManageGroup(thread) {
+  const role = sanitizeText(thread?.viewerRole, 24).toUpperCase();
+  return role === "OWNER" || role === "ADMIN";
+}
+
+function closeGroupManager() {
+  state.groupManager.open = false;
+  state.groupManager.error = "";
+  renderAll();
+}
+
+async function refreshGroupManager(options = {}) {
+  const sourceThread = options.thread || getActiveThread();
+  if (!sourceThread || sourceThread.kind !== "group") return null;
+  state.groupManager.loading = true;
+  state.groupManager.error = "";
+  state.groupManager.threadId = sourceThread.id;
+  renderAll();
+  try {
+    const refreshed = await refreshConversationThread(sourceThread.id);
+    await resolveProfilesForUsers(refreshed?.participants || []);
+    state.groupManager.lastLoadedAt = nowISO();
+    return refreshed;
+  } catch (error) {
+    state.groupManager.error = sanitizeText(error.message || "Unable to load group details.", 180);
+    return null;
+  } finally {
+    state.groupManager.loading = false;
+    renderAll();
+  }
+}
+
+async function openGroupManager() {
+  const thread = getActiveThread();
+  if (!thread || thread.kind !== "group") return;
+  state.groupManager.open = true;
+  state.groupManager.threadId = thread.id;
+  renderAll();
+  await refreshGroupManager({ thread });
+}
+
+function createGroupMemberItem(thread, userId) {
+  const item = document.createElement("article");
+  item.className = "linked-device-item";
+  const role = sanitizeText(userId === state.auth?.userId ? thread.viewerRole : "MEMBER", 24)
+    || (userId === state.auth?.userId ? "MEMBER" : "MEMBER");
+  const head = document.createElement("div");
+  head.className = "linked-device-head";
+  const summary = document.createElement("div");
+  summary.appendChild(createTextElement("p", "linked-device-name", labelForUser(userId, { preferSelfLabel: true, selfLabel: "You" })));
+  summary.appendChild(createTextElement("p", "linked-device-meta", sanitizeText(profileForUser(userId)?.primary_phone_e164, 40) || sanitizeText(userId, 80)));
+  head.appendChild(summary);
+  head.appendChild(createTextElement("span", "group-member-role", role));
+  item.appendChild(head);
+  const actions = document.createElement("div");
+  actions.className = "linked-device-actions";
+  actions.appendChild(createActionButton({
+    className: "secondary-btn compact",
+    text: "Mention",
+    onClick: () => insertMentionToken(userId),
+  }));
+  if (viewerCanManageGroup(thread) && userId !== state.auth?.userId) {
+    actions.appendChild(createActionButton({
+      className: "secondary-btn compact",
+      text: state.groupManager.actionUserId === userId ? "Removing..." : "Remove",
+      disabled: state.groupManager.actionUserId === userId,
+      onClick: async () => {
+        if (!window.confirm(`Remove ${labelForUser(userId)} from this group?`)) return;
+        state.groupManager.actionUserId = userId;
+        renderAll();
+        try {
+          await apiRequest(`/v1/conversations/${encodeURIComponent(thread.id)}/members/${encodeURIComponent(userId)}`, { method: "DELETE" });
+          await refreshGroupManager({ thread });
+        } catch (error) {
+          state.groupManager.error = sanitizeText(error.message || "Unable to remove member.", 180);
+        } finally {
+          state.groupManager.actionUserId = "";
+          renderAll();
+        }
+      },
+    }));
+  }
+  item.appendChild(actions);
+  return item;
+}
+
+function renderGroupManager() {
+  const activeThread = getThreadById(state.groupManager.threadId) || getActiveThread();
+  const isOpen = Boolean(state.groupManager.open && activeThread?.kind === "group");
+  el.groupManagerWindow.classList.toggle("hidden", !isOpen);
+  if (!isOpen) return;
+
+  const thread = activeThread;
+  const participantIds = Array.isArray(thread?.participants) ? thread.participants : [];
+  const canManage = viewerCanManageGroup(thread);
+  el.groupManagerTitle.textContent = sanitizeText(thread?.title, 120) || "Manage this group";
+  el.groupManagerSubtitle.textContent = sanitizeText(thread?.description, 180) || "Rename the group, update its image, and manage members.";
+  setStatusMessage(el.groupManagerStatus, {
+    error: state.groupManager.error,
+    loading: state.groupManager.loading,
+    lastLoadedAt: state.groupManager.lastLoadedAt,
+    loadingText: "Refreshing group details...",
+    idleText: "Group membership and metadata stay in sync after refresh.",
+  });
+  el.groupManagerRoleSummary.textContent = canManage
+    ? `You are ${sanitizeText(thread.viewerRole, 24).toLowerCase()} in this group.`
+    : `You are ${sanitizeText(thread.viewerRole, 24).toLowerCase()} and can still leave or mention members.`;
+  el.groupManagerName.textContent = sanitizeText(thread.title, 120) || "Group";
+  el.groupManagerMeta.textContent = `${participantIds.length} participant${participantIds.length === 1 ? "" : "s"} | ${sanitizeText(thread.encryptionState, 40) || "PLAINTEXT"}`;
+  el.groupManagerImageValue.textContent = thread.avatarUrl ? `Image: ${thread.avatarUrl}` : "No group image set.";
+  el.groupManagerAvatar.replaceChildren();
+  const groupAvatarUrl = normalizePreviewURL(thread.avatarUrl);
+  if (groupAvatarUrl) {
+    const image = document.createElement("img");
+    image.src = groupAvatarUrl;
+    image.alt = sanitizeText(thread.title || "Group", 120);
+    image.loading = "lazy";
+    el.groupManagerAvatar.appendChild(image);
+  } else {
+    el.groupManagerAvatar.textContent = initials(thread.title || "Group") || "#";
+  }
+  el.groupManagerRenameBtn.disabled = !canManage;
+  el.groupManagerImageBtn.disabled = !canManage;
+  el.groupManagerAddBtn.disabled = !canManage;
+  renderListContent(el.groupMemberList, participantIds, {
+    loading: state.groupManager.loading,
+    loadingText: "Loading members...",
+    emptyText: "No members are visible in this group.",
+    emptyClass: "linked-device-empty",
+    renderItem: (userId) => createGroupMemberItem(thread, userId),
+  });
+}
+
 function moveDraftToConversation(draftId, conversationId, phone) {
   const draft = getThreadById(draftId);
   const existing = getThreadById(conversationId);
@@ -7249,6 +8081,17 @@ async function sendAttachmentInConversation(thread, attachment) {
     stored_size_bytes: Number(attachment.stored_size_bytes || 0),
     encrypted: Boolean(attachment.encrypted),
   };
+  const previewKey = attachmentPreviewCacheKey(content);
+  if (previewKey && sanitizeText(attachment.preview_url, 4000)) {
+    state.attachmentPreviewCache = {
+      ...state.attachmentPreviewCache,
+      [previewKey]: {
+        status: "ready",
+        url: sanitizeText(attachment.preview_url, 4000),
+        kind: attachmentKindFromMime(attachment.mime_type),
+      },
+    };
+  }
   const pendingId = pushPendingMessage(thread.id, content, TRANSPORT_OHMF, CONTENT_TYPE_ATTACHMENT);
   renderAll();
   try {
@@ -7461,6 +8304,9 @@ async function bootAfterAuth() {
   renderAll();
   try {
     await loadSelfProfile();
+    await loadPrivacyPreferences({ silent: true }).catch((error) => {
+      console.error(error);
+    });
     await loadMiniappCatalog().catch((error) => {
       console.error(error);
     });
@@ -7586,7 +8432,7 @@ async function restoreMiniappSessionAfterReload() {
     }
     state.miniapp.popupOpen = true;
     startMiniappLoadTimeout();
-    el.miniappFrame.setAttribute("sandbox", "allow-scripts");
+    el.miniappFrame.setAttribute("sandbox", miniappFrameSandboxFlags());
     el.miniappFrame.src = buildMiniappFrameURL();
     persistMiniappRestoreState();
     renderAll();
@@ -7594,6 +8440,44 @@ async function restoreMiniappSessionAfterReload() {
   } catch (error) {
     clearMiniappRestoreState();
     throw error;
+  }
+}
+
+async function sendAttachmentDraft() {
+  const draft = state.attachmentDraft;
+  const thread = getActiveThread();
+  if (!draft || !thread || draft.threadId !== thread.id) return;
+  try {
+    updateAttachmentDraft({ status: "uploading", progress: 0, error: "" });
+    renderAll();
+    const uploaded = draft.uploaded || await uploadEncryptedMediaFile(thread, draft.file, {
+      onProgress: (progress) => {
+        updateAttachmentDraft({ progress, status: "uploading" });
+        renderAttachmentDraft();
+      },
+    });
+    updateAttachmentDraft({
+      uploaded: {
+        ...uploaded,
+        preview_url: draft.previewUrl,
+      },
+      status: "ready",
+      progress: 100,
+    });
+    renderAll();
+    await sendAttachmentInConversation(thread, {
+      ...uploaded,
+      preview_url: draft.previewUrl,
+    });
+    setAttachmentDraft(null);
+    renderAll();
+  } catch (error) {
+    console.error(error);
+    updateAttachmentDraft({
+      status: "failed",
+      error: sanitizeText(error.message || "Unable to send attachment.", 180),
+    });
+    renderAll();
   }
 }
 
@@ -7619,11 +8503,23 @@ function logout() {
   state.typingDraft = "";
   state.remoteTypingByThread = {};
   resetDeviceManagerState();
+  state.privacy = {
+    loading: false,
+    saving: false,
+    loaded: false,
+    error: "",
+    prefs: { sendReadReceipts: true, sharePresence: true, shareTyping: true },
+  };
   resetTrustPanelState();
   setPairDeviceAuthStatus("");
   state.replyTarget = null;
   state.openMessageMenu = null;
   resetMessageMetadataState();
+  setAttachmentDraft(null);
+  Object.values(state.attachmentPreviewCache || {}).forEach((entry) => releaseObjectUrl(entry?.url));
+  state.attachmentPreviewCache = {};
+  state.groupManager = { open: false, loading: false, error: "", threadId: "", actionUserId: "", lastLoadedAt: "" };
+  state.conversationSettingsOpen = false;
   state.miniapp.drawerOpen = false;
   state.miniapp.popupOpen = false;
   state.miniapp.selectedAppId = "";
@@ -7734,14 +8630,17 @@ el.attachmentInput.addEventListener("change", async () => {
   el.attachmentInput.value = "";
   const thread = getActiveThread();
   if (!file || !thread) return;
-  try {
-    const uploaded = await uploadEncryptedMediaFile(thread, file);
-    await sendAttachmentInConversation(thread, uploaded);
-    renderAll();
-  } catch (error) {
-    console.error(error);
-    window.alert(sanitizeText(error.message || "Unable to send attachment.", 180));
-  }
+  setAttachmentDraft(createAttachmentDraft(file, thread.id));
+  renderAll();
+});
+
+el.composerAttachmentCancel.addEventListener("click", () => {
+  setAttachmentDraft(null);
+  renderAll();
+});
+
+el.composerAttachmentSend.addEventListener("click", () => {
+  void sendAttachmentDraft();
 });
 
 el.miniappShareBtn.addEventListener("click", async () => {
@@ -7832,6 +8731,11 @@ el.linkedDevicesBtn.addEventListener("click", () => {
   void openDeviceManager();
 });
 
+el.conversationSettingsBtn.addEventListener("click", () => {
+  if (el.conversationSettingsBtn.disabled) return;
+  openConversationSettings();
+});
+
 el.newChatForm.addEventListener("submit", (event) => {
   event.preventDefault();
   const phone = toE164(el.newCountryCodeSelect.value, el.newPhoneInput.value);
@@ -7865,6 +8769,11 @@ el.nicknameBtn.addEventListener("click", async () => {
     console.error(error);
     window.alert(sanitizeText(error.message || "Unable to update nickname.", 160));
   }
+});
+
+el.groupDetailsBtn.addEventListener("click", () => {
+  closeConversationSettings();
+  void openGroupManager();
 });
 
 el.groupEncryptionBtn.addEventListener("click", async () => {
@@ -7919,6 +8828,7 @@ el.closeThreadBtn.addEventListener("click", async () => {
     await updateConversationPreferences(thread.id, { closed: true });
     const remaining = visibleThreads();
     state.activeThreadId = remaining.length ? remaining[0].id : null;
+    state.conversationSettingsOpen = false;
     renderAll();
   } catch (error) {
     console.error(error);
@@ -7928,16 +8838,105 @@ el.closeThreadBtn.addEventListener("click", async () => {
 
 el.messageMetadataBackdrop.addEventListener("click", closeMessageMetadata);
 el.messageMetadataCloseBtn.addEventListener("click", closeMessageMetadata);
+el.conversationSettingsBackdrop.addEventListener("click", closeConversationSettings);
+el.conversationSettingsCloseBtn.addEventListener("click", closeConversationSettings);
 el.deviceManagerBackdrop.addEventListener("click", closeDeviceManager);
 el.deviceManagerCloseBtn.addEventListener("click", closeDeviceManager);
 el.deviceManagerRefreshBtn.addEventListener("click", () => {
-  void refreshLinkedDevices();
+  void Promise.all([
+    refreshLinkedDevices(),
+    refreshDeviceActivity({ silent: true }),
+    loadPrivacyPreferences({ silent: true }),
+  ]);
 });
 el.trustRefreshBtn.addEventListener("click", () => {
   void refreshTrustPanel({ thread: getActiveThread(), force: true });
 });
 el.deviceManagerStartPairingBtn.addEventListener("click", () => {
   void startPairingFromCurrentDevice();
+});
+el.groupManagerBackdrop.addEventListener("click", closeGroupManager);
+el.groupManagerCloseBtn.addEventListener("click", closeGroupManager);
+el.groupManagerRefreshBtn.addEventListener("click", () => {
+  void refreshGroupManager();
+});
+el.groupManagerRenameBtn.addEventListener("click", async () => {
+  const thread = getThreadById(state.groupManager.threadId) || getActiveThread();
+  if (!thread || !viewerCanManageGroup(thread)) return;
+  const nextTitle = window.prompt("Rename group", thread.serverTitle || thread.title || "");
+  if (nextTitle === null) return;
+  try {
+    await updateConversationMetadata(thread.id, { title: sanitizeText(nextTitle, 80) });
+    await refreshGroupManager({ thread });
+  } catch (error) {
+    state.groupManager.error = sanitizeText(error.message || "Unable to rename group.", 180);
+    renderAll();
+  }
+});
+el.groupManagerImageBtn.addEventListener("click", async () => {
+  const thread = getThreadById(state.groupManager.threadId) || getActiveThread();
+  if (!thread || !viewerCanManageGroup(thread)) return;
+  const nextValue = window.prompt("Group image URL", thread.avatarUrl || "");
+  if (nextValue === null) return;
+  try {
+    await updateConversationMetadata(thread.id, { avatar_url: sanitizeText(nextValue, 2000) });
+    await refreshGroupManager({ thread });
+  } catch (error) {
+    state.groupManager.error = sanitizeText(error.message || "Unable to update group image.", 180);
+    renderAll();
+  }
+});
+el.groupManagerAddBtn.addEventListener("click", async () => {
+  const thread = getThreadById(state.groupManager.threadId) || getActiveThread();
+  if (!thread || !viewerCanManageGroup(thread)) return;
+  const raw = window.prompt("Add member by OHMF user id (comma separated)", "");
+  if (raw === null) return;
+  const userIds = raw.split(",").map((item) => sanitizeText(item, 80)).filter(Boolean);
+  if (!userIds.length) return;
+  try {
+    await apiRequest(`/v1/conversations/${encodeURIComponent(thread.id)}/members`, {
+      method: "POST",
+      body: JSON.stringify({ user_ids: userIds }),
+    });
+    await refreshGroupManager({ thread });
+  } catch (error) {
+    state.groupManager.error = sanitizeText(error.message || "Unable to add members.", 180);
+    renderAll();
+  }
+});
+el.groupManagerLeaveBtn.addEventListener("click", async () => {
+  const thread = getThreadById(state.groupManager.threadId) || getActiveThread();
+  const selfUserId = sanitizeText(state.auth?.userId, 80);
+  if (!thread || !selfUserId) return;
+  if (!window.confirm("Leave this group?")) return;
+  try {
+    await apiRequest(`/v1/conversations/${encodeURIComponent(thread.id)}/members/${encodeURIComponent(selfUserId)}`, { method: "DELETE" });
+    closeGroupManager();
+    state.activeThreadId = visibleThreads().find((item) => item.id !== thread.id)?.id || null;
+    await loadConversationsFromApi();
+    renderAll();
+  } catch (error) {
+    state.groupManager.error = sanitizeText(error.message || "Unable to leave the group.", 180);
+    renderAll();
+  }
+});
+el.privacyReadReceiptsToggle.addEventListener("change", () => {
+  void savePrivacyPreferences({ sendReadReceipts: el.privacyReadReceiptsToggle.checked }).catch((error) => {
+    console.error(error);
+  });
+});
+el.privacyPresenceToggle.addEventListener("change", () => {
+  void savePrivacyPreferences({ sharePresence: el.privacyPresenceToggle.checked }).catch((error) => {
+    console.error(error);
+  });
+});
+el.privacyTypingToggle.addEventListener("change", () => {
+  if (!el.privacyTypingToggle.checked) {
+    stopLocalTyping();
+  }
+  void savePrivacyPreferences({ shareTyping: el.privacyTypingToggle.checked }).catch((error) => {
+    console.error(error);
+  });
 });
 
 el.phoneStartForm.addEventListener("submit", startPhoneAuth);
@@ -8009,8 +9008,16 @@ document.addEventListener("keydown", async (event) => {
     closeMessageMetadata();
     return;
   }
+  if (state.conversationSettingsOpen) {
+    closeConversationSettings();
+    return;
+  }
   if (state.deviceManager.open) {
     closeDeviceManager();
+    return;
+  }
+  if (state.groupManager.open) {
+    closeGroupManager();
     return;
   }
   if (state.miniapp.popupOpen) {
