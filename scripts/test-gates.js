@@ -37,6 +37,46 @@ function dockerCommandAndArgs(command, args) {
   };
 }
 
+function loadSuiteArgs() {
+  const composeFile = process.env.OHMF_LOAD_COMPOSE_FILE || path.join(repoRoot, "ohmf", "infra", "docker", "docker-compose.yml");
+  const artifactDir = process.env.OHMF_LOAD_ARTIFACT_DIR || path.join(repoRoot, "ohmf", "docs", "reports", "validation");
+  const args = [
+    "run",
+    "./tools/loadsuite",
+    "--mode",
+    process.env.OHMF_LOAD_MODE || "full",
+    "--base-url",
+    process.env.OHMF_LOAD_BASE_URL || "http://localhost:18080",
+    "--compose-file",
+    composeFile,
+    "--artifact-dir",
+    artifactDir,
+    "--profile",
+    process.env.OHMF_LOAD_PROFILE || "active_sustain",
+    "--initial-devices",
+    process.env.OHMF_LOAD_INITIAL_DEVICES || "100",
+    "--max-devices",
+    process.env.OHMF_LOAD_MAX_DEVICES || "3000",
+    "--prove-duration",
+    process.env.OHMF_LOAD_PROVE_DURATION || "3m",
+    "--sustain-duration",
+    process.env.OHMF_LOAD_SUSTAIN_DURATION || "30m",
+    "--warmup-duration",
+    process.env.OHMF_LOAD_WARMUP_DURATION || "90s",
+    "--fixture-dir",
+    process.env.OHMF_LOAD_FIXTURE_DIR || path.join(artifactDir, "fixture"),
+    "--connect-wave-size",
+    process.env.OHMF_LOAD_CONNECT_WAVE_SIZE || "0",
+    "--connect-wave-interval",
+    process.env.OHMF_LOAD_CONNECT_WAVE_INTERVAL || "15s",
+    "--ready-threshold",
+    process.env.OHMF_LOAD_READY_THRESHOLD || "0.98",
+    "--seed",
+    process.env.OHMF_LOAD_SEED || String(Date.now()),
+  ];
+  return args;
+}
+
 const gates = {
   unit: {
     description: "Fast backend unit and contract coverage.",
@@ -202,6 +242,108 @@ const gates = {
           "-timeout=10m",
         ],
         tags: ["perf", "e2ee"],
+      },
+    ],
+  },
+  load: {
+    description: "Single-host OTT load suite with stack bring-up, readiness checks, and sustained load reporting.",
+    steps: [
+      {
+        name: "load-stack-up",
+        cwd: repoRoot,
+        ...dockerCommandAndArgs("docker", [
+          "compose",
+          "-f",
+          process.env.OHMF_LOAD_COMPOSE_FILE || path.join(repoRoot, "ohmf", "infra", "docker", "docker-compose.yml"),
+          "up",
+          "-d",
+          "--build",
+          "--force-recreate",
+          "db",
+          "redis",
+          "kafka",
+          "cassandra",
+          "apps",
+          "api",
+          "messages-processor",
+          "delivery-processor",
+          "sms-processor",
+          "prometheus",
+        ]),
+        tags: ["perf", "messages", "realtime", "devices"],
+      },
+      {
+        name: "load-stack-wait",
+        cwd: repoRoot,
+        command: isWindows ? "powershell.exe" : "bash",
+        args: isWindows
+          ? [
+              "-NoProfile",
+              "-ExecutionPolicy",
+              "Bypass",
+              "-Command",
+              `
+              $ErrorActionPreference = 'Stop'
+              $deadline = (Get-Date).AddMinutes(2)
+              $targets = @(
+                'http://localhost:18080/healthz',
+                'http://localhost:18086/healthz',
+                'http://localhost:19090/-/healthy'
+              )
+              while ((Get-Date) -lt $deadline) {
+                $allOk = $true
+                foreach ($target in $targets) {
+                  try {
+                    $response = Invoke-WebRequest -UseBasicParsing -Uri $target -TimeoutSec 5
+                    if ($response.StatusCode -lt 200 -or $response.StatusCode -ge 300) { $allOk = $false }
+                  } catch {
+                    $allOk = $false
+                  }
+                }
+                if ($allOk) { exit 0 }
+                Start-Sleep -Seconds 3
+              }
+              throw 'OHMF services did not become healthy in time.'
+              `,
+            ]
+          : [
+              "-lc",
+              `
+              set -euo pipefail
+              deadline=$((SECONDS + 120))
+              while [ "$SECONDS" -lt "$deadline" ]; do
+                curl -fsS http://localhost:18080/healthz >/dev/null &&
+                curl -fsS http://localhost:18086/healthz >/dev/null &&
+                curl -fsS http://localhost:19090/-/healthy >/dev/null &&
+                exit 0
+                sleep 3
+              done
+              echo "OHMF services did not become healthy in time." >&2
+              exit 1
+              `,
+            ],
+        tags: ["perf", "messages", "realtime", "devices"],
+      },
+      {
+        name: "loadsuite-unit",
+        cwd: path.join(repoRoot, "ohmf"),
+        command: goCmd,
+        args: ["test", "./tools/loadsuite", "-count=1"],
+        env: {
+          GOCACHE: path.join(repoRoot, "ohmf", ".gocache"),
+        },
+        tags: ["perf", "messages", "realtime", "devices"],
+      },
+      {
+        name: "loadsuite-run",
+        cwd: path.join(repoRoot, "ohmf"),
+        command: goCmd,
+        args: loadSuiteArgs(),
+        env: {
+          GOCACHE: path.join(repoRoot, "ohmf", ".gocache"),
+          OHMF_LOAD_SKIP_STACK_UP: "1",
+        },
+        tags: ["perf", "messages", "realtime", "devices"],
       },
     ],
   },

@@ -29,6 +29,7 @@ type config struct {
 	CassandraHosts         string
 	CassandraKeyspace      string
 	ShadowPostgresWrite    bool
+	AsyncCassandraProjection bool
 }
 
 type ingressEvent struct {
@@ -52,6 +53,8 @@ type persistedEvent struct {
 	MessageID         string   `json:"message_id"`
 	ConversationID    string   `json:"conversation_id"`
 	SenderUserID      string   `json:"sender_user_id"`
+	ContentType       string   `json:"content_type"`
+	Content           map[string]any `json:"content"`
 	ServerOrder       int64    `json:"server_order"`
 	Transport         string   `json:"transport"`
 	Status            string   `json:"status"`
@@ -106,12 +109,19 @@ type processor struct {
 }
 
 const domainEventMessageCreated = "message_created"
+const ackChannelName = "msg:ack:events"
 
 func main() {
 	ctx := context.Background()
 	cfg := loadConfig()
+	startMetricsServer(getenv("APP_METRICS_ADDR", ":9091"))
 
-	pg, err := pgxpool.New(ctx, cfg.PostgresDSN)
+	poolCfg, err := pgxpool.ParseConfig(cfg.PostgresDSN)
+	if err != nil {
+		log.Fatalf("postgres config failed: %v", err)
+	}
+	poolCfg.ConnConfig.Tracer = &dbQueryTracer{}
+	pg, err := pgxpool.NewWithConfig(ctx, poolCfg)
 	if err != nil {
 		log.Fatalf("postgres init failed: %v", err)
 	}
@@ -127,12 +137,16 @@ func main() {
 	defer rdb.Close()
 
 	cass, err := newCassandra(cfg)
-	if err != nil {
+	if err != nil && !cfg.AsyncCassandraProjection {
 		log.Fatalf("cassandra init failed: %v", err)
 	}
-	defer cass.Close()
-	if err := ensureCassandraSchema(ctx, cass, cfg.CassandraKeyspace); err != nil {
-		log.Fatalf("cassandra schema failed: %v", err)
+	if cass != nil {
+		defer cass.Close()
+	}
+	if cass != nil {
+		if err := ensureCassandraSchema(ctx, cass, cfg.CassandraKeyspace); err != nil {
+			log.Fatalf("cassandra schema failed: %v", err)
+		}
 	}
 
 	brokers := splitCSV(cfg.KafkaBrokers)
@@ -163,15 +177,24 @@ func main() {
 	for {
 		msg, err := p.reader.FetchMessage(ctx)
 		if err != nil {
+			recordProcessorRetry("fetch_failed")
 			log.Printf("fetch failed: %v", err)
 			time.Sleep(300 * time.Millisecond)
 			continue
 		}
+		startedAt := time.Now()
+		if !msg.Time.IsZero() && startedAt.After(msg.Time) {
+			recordKafkaConsumeLag(startedAt.Sub(msg.Time))
+		}
 		if err := p.processMessage(ctx, msg); err != nil {
+			recordProcessorResult("failure", time.Since(startedAt))
 			log.Printf("process failed: %v", err)
 			_ = p.publishDLQ(ctx, msg, err)
+		} else {
+			recordProcessorResult("success", time.Since(startedAt))
 		}
 		if err := p.reader.CommitMessages(ctx, msg); err != nil {
+			recordProcessorRetry("commit_failed")
 			log.Printf("commit failed: %v", err)
 		}
 	}
@@ -186,6 +209,7 @@ func (p *processor) processMessage(ctx context.Context, msg kafka.Message) error
 		return fmt.Errorf("invalid ingress event")
 	}
 
+	txStartedAt := time.Now()
 	tx, err := p.pg.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return err
@@ -313,14 +337,13 @@ func (p *processor) processMessage(ctx context.Context, msg kafka.Message) error
 	}
 
 	if err := tx.Commit(ctx); err != nil {
+		recordProcessorTransaction("error", time.Since(txStartedAt))
 		return err
 	}
+	recordProcessorTransaction("ok", time.Since(txStartedAt))
 
-	if err := p.writeCassandra(ctx, evt, messageID, serverOrder, persistedAt); err != nil {
-		return err
-	}
-
-	ackBody, _ := json.Marshal(ackPayload{
+	ackStartedAt := time.Now()
+	if err := p.publishPersistedAck(ctx, ackPayload{
 		EventID:           evt.EventID,
 		MessageID:         messageID,
 		ConversationID:    evt.ConversationID,
@@ -329,16 +352,19 @@ func (p *processor) processMessage(ctx context.Context, msg kafka.Message) error
 		Transport:         mapTransport(evt.TransportIntent),
 		PersistedAtMS:     persistedAt.UnixMilli(),
 		ClientGeneratedID: evt.ClientGeneratedID,
-	})
-	if err := p.redis.Set(ctx, "msg:ack:"+evt.EventID, string(ackBody), 24*time.Hour).Err(); err != nil {
+	}); err != nil {
+		recordAckPublish("error", time.Since(ackStartedAt))
 		return err
 	}
+	recordAckPublish("ok", time.Since(ackStartedAt))
 
 	persisted := persistedEvent{
 		EventID:         evt.EventID,
 		MessageID:       messageID,
 		ConversationID:  evt.ConversationID,
 		SenderUserID:    evt.SenderUserID,
+		ContentType:     evt.ContentType,
+		Content:         evt.Content,
 		ServerOrder:     serverOrder,
 		Transport:       mapTransport(evt.TransportIntent),
 		Status:          "SENT",
@@ -375,6 +401,14 @@ func (p *processor) processMessage(ctx context.Context, msg kafka.Message) error
 			continue
 		}
 		_ = p.redis.Publish(ctx, "message:user:"+recipientID, payload).Err()
+	}
+	if p.cassandra != nil {
+		projectionStartedAt := time.Now()
+		if err := p.writeCassandra(ctx, evt, messageID, serverOrder, persistedAt); err != nil {
+			recordCassandraProjection("error", time.Since(projectionStartedAt))
+			return err
+		}
+		recordCassandraProjection("ok", time.Since(projectionStartedAt))
 	}
 	return nil
 }
@@ -521,10 +555,14 @@ func loadConfig() config {
 		CassandraHosts:         getenv("APP_CASSANDRA_HOSTS", "localhost:9042"),
 		CassandraKeyspace:      getenv("APP_CASSANDRA_KEYSPACE", "ohmf_messages"),
 		ShadowPostgresWrite:    getenv("APP_SHADOW_POSTGRES_WRITE", "true") == "true",
+		AsyncCassandraProjection: getenv("APP_ASYNC_CASSANDRA_PROJECTION", "false") == "true",
 	}
 }
 
 func newCassandra(cfg config) (*gocql.Session, error) {
+	if cfg.AsyncCassandraProjection {
+		return nil, nil
+	}
 	cluster := gocql.NewCluster(splitCSV(cfg.CassandraHosts)...)
 	cluster.Consistency = gocql.Quorum
 	cluster.Timeout = 5 * time.Second
@@ -579,6 +617,17 @@ func writer(brokers []string, topic string) *kafka.Writer {
 		RequiredAcks: kafka.RequireAll,
 		BatchTimeout: 10 * time.Millisecond,
 	}
+}
+
+func (p *processor) publishPersistedAck(ctx context.Context, ack ackPayload) error {
+	body, err := json.Marshal(ack)
+	if err != nil {
+		return err
+	}
+	if err := p.redis.Set(ctx, "msg:ack:"+ack.EventID, string(body), 24*time.Hour).Err(); err != nil {
+		return err
+	}
+	return p.redis.Publish(ctx, ackChannelName, body).Err()
 }
 
 func splitCSV(v string) []string {

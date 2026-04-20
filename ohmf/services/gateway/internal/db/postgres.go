@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"ohmf/services/gateway/internal/observability"
 )
 
 func NewPool(ctx context.Context, dsn string) (*pgxpool.Pool, error) {
@@ -16,6 +17,7 @@ func NewPool(ctx context.Context, dsn string) (*pgxpool.Pool, error) {
 	if err != nil {
 		return nil, err
 	}
+	cfg.ConnConfig.Tracer = observability.NewDBQueryTracer()
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
 		return nil, err

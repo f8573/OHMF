@@ -193,6 +193,9 @@ func TestTriggerEffectPersistsAndAppendsDomainEvent(t *testing.T) {
 	mock.ExpectExec(`INSERT INTO domain_events \(conversation_id, actor_user_id, event_type, payload\)`).
 		WithArgs("conversation-1", "user-1", "message_effect_triggered", pgxmock.AnyArg()).
 		WillReturnResult(pgxmock.NewResult("INSERT", 1))
+	mock.ExpectExec(`SELECT pg_notify\(\$1, \$2\)`).
+		WithArgs("ohmf_domain_events", "conversation-1").
+		WillReturnResult(pgxmock.NewResult("SELECT", 1))
 	mock.ExpectCommit()
 
 	if err := svc.TriggerEffect(context.Background(), "user-1", "message-1", "bubble_confetti"); err != nil {
@@ -235,6 +238,9 @@ func TestMarkReadPersistsReceiptsAndDomainEvent(t *testing.T) {
 	mock.ExpectExec(`INSERT INTO domain_events \(conversation_id, actor_user_id, event_type, payload\)`).
 		WithArgs("conversation-1", "user-1", "read_checkpoint_advanced", pgxmock.AnyArg()).
 		WillReturnResult(pgxmock.NewResult("INSERT", 1))
+	mock.ExpectExec(`SELECT pg_notify\(\$1, \$2\)`).
+		WithArgs("ohmf_domain_events", "conversation-1").
+		WillReturnResult(pgxmock.NewResult("SELECT", 1))
 	mock.ExpectCommit()
 
 	if err := svc.MarkRead(context.Background(), "user-1", "conversation-1", 7); err != nil {

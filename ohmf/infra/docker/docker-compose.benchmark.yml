@@ -1,0 +1,120 @@
+services:
+  api:
+    environment:
+      APP_ENABLE_SYNC_FANOUT_WORKER: "false"
+      APP_SYNC_FANOUT_BATCH_SIZE: "500"
+      APP_SYNC_FANOUT_FALLBACK_POLL_MS: "1000"
+
+  messages-processor:
+    environment:
+      APP_ASYNC_CASSANDRA_PROJECTION: "true"
+
+  messages-processor-b:
+    image: ohmf-messages-processor:latest
+    container_name: ohmf-messages-processor-b
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+    environment:
+      APP_DB_DSN: postgres://${POSTGRES_USER:-ohmf}:${POSTGRES_PASSWORD:-ohmf}@db:5432/${POSTGRES_DB:-ohmf}?sslmode=disable
+      APP_REDIS_ADDR: redis:6379
+      APP_METRICS_ADDR: :9091
+      APP_KAFKA_BROKERS: kafka:9092
+      APP_KAFKA_GROUP_ID: messages-processor-v1
+      APP_KAFKA_INGRESS_TOPIC: msg.ingress.v1
+      APP_KAFKA_PERSISTED_TOPIC: msg.persisted.v1
+      APP_KAFKA_MICROSERVICE_TOPIC: microservice.events.v1
+      APP_KAFKA_SMS_DISPATCH_TOPIC: msg.sms.dispatch.v1
+      APP_KAFKA_DLQ_TOPIC: msg.ingress.dlq.v1
+      APP_CASSANDRA_HOSTS: cassandra:9042
+      APP_CASSANDRA_KEYSPACE: ohmf_messages
+      APP_SHADOW_POSTGRES_WRITE: "true"
+      APP_ASYNC_CASSANDRA_PROJECTION: "true"
+    ports:
+      - "19097:9091"
+
+  sync-fanout-worker-a:
+    image: ohmf-api:dev
+    container_name: ohmf-sync-fanout-worker-a
+    entrypoint: ["/bin/worker"]
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      cassandra:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+    environment:
+      APP_ENV: dev
+      APP_LOG_LEVEL: info
+      APP_DB_DSN: postgres://${POSTGRES_USER:-ohmf}:${POSTGRES_PASSWORD:-ohmf}@db:5432/${POSTGRES_DB:-ohmf}?sslmode=disable
+      APP_REDIS_ADDR: redis:6379
+      APP_REDIS_DB: "0"
+      APP_METRICS_ADDR: :9094
+      APP_PUSH_SUBSCRIPTION_KEY: dev-only-benchmark
+      APP_ENABLED_WORKERS: sync_fanout
+      APP_SYNC_FANOUT_BATCH_SIZE: "500"
+      APP_SYNC_FANOUT_FALLBACK_POLL_MS: "1000"
+      APP_SYNC_FANOUT_NOTIFY_CHANNEL: ohmf_domain_events
+    ports:
+      - "19094:9094"
+
+  sync-fanout-worker-b:
+    image: ohmf-api:dev
+    container_name: ohmf-sync-fanout-worker-b
+    entrypoint: ["/bin/worker"]
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      cassandra:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+    environment:
+      APP_ENV: dev
+      APP_LOG_LEVEL: info
+      APP_DB_DSN: postgres://${POSTGRES_USER:-ohmf}:${POSTGRES_PASSWORD:-ohmf}@db:5432/${POSTGRES_DB:-ohmf}?sslmode=disable
+      APP_REDIS_ADDR: redis:6379
+      APP_REDIS_DB: "0"
+      APP_METRICS_ADDR: :9094
+      APP_PUSH_SUBSCRIPTION_KEY: dev-only-benchmark
+      APP_ENABLED_WORKERS: sync_fanout
+      APP_SYNC_FANOUT_BATCH_SIZE: "500"
+      APP_SYNC_FANOUT_FALLBACK_POLL_MS: "1000"
+      APP_SYNC_FANOUT_NOTIFY_CHANNEL: ohmf_domain_events
+    ports:
+      - "19095:9094"
+
+  messages-projector:
+    build:
+      context: ../../services/messages-processor
+      dockerfile: Dockerfile.projector
+    image: ohmf-messages-projector:dev
+    container_name: ohmf-messages-projector
+    depends_on:
+      kafka:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+      cassandra:
+        condition: service_healthy
+    environment:
+      APP_KAFKA_BROKERS: kafka:9092
+      APP_KAFKA_PERSISTED_TOPIC: msg.persisted.v1
+      APP_KAFKA_GROUP_ID: messages-projector-v1
+      APP_CASSANDRA_HOSTS: cassandra:9042
+      APP_CASSANDRA_KEYSPACE: ohmf_messages

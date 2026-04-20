@@ -24,6 +24,7 @@ import (
 	"ohmf/services/gateway/internal/devices"
 	"ohmf/services/gateway/internal/httpx"
 	"ohmf/services/gateway/internal/middleware"
+	"ohmf/services/gateway/internal/observability"
 	"ohmf/services/gateway/internal/otp"
 	"ohmf/services/gateway/internal/phone"
 	"ohmf/services/gateway/internal/replication"
@@ -124,13 +125,20 @@ func (h *Handler) StartPhone(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) VerifyPhone(w http.ResponseWriter, r *http.Request) {
+	startedAt := time.Now()
+	outcome := "success"
+	defer func() {
+		observability.RecordAuthVerify(outcome, time.Since(startedAt))
+	}()
 	var req VerifyRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		outcome = "invalid_request"
 		httpx.WriteError(w, r, http.StatusBadRequest, "invalid_request", "invalid body", nil)
 		return
 	}
 	resp, err := h.VerifyPhoneMethod(r.Context(), req, r.RemoteAddr)
 	if err != nil {
+		outcome = classifyAuthOutcome(err)
 		handleError(w, r, err)
 		return
 	}
@@ -182,6 +190,25 @@ func handleError(w http.ResponseWriter, r *http.Request, err error) {
 		httpx.WriteError(w, r, http.StatusBadGateway, "otp_delivery_failed", err.Error(), nil)
 	default:
 		httpx.WriteError(w, r, http.StatusInternalServerError, "internal_error", err.Error(), nil)
+	}
+}
+
+func classifyAuthOutcome(err error) string {
+	switch {
+	case errors.Is(err, ErrChallengeNotFound):
+		return "challenge_not_found"
+	case errors.Is(err, ErrChallengeExpired):
+		return "challenge_expired"
+	case errors.Is(err, ErrInvalidOTP):
+		return "invalid_otp"
+	case errors.Is(err, ErrInvalidRefresh):
+		return "invalid_refresh"
+	case errors.Is(err, ErrRateLimited):
+		return "rate_limited"
+	case errors.Is(err, ErrOTPDeliveryFailed):
+		return "otp_delivery_failed"
+	default:
+		return "internal_error"
 	}
 }
 
@@ -845,6 +872,11 @@ func (h *Handler) StartPairing(w http.ResponseWriter, r *http.Request) {
 
 // CompletePairing redeems a pairing code, registers a new device, and issues tokens.
 func (h *Handler) CompletePairing(w http.ResponseWriter, r *http.Request) {
+	startedAt := time.Now()
+	outcome := "success"
+	defer func() {
+		observability.RecordPairingComplete(outcome, time.Since(startedAt))
+	}()
 	var req struct {
 		PairingCode string `json:"pairing_code"`
 		Device      struct {
@@ -856,16 +888,19 @@ func (h *Handler) CompletePairing(w http.ResponseWriter, r *http.Request) {
 		} `json:"device"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		outcome = "invalid_json"
 		httpx.WriteError(w, r, http.StatusBadRequest, "invalid_json", "invalid request body", nil)
 		return
 	}
 	if strings.TrimSpace(req.PairingCode) == "" || strings.TrimSpace(req.Device.Platform) == "" {
+		outcome = "invalid_request"
 		httpx.WriteError(w, r, http.StatusBadRequest, "invalid_request", "pairing_code and device.platform required", nil)
 		return
 	}
 
 	tx, err := h.db.BeginTx(r.Context(), pgx.TxOptions{})
 	if err != nil {
+		outcome = "pairing_failed"
 		httpx.WriteError(w, r, http.StatusInternalServerError, "pairing_failed", err.Error(), nil)
 		return
 	}
@@ -880,13 +915,16 @@ func (h *Handler) CompletePairing(w http.ResponseWriter, r *http.Request) {
 		FOR UPDATE
 	`, strings.TrimSpace(req.PairingCode)).Scan(&sessionID, &userID, &requestedByDeviceID, &expiresAt); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
+			outcome = "invalid_pairing_code"
 			httpx.WriteError(w, r, http.StatusUnauthorized, "invalid_pairing_code", "pairing code invalid", nil)
 			return
 		}
+		outcome = "pairing_failed"
 		httpx.WriteError(w, r, http.StatusInternalServerError, "pairing_failed", err.Error(), nil)
 		return
 	}
 	if !expiresAt.After(time.Now().UTC()) {
+		outcome = "pairing_expired"
 		httpx.WriteError(w, r, http.StatusGone, "pairing_expired", "pairing code expired", nil)
 		return
 	}
@@ -898,12 +936,14 @@ func (h *Handler) CompletePairing(w http.ResponseWriter, r *http.Request) {
 		VALUES ($1::uuid, $2, $3, $4, NULLIF($5, ''), NULLIF($6, ''), now())
 		RETURNING id::text
 	`, userID, req.Device.Platform, req.Device.DeviceName, capabilities, req.Device.PushToken, req.Device.PublicKey).Scan(&newDeviceID); err != nil {
+		outcome = "pairing_failed"
 		httpx.WriteError(w, r, http.StatusInternalServerError, "pairing_failed", err.Error(), nil)
 		return
 	}
 
 	refreshToken, tokenHash, err := h.generateRefreshToken()
 	if err != nil {
+		outcome = "token_generation_failed"
 		httpx.WriteError(w, r, http.StatusInternalServerError, "token_generation_failed", err.Error(), nil)
 		return
 	}
@@ -911,6 +951,7 @@ func (h *Handler) CompletePairing(w http.ResponseWriter, r *http.Request) {
 		INSERT INTO refresh_tokens (user_id, device_id, token_hash, expires_at)
 		VALUES ($1::uuid, $2::uuid, $3, now() + ($4 || ' seconds')::interval)
 	`, userID, newDeviceID, tokenHash, strconv.Itoa(int(h.cfg.RefreshTTL.Seconds()))); err != nil {
+		outcome = "token_storage_failed"
 		httpx.WriteError(w, r, http.StatusInternalServerError, "token_storage_failed", err.Error(), nil)
 		return
 	}
@@ -922,6 +963,7 @@ func (h *Handler) CompletePairing(w http.ResponseWriter, r *http.Request) {
 		    completed_at = now()
 		WHERE id = $1::uuid
 	`, sessionID, newDeviceID); err != nil {
+		outcome = "pairing_failed"
 		httpx.WriteError(w, r, http.StatusInternalServerError, "pairing_failed", err.Error(), nil)
 		return
 	}
@@ -929,10 +971,12 @@ func (h *Handler) CompletePairing(w http.ResponseWriter, r *http.Request) {
 		"pairing_session_id": sessionID,
 		"paired_device_id":   newDeviceID,
 	}); err != nil {
+		outcome = "pairing_failed"
 		httpx.WriteError(w, r, http.StatusInternalServerError, "pairing_failed", err.Error(), nil)
 		return
 	}
 	if err := tx.Commit(r.Context()); err != nil {
+		outcome = "pairing_failed"
 		httpx.WriteError(w, r, http.StatusInternalServerError, "pairing_failed", err.Error(), nil)
 		return
 	}
@@ -946,6 +990,7 @@ func (h *Handler) CompletePairing(w http.ResponseWriter, r *http.Request) {
 
 	accessToken, err := h.tokens.IssueAccess(userID, newDeviceID, h.cfg.AccessTTL, h.decideProfilesForPlatform(req.Device.Platform))
 	if err != nil {
+		outcome = "token_generation_failed"
 		httpx.WriteError(w, r, http.StatusInternalServerError, "token_generation_failed", err.Error(), nil)
 		return
 	}

@@ -277,6 +277,8 @@ func (h *Handler) Send(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, r, http.StatusUnauthorized, "unauthorized", "missing auth", nil)
 		return
 	}
+	const endpoint = "/v1/messages"
+	startedAt := time.Now()
 	var req struct {
 		ConversationID    string         `json:"conversation_id"`
 		IdempotencyKey    string         `json:"idempotency_key"`
@@ -285,29 +287,38 @@ func (h *Handler) Send(w http.ResponseWriter, r *http.Request) {
 		ClientGeneratedID string         `json:"client_generated_id,omitempty"`
 		ReplyToMessageID  string         `json:"reply_to_message_id,omitempty"`
 	}
+	recordSend := func(outcome, transport string, queued bool) {
+		observability.RecordMessageSend(endpoint, req.ContentType, transport, outcome, queued, time.Since(startedAt))
+	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		recordSend("invalid_request", "", false)
 		httpx.WriteError(w, r, http.StatusBadRequest, "invalid_request", "invalid body", nil)
 		return
 	}
 	if req.IdempotencyKey == "" {
+		recordSend("invalid_request", "", false)
 		httpx.WriteError(w, r, http.StatusBadRequest, "invalid_request", "idempotency_key required", nil)
 		return
 	}
 
 	// Validate required fields per OpenAPI: conversation_id, content_type, content
 	if req.ConversationID == "" {
+		recordSend("invalid_request", "", false)
 		httpx.WriteError(w, r, http.StatusBadRequest, "invalid_request", "conversation_id required", nil)
 		return
 	}
 	if req.ContentType == "" {
+		recordSend("invalid_request", "", false)
 		httpx.WriteError(w, r, http.StatusBadRequest, "invalid_request", "content_type required", nil)
 		return
 	}
 	if isReservedContentType(req.ContentType) {
+		recordSend("invalid_request", "", false)
 		httpx.WriteError(w, r, http.StatusBadRequest, "invalid_request", "content_type is server-authored only", nil)
 		return
 	}
 	if req.Content == nil {
+		recordSend("invalid_request", "", false)
 		httpx.WriteError(w, r, http.StatusBadRequest, "invalid_request", "content required", nil)
 		return
 	}
@@ -315,6 +326,7 @@ func (h *Handler) Send(w http.ResponseWriter, r *http.Request) {
 		req.Content["reply_to_message_id"] = strings.TrimSpace(req.ReplyToMessageID)
 	}
 	if err := validateSendContent(req.ContentType, req.Content); err != nil {
+		recordSend("invalid_request", "", false)
 		httpx.WriteError(w, r, http.StatusBadRequest, "invalid_request", err.Error(), nil)
 		return
 	}
@@ -323,27 +335,33 @@ func (h *Handler) Send(w http.ResponseWriter, r *http.Request) {
 	result, err := h.svc.Send(r.Context(), userID, deviceID, req.ConversationID, req.IdempotencyKey, req.ContentType, req.Content, req.ClientGeneratedID, traceID, ipOnly(r.RemoteAddr))
 	if err != nil {
 		if errors.Is(err, ErrConversationAccess) {
+			recordSend("forbidden", "", false)
 			httpx.WriteError(w, r, http.StatusForbidden, "forbidden", err.Error(), nil)
 			return
 		}
 		if errors.Is(err, ErrConversationBlocked) {
+			recordSend("blocked", "", false)
 			httpx.WriteError(w, r, http.StatusForbidden, "blocked", "conversation is blocked", nil)
 			return
 		}
 		if errors.Is(err, ErrEncryptedConversationStateChanged) {
+			recordSend("encrypted_conversation_state_changed", "", false)
 			httpx.WriteError(w, r, http.StatusConflict, "encrypted_conversation_state_changed", err.Error(), nil)
 			return
 		}
 		if errors.Is(err, ErrEncryptedMessageRequired) || errors.Is(err, ErrEncryptedMessageInvalid) || errors.Is(err, ErrSenderDeviceRequired) || errors.Is(err, ErrSenderDeviceInvalid) {
+			recordSend("invalid_encrypted_message", "", false)
 			httpx.WriteError(w, r, http.StatusConflict, "invalid_encrypted_message", err.Error(), nil)
 			return
 		}
 		if err.Error() == "reply_target_not_found" {
+			recordSend("reply_target_not_found", "", false)
 			httpx.WriteError(w, r, http.StatusConflict, "reply_target_not_found", "reply target is unavailable", nil)
 			return
 		}
 		var rlErr RateLimitError
 		if errors.As(err, &rlErr) {
+			recordSend("rate_limited", "", false)
 			decision := limit.Decision{Allowed: false, RetryAfter: time.Duration(retryAfterOrDefault(rlErr.RetryAfter)) * time.Millisecond}
 			limit.SetHeaders(w, scopeLimit(rlErr.Scope), decision)
 			httpx.WriteError(w, r, http.StatusTooManyRequests, "rate_limited", err.Error(), map[string]any{
@@ -352,6 +370,7 @@ func (h *Handler) Send(w http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
+		recordSend("send_failed", "", false)
 		httpx.WriteError(w, r, http.StatusInternalServerError, "send_failed", err.Error(), nil)
 		return
 	}
@@ -383,6 +402,7 @@ func (h *Handler) Send(w http.ResponseWriter, r *http.Request) {
 	if result.Queued {
 		response["ack_timeout_ms"] = result.AckTimeoutMS
 	}
+	recordSend("accepted", transport, result.Queued)
 	httpx.WriteJSON(w, httpStatus, response)
 	// Emit structured event for observability
 	observability.EmitEvent("message.created", map[string]any{
@@ -400,6 +420,8 @@ func (h *Handler) SendToPhone(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, r, http.StatusUnauthorized, "unauthorized", "missing auth", nil)
 		return
 	}
+	const endpoint = "/v1/messages/phone"
+	startedAt := time.Now()
 	var req struct {
 		PhoneE164         string         `json:"phone_e164"`
 		IdempotencyKey    string         `json:"idempotency_key"`
@@ -408,25 +430,33 @@ func (h *Handler) SendToPhone(w http.ResponseWriter, r *http.Request) {
 		ClientGeneratedID string         `json:"client_generated_id,omitempty"`
 		ReplyToMessageID  string         `json:"reply_to_message_id,omitempty"`
 	}
+	recordSend := func(outcome, transport string, queued bool) {
+		observability.RecordMessageSend(endpoint, req.ContentType, transport, outcome, queued, time.Since(startedAt))
+	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		recordSend("invalid_request", "", false)
 		httpx.WriteError(w, r, http.StatusBadRequest, "invalid_request", "invalid body", nil)
 		return
 	}
 	if req.PhoneE164 == "" || req.IdempotencyKey == "" {
+		recordSend("invalid_request", "", false)
 		httpx.WriteError(w, r, http.StatusBadRequest, "invalid_request", "phone_e164 and idempotency_key required", nil)
 		return
 	}
 
 	// Validate required fields per OpenAPI: content_type, content
 	if req.ContentType == "" {
+		recordSend("invalid_request", "", false)
 		httpx.WriteError(w, r, http.StatusBadRequest, "invalid_request", "content_type required", nil)
 		return
 	}
 	if isReservedContentType(req.ContentType) {
+		recordSend("invalid_request", "", false)
 		httpx.WriteError(w, r, http.StatusBadRequest, "invalid_request", "content_type is server-authored only", nil)
 		return
 	}
 	if req.Content == nil {
+		recordSend("invalid_request", "", false)
 		httpx.WriteError(w, r, http.StatusBadRequest, "invalid_request", "content required", nil)
 		return
 	}
@@ -434,6 +464,7 @@ func (h *Handler) SendToPhone(w http.ResponseWriter, r *http.Request) {
 		req.Content["reply_to_message_id"] = strings.TrimSpace(req.ReplyToMessageID)
 	}
 	if err := validateSendContent(req.ContentType, req.Content); err != nil {
+		recordSend("invalid_request", "", false)
 		httpx.WriteError(w, r, http.StatusBadRequest, "invalid_request", err.Error(), nil)
 		return
 	}
@@ -442,23 +473,28 @@ func (h *Handler) SendToPhone(w http.ResponseWriter, r *http.Request) {
 	result, err := h.svc.SendToPhone(r.Context(), userID, deviceID, req.PhoneE164, req.IdempotencyKey, req.ContentType, req.Content, req.ClientGeneratedID, traceID, ipOnly(r.RemoteAddr))
 	if err != nil {
 		if errors.Is(err, ErrConversationBlocked) {
+			recordSend("blocked", "", false)
 			httpx.WriteError(w, r, http.StatusForbidden, "blocked", "conversation is blocked", nil)
 			return
 		}
 		if errors.Is(err, ErrEncryptedConversationStateChanged) {
+			recordSend("encrypted_conversation_state_changed", "", false)
 			httpx.WriteError(w, r, http.StatusConflict, "encrypted_conversation_state_changed", err.Error(), nil)
 			return
 		}
 		if errors.Is(err, ErrEncryptedMessageInvalid) || errors.Is(err, ErrSenderDeviceRequired) || errors.Is(err, ErrSenderDeviceInvalid) {
+			recordSend("invalid_encrypted_message", "", false)
 			httpx.WriteError(w, r, http.StatusConflict, "invalid_encrypted_message", err.Error(), nil)
 			return
 		}
 		if err.Error() == "reply_target_not_found" {
+			recordSend("reply_target_not_found", "", false)
 			httpx.WriteError(w, r, http.StatusConflict, "reply_target_not_found", "reply target is unavailable", nil)
 			return
 		}
 		var rlErr RateLimitError
 		if errors.As(err, &rlErr) {
+			recordSend("rate_limited", "", false)
 			decision := limit.Decision{Allowed: false, RetryAfter: time.Duration(retryAfterOrDefault(rlErr.RetryAfter)) * time.Millisecond}
 			limit.SetHeaders(w, scopeLimit(rlErr.Scope), decision)
 			httpx.WriteError(w, r, http.StatusTooManyRequests, "rate_limited", err.Error(), map[string]any{
@@ -467,6 +503,7 @@ func (h *Handler) SendToPhone(w http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
+		recordSend("send_phone_failed", "", false)
 		httpx.WriteError(w, r, http.StatusInternalServerError, "send_phone_failed", err.Error(), nil)
 		return
 	}
@@ -499,6 +536,7 @@ func (h *Handler) SendToPhone(w http.ResponseWriter, r *http.Request) {
 	if result.Queued {
 		response["ack_timeout_ms"] = result.AckTimeoutMS
 	}
+	recordSend("accepted", transport, result.Queued)
 	httpx.WriteJSON(w, httpStatus, response)
 }
 

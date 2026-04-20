@@ -8,6 +8,7 @@
     "test:e2e": "node ./scripts/test-gates.js e2e",
     "test:live": "node ./scripts/test-gates.js live",
     "test:perf": "node ./scripts/test-gates.js perf",
+    "test:load": "node ./scripts/test-gates.js load",
     "test:staging": "node ./scripts/test-gates.js staging"
   },
   "dependencies": {

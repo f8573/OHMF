@@ -4,10 +4,12 @@ import (
 	"context"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
 	"crypto/sha256"
+	"net/http"
 	"ohmf/services/gateway/internal/config"
 	"ohmf/services/gateway/internal/db"
 	"ohmf/services/gateway/internal/deviceattestation"
@@ -25,6 +27,7 @@ func main() {
 	cfg := config.Load()
 	logger := observability.NewLogger(cfg.LogLevel)
 	ctx := context.Background()
+	startWorkerMetricsServer(os.Getenv("APP_METRICS_ADDR"))
 
 	pool, err := db.NewPool(ctx, cfg.DBDSN)
 	if err != nil {
@@ -85,11 +88,22 @@ func main() {
 
 	// create runner and workers
 	runner := wk.NewRunner()
-	runner.Add(wk.NewMediaWorker(pool))
-	runner.Add(wk.NewNotificationWorker(notificationHandler))
-	runner.Add(wk.NewAbuseAggregatorWorker(pool))
-	runner.Add(wk.NewRelayRetryWorker(pool))
-	runner.Add(wk.NewSyncFanoutWorker(replicationStore))
+	enabledWorkers := workerSetFromEnv(os.Getenv("APP_ENABLED_WORKERS"))
+	if workerEnabled(enabledWorkers, "media") {
+		runner.Add(wk.NewMediaWorker(pool))
+	}
+	if workerEnabled(enabledWorkers, "notification") {
+		runner.Add(wk.NewNotificationWorker(notificationHandler))
+	}
+	if workerEnabled(enabledWorkers, "abuse") {
+		runner.Add(wk.NewAbuseAggregatorWorker(pool))
+	}
+	if workerEnabled(enabledWorkers, "relay_retry") {
+		runner.Add(wk.NewRelayRetryWorker(pool))
+	}
+	if workerEnabled(enabledWorkers, "sync_fanout") {
+		runner.Add(wk.NewSyncFanoutWorker(replicationStore, cfg.DBDSN, cfg.SyncFanoutBatchSize, cfg.SyncFanoutFallbackPoll, cfg.SyncFanoutNotifyChannel))
+	}
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -108,4 +122,49 @@ func main() {
 	stopCtx, cancelStop := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancelStop()
 	_ = runner.StopAll(stopCtx)
+}
+
+func startWorkerMetricsServer(addr string) {
+	addr = strings.TrimSpace(addr)
+	if addr == "" {
+		return
+	}
+	go func() {
+		mux := http.NewServeMux()
+		mux.Handle("/metrics", observability.MetricsHandler())
+		mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("ok"))
+		})
+		server := &http.Server{
+			Addr:              addr,
+			Handler:           mux,
+			ReadHeaderTimeout: 5 * time.Second,
+		}
+		_ = server.ListenAndServe()
+	}()
+}
+
+func workerSetFromEnv(value string) map[string]struct{} {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+	out := make(map[string]struct{})
+	for _, item := range strings.Split(value, ",") {
+		item = strings.TrimSpace(strings.ToLower(item))
+		if item == "" {
+			continue
+		}
+		out[item] = struct{}{}
+	}
+	return out
+}
+
+func workerEnabled(enabled map[string]struct{}, name string) bool {
+	if len(enabled) == 0 {
+		return true
+	}
+	_, ok := enabled[strings.TrimSpace(strings.ToLower(name))]
+	return ok
 }

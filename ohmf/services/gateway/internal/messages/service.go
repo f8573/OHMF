@@ -17,6 +17,7 @@ import (
 	"ohmf/services/gateway/internal/e2ee"
 	"ohmf/services/gateway/internal/limit"
 	"ohmf/services/gateway/internal/middleware"
+	"ohmf/services/gateway/internal/observability"
 	"ohmf/services/gateway/internal/replication"
 )
 
@@ -1796,6 +1797,11 @@ func (s *Service) sendAsync(ctx context.Context, userID, conversationID, idemKey
 	if err := s.upsertIdempotency(ctx, userID, endpoint, idemKey, msg, 201); err != nil {
 		return SendResult{}, err
 	}
+	persistLatency := time.UnixMilli(ack.PersistedAtMS).Sub(time.UnixMilli(evt.SentAtMS))
+	if persistLatency < 0 {
+		persistLatency = 0
+	}
+	observability.RecordMessagePersist(endpoint, "async", contentType, ack.Transport, persistLatency)
 	return SendResult{Message: msg}, nil
 }
 
@@ -2862,6 +2868,7 @@ func (s *Service) sendSync(ctx context.Context, userID, senderDeviceID, conversa
 }
 
 func (s *Service) sendSyncWithEndpoint(ctx context.Context, userID, senderDeviceID, conversationID, idemKey, contentType string, content map[string]any, clientGeneratedID, endpoint, source string) (Message, error) {
+	persistStart := time.Now()
 	tx, err := s.db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return Message{}, err
@@ -3068,12 +3075,14 @@ func (s *Service) sendSyncWithEndpoint(ctx context.Context, userID, senderDevice
 	if err := tx.Commit(ctx); err != nil {
 		return Message{}, err
 	}
+	observability.RecordMessagePersist(endpoint, "sync", contentType, msg.Transport, time.Since(persistStart))
 	s.publishMessageCreated(ctx, recipients, msg)
 	s.publishOnlineDeliveryUpdates(ctx, recipients, msg)
 	return msg, nil
 }
 
 func (s *Service) sendToPhoneSync(ctx context.Context, userID, senderDeviceID, phoneE164, idemKey, contentType string, content map[string]any, clientGeneratedID string) (Message, error) {
+	persistStart := time.Now()
 	tx, err := s.db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return Message{}, err
@@ -3226,6 +3235,7 @@ func (s *Service) sendToPhoneSync(ctx context.Context, userID, senderDeviceID, p
 	if err := tx.Commit(ctx); err != nil {
 		return Message{}, err
 	}
+	observability.RecordMessagePersist("/v1/messages/phone", "sync", contentType, msg.Transport, time.Since(persistStart))
 	s.publishMessageCreated(ctx, recipients, msg)
 	return msg, nil
 }
@@ -3289,8 +3299,26 @@ func (s *Service) publishOnlineDeliveryUpdates(ctx context.Context, recipients [
 			Status:          "DELIVERED",
 			StatusUpdatedAt: deliveredAt,
 		})
+		latency := time.Duration(-1)
+		if createdAt, err := parseMessageTimestamp(msg.CreatedAt); err == nil {
+			latency = time.Since(createdAt)
+			if latency < 0 {
+				latency = 0
+			}
+		}
+		observability.RecordRealtimeOnlineDeliveryUpdate(msg.Transport, "DELIVERED", latency)
 		_ = s.redis.Publish(ctx, "delivery:user:"+msg.SenderUserID, body).Err()
 	}
+}
+
+func parseMessageTimestamp(raw string) (time.Time, error) {
+	if parsed, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(raw)); err == nil {
+		return parsed.UTC(), nil
+	}
+	if parsed, err := time.Parse(time.RFC3339, strings.TrimSpace(raw)); err == nil {
+		return parsed.UTC(), nil
+	}
+	return time.Time{}, fmt.Errorf("invalid timestamp")
 }
 
 func normalizeTransportForDelivery(transport string) string {

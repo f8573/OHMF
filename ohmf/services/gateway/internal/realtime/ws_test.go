@@ -25,8 +25,8 @@ func TestHandleTypingSignalBroadcastsToOtherMembers(t *testing.T) {
 		messages: svc,
 		clients:  map[string]map[*client]struct{}{},
 	}
-	actor := &client{userID: "user-1", deviceID: "device-1", send: make(chan []byte, 1)}
-	recipient := &client{userID: "user-2", send: make(chan []byte, 1)}
+	actor := &client{userID: "user-1", deviceID: "device-1", send: make(chan outboundMessage, 1)}
+	recipient := &client{userID: "user-2", send: make(chan outboundMessage, 1)}
 	handler.clients["user-1"] = map[*client]struct{}{actor: struct{}{}}
 	handler.clients["user-2"] = map[*client]struct{}{recipient: struct{}{}}
 
@@ -48,7 +48,7 @@ func TestHandleTypingSignalBroadcastsToOtherMembers(t *testing.T) {
 			Event string         `json:"event"`
 			Data  map[string]any `json:"data"`
 		}
-		if err := json.Unmarshal(raw, &envelope); err != nil {
+		if err := json.Unmarshal(raw.payload, &envelope); err != nil {
 			t.Fatalf("failed to decode ws payload: %v", err)
 		}
 		if envelope.Event != "typing.started" {
@@ -104,13 +104,13 @@ func TestHandleHelloResumeTouchesPresenceAndReplaysFromLastCursor(t *testing.T) 
 		userID:    "user-1",
 		sessionID: "wsv2:session-1",
 		v2:        true,
-		send:      make(chan []byte, 8),
+		send:      make(chan outboundMessage, 8),
 	}
 
 	handler.handleHelloResume(context.Background(), c, resumePayload{
 		DeviceID:   "device-1",
 		LastCursor: "17",
-	})
+	}, time.Now())
 
 	helloMsg := decodeWSMessage(t, c.send)
 	if helloMsg.Event != "hello_ack" {
@@ -190,7 +190,7 @@ func TestTypingStateIsCleanedUpOnDisconnect(t *testing.T) {
 		userID:    "user-1",
 		deviceID:  "device-1",
 		sessionID: "wsv1:session-1",
-		send:      make(chan []byte, 1),
+		send:      make(chan outboundMessage, 1),
 		v2:        false,
 	}
 	handler.register(actor)
@@ -227,7 +227,7 @@ func TestTypingStateIsCleanedUpOnDisconnect(t *testing.T) {
 	}
 }
 
-func decodeWSMessage(t *testing.T, ch <-chan []byte) struct {
+func decodeWSMessage(t *testing.T, ch <-chan outboundMessage) struct {
 	Event string         `json:"event"`
 	Data  map[string]any `json:"data"`
 } {
@@ -238,7 +238,7 @@ func decodeWSMessage(t *testing.T, ch <-chan []byte) struct {
 			Event string         `json:"event"`
 			Data  map[string]any `json:"data"`
 		}
-		if err := json.Unmarshal(raw, &msg); err != nil {
+		if err := json.Unmarshal(raw.payload, &msg); err != nil {
 			t.Fatalf("decode ws payload: %v", err)
 		}
 		return msg

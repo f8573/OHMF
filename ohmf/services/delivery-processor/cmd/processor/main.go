@@ -32,7 +32,13 @@ func main() {
 	persistedTopic := getenv("APP_KAFKA_PERSISTED_TOPIC", "msg.persisted.v1")
 	deliveryTopic := getenv("APP_KAFKA_DELIVERY_TOPIC", "msg.delivery.v1")
 	dlqTopic := getenv("APP_KAFKA_DELIVERY_DLQ_TOPIC", "msg.delivery.dlq.v1")
-	pg, err := pgxpool.New(ctx, getenv("APP_DB_DSN", "postgres://ohmf:ohmf@localhost:5432/ohmf?sslmode=disable"))
+	startMetricsServer(getenv("APP_METRICS_ADDR", ":9092"))
+	poolCfg, err := pgxpool.ParseConfig(getenv("APP_DB_DSN", "postgres://ohmf:ohmf@localhost:5432/ohmf?sslmode=disable"))
+	if err != nil {
+		log.Fatalf("postgres config failed: %v", err)
+	}
+	poolCfg.ConnConfig.Tracer = &dbQueryTracer{}
+	pg, err := pgxpool.NewWithConfig(ctx, poolCfg)
 	if err != nil {
 		log.Fatalf("postgres init failed: %v", err)
 	}
@@ -65,15 +71,21 @@ func main() {
 	for {
 		msg, err := reader.FetchMessage(ctx)
 		if err != nil {
+			recordProcessorRetry("fetch_failed")
 			log.Printf("fetch failed: %v", err)
 			time.Sleep(300 * time.Millisecond)
 			continue
 		}
+		startedAt := time.Now()
 		if err := process(ctx, pg, rdb, deliveryWriter, msg); err != nil {
+			recordProcessorResult("failure", time.Since(startedAt))
 			log.Printf("process failed: %v", err)
 			_ = publishDLQ(ctx, dlqWriter, msg, err)
+		} else {
+			recordProcessorResult("success", time.Since(startedAt))
 		}
 		if err := reader.CommitMessages(ctx, msg); err != nil {
+			recordProcessorRetry("commit_failed")
 			log.Printf("commit failed: %v", err)
 		}
 	}

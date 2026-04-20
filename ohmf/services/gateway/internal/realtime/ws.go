@@ -49,7 +49,7 @@ type Handler struct {
 type client struct {
 	userID              string
 	conn                *websocket.Conn
-	send                chan []byte
+	send                chan outboundMessage
 	deviceID            string
 	sessionID           string
 	v2                  bool
@@ -62,6 +62,13 @@ type client struct {
 
 	sendMu sync.RWMutex
 	closed bool
+}
+
+type outboundMessage struct {
+	payload       []byte
+	event         string
+	userEventID   int64
+	userEventType string
 }
 
 type wsEnvelope struct {
@@ -145,13 +152,15 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	conn, err := h.upgrader.Upgrade(w, r, nil)
 	if err != nil {
+		observability.RecordRealtimeWSUpgrade("v1", "error")
 		return
 	}
+	observability.RecordRealtimeWSUpgrade("v1", "success")
 
 	c := &client{
 		userID:               userID,
 		conn:                 conn,
-		send:                 make(chan []byte, 128),
+		send:                 make(chan outboundMessage, 128),
 		sessionID:            "wsv1:" + uuid.NewString(),
 		sessionSubscriptions: make(map[string]context.CancelFunc),
 	}
@@ -188,13 +197,15 @@ func (h *Handler) ServeV2(w http.ResponseWriter, r *http.Request) {
 	}
 	conn, err := h.upgrader.Upgrade(w, r, nil)
 	if err != nil {
+		observability.RecordRealtimeWSUpgrade("v2", "error")
 		return
 	}
+	observability.RecordRealtimeWSUpgrade("v2", "success")
 
 	c := &client{
 		userID:               userID,
 		conn:                 conn,
-		send:                 make(chan []byte, 128),
+		send:                 make(chan outboundMessage, 128),
 		v2:                   true,
 		sessionID:            "wsv2:" + uuid.NewString(),
 		sessionSubscriptions: make(map[string]context.CancelFunc),
@@ -302,22 +313,30 @@ func (h *Handler) readLoop(c *client, ip string) {
 			h.sendJSON(c, "auth", map[string]any{"status": "ok", "user_id": c.userID})
 			h.touchConnection(context.Background(), c)
 		case "send_message":
+			sendStartedAt := time.Now()
+			var req sendMessagePayload
+			recordSend := func(outcome, transport string, queued bool) {
+				observability.RecordMessageSend("ws.send_message.v1", req.ContentType, transport, outcome, queued, time.Since(sendStartedAt))
+			}
 			if !h.enableSend {
+				recordSend("ws_send_disabled", "", false)
 				h.sendJSON(c, "error", map[string]any{"code": "ws_send_disabled", "message": "ws send disabled"})
 				continue
 			}
 			// validate payload against schema
 			var raw interface{}
 			if err := json.Unmarshal(env.Data, &raw); err != nil {
+				recordSend("invalid_request", "", false)
 				h.sendJSON(c, "error", map[string]any{"code": "invalid_request", "message": "invalid send_message payload"})
 				continue
 			}
 			if err := appmw.ValidateData("ws-send_message", raw); err != nil {
+				recordSend("invalid_request", "", false)
 				h.sendJSON(c, "error", map[string]any{"code": "invalid_request", "message": err.Error()})
 				continue
 			}
-			var req sendMessagePayload
 			if err := json.Unmarshal(env.Data, &req); err != nil {
+				recordSend("invalid_request", "", false)
 				h.sendJSON(c, "error", map[string]any{"code": "invalid_request", "message": "invalid send_message payload"})
 				continue
 			}
@@ -329,9 +348,11 @@ func (h *Handler) readLoop(c *client, ip string) {
 			}
 			result, err := h.messages.Send(context.Background(), c.userID, c.deviceID, req.ConversationID, req.IdempotencyKey, req.ContentType, req.Content, req.ClientGeneratedID, "ws-"+time.Now().UTC().Format(time.RFC3339Nano), ip)
 			if err != nil {
+				recordSend("send_failed", "", false)
 				h.sendJSON(c, "error", map[string]any{"code": "send_failed", "message": err.Error()})
 				continue
 			}
+			recordSend("accepted", result.Message.Transport, result.Queued)
 			h.sendJSON(c, "ack", map[string]any{
 				"message_id":      result.Message.MessageID,
 				"conversation_id": result.Message.ConversationID,
@@ -408,8 +429,11 @@ func (h *Handler) writeLoop(c *client) {
 		if c.conn == nil {
 			return
 		}
-		if err := c.conn.WriteMessage(websocket.TextMessage, msg); err != nil {
+		if err := c.conn.WriteMessage(websocket.TextMessage, msg.payload); err != nil {
 			return
+		}
+		if msg.userEventID > 0 {
+			observability.RecordRealtimeUserEventWriteCompleted(msg.userEventType, msg.userEventID, time.Now().UTC())
 		}
 	}
 }
@@ -469,13 +493,29 @@ func (h *Handler) sendJSON(c *client, event string, data any) {
 		return
 	}
 	observability.RecordWSMessage("sent", event)
+	outbound := outboundMessage{
+		payload: payload,
+		event:   event,
+	}
+	if event == "event" {
+		switch evt := data.(type) {
+		case replication.Event:
+			outbound.userEventID = evt.UserEventID
+			outbound.userEventType = evt.Type
+		case *replication.Event:
+			if evt != nil {
+				outbound.userEventID = evt.UserEventID
+				outbound.userEventType = evt.Type
+			}
+		}
+	}
 	c.sendMu.RLock()
 	defer c.sendMu.RUnlock()
 	if c.closed {
 		return
 	}
 	select {
-	case c.send <- payload:
+	case c.send <- outbound:
 	default:
 	}
 }
@@ -645,12 +685,14 @@ func (h *Handler) readLoopV2(c *client, ip string) {
 		observability.RecordWSMessage("received", env.Event)
 		switch env.Event {
 		case "hello":
+			helloStartedAt := time.Now()
 			var req resumePayload
 			if err := json.Unmarshal(env.Data, &req); err != nil {
 				h.sendJSON(c, "error", map[string]any{"code": "invalid_request", "message": "invalid hello payload"})
+				observability.RecordRealtimeHello("resume", "invalid_request", time.Since(helloStartedAt))
 				continue
 			}
-			h.handleHelloResume(context.Background(), c, req)
+			h.handleHelloResume(context.Background(), c, req, helloStartedAt)
 		case "ack":
 			var req struct {
 				ThroughUserEventID int64  `json:"through_user_event_id"`
@@ -674,21 +716,29 @@ func (h *Handler) readLoopV2(c *client, ip string) {
 			}
 			h.touchConnection(context.Background(), c)
 		case "send_message":
+			sendStartedAt := time.Now()
+			var req sendMessagePayload
+			recordSend := func(outcome, transport string, queued bool) {
+				observability.RecordMessageSend("ws.send_message.v2", req.ContentType, transport, outcome, queued, time.Since(sendStartedAt))
+			}
 			if !h.enableSend {
+				recordSend("ws_send_disabled", "", false)
 				h.sendJSON(c, "error", map[string]any{"code": "ws_send_disabled", "message": "ws send disabled"})
 				continue
 			}
 			var raw interface{}
 			if err := json.Unmarshal(env.Data, &raw); err != nil {
+				recordSend("invalid_request", "", false)
 				h.sendJSON(c, "error", map[string]any{"code": "invalid_request", "message": "invalid send_message payload"})
 				continue
 			}
 			if err := appmw.ValidateData("ws-send_message", raw); err != nil {
+				recordSend("invalid_request", "", false)
 				h.sendJSON(c, "error", map[string]any{"code": "invalid_request", "message": err.Error()})
 				continue
 			}
-			var req sendMessagePayload
 			if err := json.Unmarshal(env.Data, &req); err != nil {
+				recordSend("invalid_request", "", false)
 				h.sendJSON(c, "error", map[string]any{"code": "invalid_request", "message": "invalid send_message payload"})
 				continue
 			}
@@ -700,9 +750,11 @@ func (h *Handler) readLoopV2(c *client, ip string) {
 			}
 			result, err := h.messages.Send(context.Background(), c.userID, c.deviceID, req.ConversationID, req.IdempotencyKey, req.ContentType, req.Content, req.ClientGeneratedID, "ws-"+time.Now().UTC().Format(time.RFC3339Nano), ip)
 			if err != nil {
+				recordSend("send_failed", "", false)
 				h.sendJSON(c, "error", map[string]any{"code": "send_failed", "message": err.Error()})
 				continue
 			}
+			recordSend("accepted", result.Message.Transport, result.Queued)
 			h.sendJSON(c, "ack", map[string]any{
 				"message_id":      result.Message.MessageID,
 				"conversation_id": result.Message.ConversationID,
@@ -978,12 +1030,18 @@ func (h *Handler) touchConnection(ctx context.Context, c *client) {
 	h.registerSession(ctx, c)
 }
 
-func (h *Handler) handleHelloResume(ctx context.Context, c *client, req resumePayload) {
+func (h *Handler) handleHelloResume(ctx context.Context, c *client, req resumePayload, startedAt time.Time) {
 	if c == nil {
 		return
 	}
+	mode := "resume"
+	if req.LastUserCursor <= 0 && strings.TrimSpace(req.LastCursor) == "" {
+		mode = "fresh"
+	}
 	cursor, err := h.resolveResumeCursor(req.LastUserCursor, req.LastCursor)
 	if err != nil {
+		observability.RecordRealtimeResume("invalid_cursor")
+		observability.RecordRealtimeHello(mode, "invalid_cursor", time.Since(startedAt))
 		h.sendJSON(c, "error", map[string]any{"code": "invalid_cursor", "message": err.Error()})
 		return
 	}
@@ -997,6 +1055,11 @@ func (h *Handler) handleHelloResume(ctx context.Context, c *client, req resumePa
 		"resume_supported":      true,
 		"heartbeat_interval_ms": 30000,
 	})
+	if mode == "fresh" && cursor == 0 {
+		observability.RecordRealtimeHello(mode, "complete", time.Since(startedAt))
+		return
+	}
+	observability.RecordRealtimeHello(mode, "complete", time.Since(startedAt))
 	h.replayUserEvents(ctx, c, cursor, "", 250, nil)
 }
 
@@ -1006,14 +1069,19 @@ func (h *Handler) handleResyncRequest(ctx context.Context, c *client, req resync
 	}
 	cursor, err := h.resolveResumeCursor(req.LastUserCursor, req.LastCursor)
 	if err != nil {
+		observability.RecordRealtimeResume("invalid_cursor")
 		h.sendJSON(c, "error", map[string]any{"code": "invalid_cursor", "message": err.Error()})
 		return
 	}
 	if cursor == 0 && strings.TrimSpace(req.ConversationID) == "" {
+		observability.RecordRealtimeResume("missing_cursor")
+		observability.RecordRealtimeResyncRequired("missing_cursor")
 		h.sendJSON(c, "resync_required", map[string]any{"cursor_hint": 0})
 		return
 	}
 	if cursor == 0 {
+		observability.RecordRealtimeResume("missing_cursor")
+		observability.RecordRealtimeResyncRequired("missing_cursor")
 		h.sendJSON(c, "resync_required", map[string]any{
 			"conversation_id": req.ConversationID,
 			"cursor_hint":     0,
@@ -1043,8 +1111,11 @@ func (h *Handler) replayUserEvents(ctx context.Context, c *client, lastUserCurso
 	if c == nil || h.replication == nil {
 		return
 	}
+	startedAt := time.Now()
 	cursor, err := h.resolveResumeCursor(lastUserCursor, lastCursor)
 	if err != nil {
+		observability.RecordRealtimeResume("invalid_cursor")
+		observability.RecordRealtimeReplayDuration("resume", "invalid_cursor", time.Since(startedAt))
 		payload := map[string]any{
 			"code":    "invalid_cursor",
 			"message": err.Error(),
@@ -1060,6 +1131,9 @@ func (h *Handler) replayUserEvents(ctx context.Context, c *client, lastUserCurso
 	}
 	resp, err := h.replication.ListEvents(ctx, c.userID, cursor, limit)
 	if err != nil {
+		observability.RecordRealtimeResume("resume_failed")
+		observability.RecordRealtimeResyncRequired("resume_failed")
+		observability.RecordRealtimeReplayDuration("resume", "resume_failed", time.Since(startedAt))
 		payload := map[string]any{
 			"cursor_hint": cursor,
 			"reason":      "resume_failed",
@@ -1070,10 +1144,14 @@ func (h *Handler) replayUserEvents(ctx context.Context, c *client, lastUserCurso
 		h.sendJSON(c, "resync_required", payload)
 		return
 	}
+	observability.RecordRealtimeReplayBatch("resume", len(resp.Events), resp.HasMore)
 	for _, evt := range resp.Events {
 		h.sendJSON(c, "event", evt)
 	}
 	if resp.HasMore {
+		observability.RecordRealtimeResume("partial")
+		observability.RecordRealtimeResyncRequired("has_more")
+		observability.RecordRealtimeReplayDuration("resume", "partial", time.Since(startedAt))
 		payload := map[string]any{
 			"cursor_hint": resp.NextCursor,
 		}
@@ -1081,7 +1159,10 @@ func (h *Handler) replayUserEvents(ctx context.Context, c *client, lastUserCurso
 			payload[k] = v
 		}
 		h.sendJSON(c, "resync_required", payload)
+		return
 	}
+	observability.RecordRealtimeResume("complete")
+	observability.RecordRealtimeReplayDuration("resume", "complete", time.Since(startedAt))
 }
 
 func (h *Handler) cleanupTypingState(ctx context.Context, c *client) {

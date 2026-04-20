@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/redis/go-redis/v9"
+	"ohmf/services/gateway/internal/observability"
 )
 
 const (
@@ -35,6 +36,7 @@ const (
 	UserEventAccountDeviceLinked                 = "account_device_linked"
 
 	userEventChannelPrefix = "user-event:user:"
+	domainEventNotifyChannel = "ohmf_domain_events"
 )
 
 type DBTX interface {
@@ -51,6 +53,11 @@ type DB interface {
 type Store struct {
 	db    DB
 	redis *redis.Client
+}
+
+type batchMetrics struct {
+	userEventsInserted int
+	stateRowsAffected  int
 }
 
 type Event struct {
@@ -175,6 +182,10 @@ func (s *Store) AppendDomainEvent(ctx context.Context, q DBTX, conversationID, a
 		INSERT INTO domain_events (conversation_id, actor_user_id, event_type, payload)
 		VALUES ($1::uuid, NULLIF($2, '')::uuid, $3, $4::jsonb)
 	`, conversationID, actorUserID, eventType, string(body))
+	if err != nil {
+		return err
+	}
+	_, err = q.Exec(ctx, `SELECT pg_notify($1, $2)`, domainEventNotifyChannel, strings.TrimSpace(conversationID))
 	return err
 }
 
@@ -312,8 +323,10 @@ func (s *Store) ProcessBatch(ctx context.Context, batchSize int) (int, error) {
 	if batchSize <= 0 {
 		batchSize = 100
 	}
+	txStartedAt := time.Now()
 	tx, err := s.db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
+		observability.RecordReplicationTransaction("error", time.Since(txStartedAt))
 		return 0, err
 	}
 	defer tx.Rollback(ctx)
@@ -327,6 +340,7 @@ func (s *Store) ProcessBatch(ctx context.Context, batchSize int) (int, error) {
 		FOR UPDATE SKIP LOCKED
 	`, batchSize)
 	if err != nil {
+		observability.RecordReplicationTransaction("error", time.Since(txStartedAt))
 		return 0, err
 	}
 
@@ -339,49 +353,68 @@ func (s *Store) ProcessBatch(ctx context.Context, batchSize int) (int, error) {
 		pending = append(pending, evt)
 	}
 	if err := rows.Err(); err != nil {
+		observability.RecordReplicationTransaction("error", time.Since(txStartedAt))
 		return 0, err
 	}
 	rows.Close()
 	if len(pending) == 0 {
 		if err := tx.Commit(ctx); err != nil {
+			observability.RecordReplicationTransaction("error", time.Since(txStartedAt))
 			return 0, err
 		}
+		observability.RecordReplicationTransaction("ok", time.Since(txStartedAt))
 		return 0, nil
+	}
+	observability.RecordReplicationBatch(len(pending))
+	now := time.Now().UTC()
+	for _, evt := range pending {
+		if !evt.CreatedAt.IsZero() && now.After(evt.CreatedAt) {
+			observability.RecordReplicationDomainEventAge(now.Sub(evt.CreatedAt))
+		}
 	}
 
 	deliveries := make(map[string][]Event)
+	metrics := &batchMetrics{}
 	for _, evt := range pending {
 		switch evt.Type {
 		case DomainEventMessageCreated:
-			if err := s.processMessageCreated(ctx, tx, evt, deliveries); err != nil {
+			if err := s.processMessageCreated(ctx, tx, evt, deliveries, metrics); err != nil {
+				observability.RecordReplicationTransaction("error", time.Since(txStartedAt))
 				return 0, err
 			}
 		case DomainEventMessageEdited:
-			if err := s.processMessageEdited(ctx, tx, evt, deliveries); err != nil {
+			if err := s.processMessageEdited(ctx, tx, evt, deliveries, metrics); err != nil {
+				observability.RecordReplicationTransaction("error", time.Since(txStartedAt))
 				return 0, err
 			}
 		case DomainEventMessageDeleted:
-			if err := s.processMessageDeleted(ctx, tx, evt, deliveries); err != nil {
+			if err := s.processMessageDeleted(ctx, tx, evt, deliveries, metrics); err != nil {
+				observability.RecordReplicationTransaction("error", time.Since(txStartedAt))
 				return 0, err
 			}
 		case DomainEventMessageReactionsUpdated:
-			if err := s.processMessageReactionsUpdated(ctx, tx, evt, deliveries); err != nil {
+			if err := s.processMessageReactionsUpdated(ctx, tx, evt, deliveries, metrics); err != nil {
+				observability.RecordReplicationTransaction("error", time.Since(txStartedAt))
 				return 0, err
 			}
 		case DomainEventMessageEffectTriggered:
-			if err := s.processMessageEffectTriggered(ctx, tx, evt, deliveries); err != nil {
+			if err := s.processMessageEffectTriggered(ctx, tx, evt, deliveries, metrics); err != nil {
+				observability.RecordReplicationTransaction("error", time.Since(txStartedAt))
 				return 0, err
 			}
 		case DomainEventReadCheckpointAdvanced:
-			if err := s.processReadCheckpoint(ctx, tx, evt, deliveries); err != nil {
+			if err := s.processReadCheckpoint(ctx, tx, evt, deliveries, metrics); err != nil {
+				observability.RecordReplicationTransaction("error", time.Since(txStartedAt))
 				return 0, err
 			}
 		case DomainEventDeliveryCheckpointAdvanced:
-			if err := s.processDeliveryCheckpoint(ctx, tx, evt, deliveries); err != nil {
+			if err := s.processDeliveryCheckpoint(ctx, tx, evt, deliveries, metrics); err != nil {
+				observability.RecordReplicationTransaction("error", time.Since(txStartedAt))
 				return 0, err
 			}
 		case DomainEventTypingStarted, DomainEventTypingStopped:
-			if err := s.processTypingEvent(ctx, tx, evt, deliveries); err != nil {
+			if err := s.processTypingEvent(ctx, tx, evt, deliveries, metrics); err != nil {
+				observability.RecordReplicationTransaction("error", time.Since(txStartedAt))
 				return 0, err
 			}
 		}
@@ -397,11 +430,16 @@ func (s *Store) ProcessBatch(ctx context.Context, batchSize int) (int, error) {
 		WHERE event_id = ANY($1)
 	`, ids)
 	if err != nil {
+		observability.RecordReplicationTransaction("error", time.Since(txStartedAt))
 		return 0, err
 	}
 	if err := tx.Commit(ctx); err != nil {
+		observability.RecordReplicationTransaction("error", time.Since(txStartedAt))
 		return 0, err
 	}
+	observability.RecordReplicationTransaction("ok", time.Since(txStartedAt))
+	observability.RecordReplicationRows("user_events_inserted", metrics.userEventsInserted)
+	observability.RecordReplicationRows("conversation_state_rows", metrics.stateRowsAffected)
 
 	s.publishUserEvents(ctx, deliveries)
 	return len(pending), nil
@@ -546,12 +584,181 @@ func (s *Store) AppendTypingEvent(ctx context.Context, conversationID, actorUser
 	})
 }
 
-func (s *Store) processMessageCreated(ctx context.Context, tx pgx.Tx, evt pendingEvent, deliveries map[string][]Event) error {
+type bulkUserEventRow struct {
+	UserID         string         `json:"user_id"`
+	ConversationID string         `json:"conversation_id"`
+	EventType      string         `json:"event_type"`
+	Payload        map[string]any `json:"payload"`
+}
+
+type bulkConversationStateRow struct {
+	UserID         string `json:"user_id"`
+	ConversationID string `json:"conversation_id"`
+	LastMessageID  string `json:"last_message_id"`
+	Preview        string `json:"preview"`
+	CreatedAt      string `json:"created_at"`
+	UnreadDelta    int    `json:"unread_delta"`
+	IsSender       bool   `json:"is_sender"`
+}
+
+func insertUserEventsBulkTx(ctx context.Context, tx pgx.Tx, rows []bulkUserEventRow) (map[string][]Event, int, error) {
+	if len(rows) == 0 {
+		return map[string][]Event{}, 0, nil
+	}
+	body, err := json.Marshal(rows)
+	if err != nil {
+		return nil, 0, err
+	}
+	result := make(map[string][]Event)
+	insertedRows, err := tx.Query(ctx, `
+		WITH input AS (
+			SELECT
+				(item->>'user_id')::uuid AS user_id,
+				NULLIF(item->>'conversation_id', '')::uuid AS conversation_id,
+				item->>'event_type' AS event_type,
+				item->'payload' AS payload
+			FROM jsonb_array_elements($1::jsonb) AS item
+		),
+		inserted AS (
+			INSERT INTO user_inbox_events (user_id, conversation_id, event_type, payload)
+			SELECT user_id, conversation_id, event_type, payload
+			FROM input
+			RETURNING user_event_id, user_id::text, created_at, event_type, payload
+		)
+		SELECT user_event_id, user_id, created_at, event_type, payload
+		FROM inserted
+		ORDER BY user_event_id ASC
+	`, string(body))
+	if err != nil {
+		return nil, 0, err
+	}
+	defer insertedRows.Close()
+	insertedCount := 0
+	for insertedRows.Next() {
+		var (
+			event     Event
+			userID    string
+			createdAt time.Time
+			payloadRaw []byte
+		)
+		if err := insertedRows.Scan(&event.UserEventID, &userID, &createdAt, &event.Type, &payloadRaw); err != nil {
+			return nil, 0, err
+		}
+		if err := json.Unmarshal(payloadRaw, &event.Payload); err != nil {
+			return nil, 0, err
+		}
+		event.CreatedAt = createdAt.UTC().Format(time.RFC3339Nano)
+		result[userID] = append(result[userID], event)
+		insertedCount++
+	}
+	if err := insertedRows.Err(); err != nil {
+		return nil, 0, err
+	}
+	return result, insertedCount, nil
+}
+
+func appendDeliveries(deliveries map[string][]Event, inserted map[string][]Event) {
+	for userID, events := range inserted {
+		deliveries[userID] = append(deliveries[userID], events...)
+	}
+}
+
+func upsertConversationStateBulkTx(ctx context.Context, tx pgx.Tx, rows []bulkConversationStateRow) (int, error) {
+	if len(rows) == 0 {
+		return 0, nil
+	}
+	body, err := json.Marshal(rows)
+	if err != nil {
+		return 0, err
+	}
+	tag, err := tx.Exec(ctx, `
+		WITH input AS (
+			SELECT
+				(item->>'user_id')::uuid AS user_id,
+				(item->>'conversation_id')::uuid AS conversation_id,
+				(item->>'last_message_id')::uuid AS last_message_id,
+				item->>'preview' AS preview,
+				(item->>'created_at')::timestamptz AS created_at,
+				(item->>'unread_delta')::int AS unread_delta,
+				COALESCE((item->>'is_sender')::boolean, FALSE) AS is_sender
+			FROM jsonb_array_elements($1::jsonb) AS item
+		),
+		prepared AS (
+			SELECT
+				input.*,
+				COALESCE(cm.last_read_server_order, 0) AS last_read_server_order,
+				COALESCE(cm.last_delivered_server_order, 0) AS last_delivered_server_order
+			FROM input
+			LEFT JOIN conversation_members cm
+			  ON cm.conversation_id = input.conversation_id
+			 AND cm.user_id = input.user_id
+		)
+		INSERT INTO user_conversation_state (
+			user_id,
+			conversation_id,
+			last_message_id,
+			last_message_preview,
+			last_message_at,
+			unread_count,
+			last_read_server_order,
+			last_delivered_server_order,
+			updated_at
+		)
+		SELECT
+			user_id,
+			conversation_id,
+			last_message_id,
+			preview,
+			created_at,
+			unread_delta,
+			last_read_server_order,
+			last_delivered_server_order,
+			created_at
+		FROM prepared
+		ON CONFLICT (user_id, conversation_id)
+		DO UPDATE SET
+			last_message_id = EXCLUDED.last_message_id,
+			last_message_preview = EXCLUDED.last_message_preview,
+			last_message_at = EXCLUDED.last_message_at,
+			unread_count = CASE
+				WHEN EXISTS (
+					SELECT 1
+					FROM prepared p
+					WHERE p.user_id = user_conversation_state.user_id
+					  AND p.conversation_id = user_conversation_state.conversation_id
+					  AND p.is_sender
+				) THEN user_conversation_state.unread_count
+				ELSE user_conversation_state.unread_count + EXCLUDED.unread_count
+			END,
+			is_closed = FALSE,
+			last_read_server_order = COALESCE((
+				SELECT p.last_read_server_order
+				FROM prepared p
+				WHERE p.user_id = user_conversation_state.user_id
+				  AND p.conversation_id = user_conversation_state.conversation_id
+			), user_conversation_state.last_read_server_order),
+			last_delivered_server_order = COALESCE((
+				SELECT p.last_delivered_server_order
+				FROM prepared p
+				WHERE p.user_id = user_conversation_state.user_id
+				  AND p.conversation_id = user_conversation_state.conversation_id
+			), user_conversation_state.last_delivered_server_order),
+			updated_at = EXCLUDED.updated_at
+	`, string(body))
+	if err != nil {
+		return 0, err
+	}
+	return int(tag.RowsAffected()), nil
+}
+
+func (s *Store) processMessageCreated(ctx context.Context, tx pgx.Tx, evt pendingEvent, deliveries map[string][]Event, metrics *batchMetrics) error {
 	var payload MessageCreatedPayload
 	if err := json.Unmarshal(evt.Payload, &payload); err != nil {
 		return err
 	}
 	preview := previewText(payload.ContentType, payload.Content)
+	eventRows := make([]bulkUserEventRow, 0, len(payload.Participants))
+	stateRows := make([]bulkConversationStateRow, 0, len(payload.Participants))
 	for _, userID := range payload.Participants {
 		messagePayload := map[string]any{
 			"conversation_id":   payload.ConversationID,
@@ -577,24 +784,47 @@ func (s *Store) processMessageCreated(ctx context.Context, tx pgx.Tx, evt pendin
 				"status_updated_at":   payload.CreatedAt,
 			},
 		}
-		userEvent, err := s.insertUserEventTx(ctx, tx, userID, payload.ConversationID, UserEventConversationMessageAppended, messagePayload)
-		if err != nil {
-			return err
-		}
-		deliveries[userID] = append(deliveries[userID], userEvent)
-		if err := s.upsertConversationStateTx(ctx, tx, userID, payload, preview); err != nil {
-			return err
-		}
+		eventRows = append(eventRows, bulkUserEventRow{
+			UserID:         userID,
+			ConversationID: payload.ConversationID,
+			EventType:      UserEventConversationMessageAppended,
+			Payload:        messagePayload,
+		})
+		stateRows = append(stateRows, bulkConversationStateRow{
+			UserID:         userID,
+			ConversationID: payload.ConversationID,
+			LastMessageID:  payload.MessageID,
+			Preview:        preview,
+			CreatedAt:      payload.CreatedAt,
+			UnreadDelta:    boolToInt(userID != payload.SenderUserID),
+			IsSender:       userID == payload.SenderUserID,
+		})
+	}
+	inserted, insertedCount, err := insertUserEventsBulkTx(ctx, tx, eventRows)
+	if err != nil {
+		return err
+	}
+	appendDeliveries(deliveries, inserted)
+	if metrics != nil {
+		metrics.userEventsInserted += insertedCount
+	}
+	stateAffected, err := upsertConversationStateBulkTx(ctx, tx, stateRows)
+	if err != nil {
+		return err
+	}
+	if metrics != nil {
+		metrics.stateRowsAffected += stateAffected
 	}
 	return nil
 }
 
-func (s *Store) processMessageEdited(ctx context.Context, tx pgx.Tx, evt pendingEvent, deliveries map[string][]Event) error {
+func (s *Store) processMessageEdited(ctx context.Context, tx pgx.Tx, evt pendingEvent, deliveries map[string][]Event, metrics *batchMetrics) error {
 	var payload MessageEditedPayload
 	if err := json.Unmarshal(evt.Payload, &payload); err != nil {
 		return err
 	}
 	preview := previewText(payload.ContentType, payload.Content)
+	eventRows := make([]bulkUserEventRow, 0, len(payload.Participants))
 	for _, userID := range payload.Participants {
 		messagePayload := map[string]any{
 			"conversation_id":   payload.ConversationID,
@@ -618,24 +848,39 @@ func (s *Store) processMessageEdited(ctx context.Context, tx pgx.Tx, evt pending
 				"status_updated_at":   payload.EditedAt,
 			},
 		}
-		userEvent, err := s.insertUserEventTx(ctx, tx, userID, payload.ConversationID, UserEventConversationMessageEdited, messagePayload)
-		if err != nil {
-			return err
-		}
-		deliveries[userID] = append(deliveries[userID], userEvent)
+		eventRows = append(eventRows, bulkUserEventRow{
+			UserID:         userID,
+			ConversationID: payload.ConversationID,
+			EventType:      UserEventConversationMessageEdited,
+			Payload:        messagePayload,
+		})
+	}
+	inserted, insertedCount, err := insertUserEventsBulkTx(ctx, tx, eventRows)
+	if err != nil {
+		return err
+	}
+	appendDeliveries(deliveries, inserted)
+	if metrics != nil {
+		metrics.userEventsInserted += insertedCount
+	}
+	for _, userID := range payload.Participants {
 		if err := s.applyMessageEditedStateTx(ctx, tx, userID, payload, preview); err != nil {
 			return err
+		}
+		if metrics != nil {
+			metrics.stateRowsAffected++
 		}
 	}
 	return nil
 }
 
-func (s *Store) processMessageDeleted(ctx context.Context, tx pgx.Tx, evt pendingEvent, deliveries map[string][]Event) error {
+func (s *Store) processMessageDeleted(ctx context.Context, tx pgx.Tx, evt pendingEvent, deliveries map[string][]Event, metrics *batchMetrics) error {
 	var payload MessageDeletedPayload
 	if err := json.Unmarshal(evt.Payload, &payload); err != nil {
 		return err
 	}
 	const preview = "Message deleted"
+	eventRows := make([]bulkUserEventRow, 0, len(payload.Participants))
 	for _, userID := range payload.Participants {
 		messagePayload := map[string]any{
 			"conversation_id":   payload.ConversationID,
@@ -661,23 +906,38 @@ func (s *Store) processMessageDeleted(ctx context.Context, tx pgx.Tx, evt pendin
 				"status_updated_at":   payload.DeletedAt,
 			},
 		}
-		userEvent, err := s.insertUserEventTx(ctx, tx, userID, payload.ConversationID, UserEventConversationMessageDeleted, messagePayload)
-		if err != nil {
-			return err
-		}
-		deliveries[userID] = append(deliveries[userID], userEvent)
+		eventRows = append(eventRows, bulkUserEventRow{
+			UserID:         userID,
+			ConversationID: payload.ConversationID,
+			EventType:      UserEventConversationMessageDeleted,
+			Payload:        messagePayload,
+		})
+	}
+	inserted, insertedCount, err := insertUserEventsBulkTx(ctx, tx, eventRows)
+	if err != nil {
+		return err
+	}
+	appendDeliveries(deliveries, inserted)
+	if metrics != nil {
+		metrics.userEventsInserted += insertedCount
+	}
+	for _, userID := range payload.Participants {
 		if err := s.applyMessageDeletedStateTx(ctx, tx, userID, payload, preview); err != nil {
 			return err
+		}
+		if metrics != nil {
+			metrics.stateRowsAffected++
 		}
 	}
 	return nil
 }
 
-func (s *Store) processMessageReactionsUpdated(ctx context.Context, tx pgx.Tx, evt pendingEvent, deliveries map[string][]Event) error {
+func (s *Store) processMessageReactionsUpdated(ctx context.Context, tx pgx.Tx, evt pendingEvent, deliveries map[string][]Event, metrics *batchMetrics) error {
 	var payload MessageReactionsPayload
 	if err := json.Unmarshal(evt.Payload, &payload); err != nil {
 		return err
 	}
+	eventRows := make([]bulkUserEventRow, 0, len(payload.Participants))
 	for _, userID := range payload.Participants {
 		messagePayload := map[string]any{
 			"conversation_id":   payload.ConversationID,
@@ -689,16 +949,25 @@ func (s *Store) processMessageReactionsUpdated(ctx context.Context, tx pgx.Tx, e
 			"reactions":         payload.Reactions,
 			"acted_at":          payload.ActedAt,
 		}
-		userEvent, err := s.insertUserEventTx(ctx, tx, userID, payload.ConversationID, UserEventConversationMessageReactionsUpdated, messagePayload)
-		if err != nil {
-			return err
-		}
-		deliveries[userID] = append(deliveries[userID], userEvent)
+		eventRows = append(eventRows, bulkUserEventRow{
+			UserID:         userID,
+			ConversationID: payload.ConversationID,
+			EventType:      UserEventConversationMessageReactionsUpdated,
+			Payload:        messagePayload,
+		})
+	}
+	inserted, insertedCount, err := insertUserEventsBulkTx(ctx, tx, eventRows)
+	if err != nil {
+		return err
+	}
+	appendDeliveries(deliveries, inserted)
+	if metrics != nil {
+		metrics.userEventsInserted += insertedCount
 	}
 	return nil
 }
 
-func (s *Store) processMessageEffectTriggered(ctx context.Context, tx pgx.Tx, evt pendingEvent, deliveries map[string][]Event) error {
+func (s *Store) processMessageEffectTriggered(ctx context.Context, tx pgx.Tx, evt pendingEvent, deliveries map[string][]Event, metrics *batchMetrics) error {
 	var payload MessageEffectPayload
 	if err := json.Unmarshal(evt.Payload, &payload); err != nil {
 		return err
@@ -707,23 +976,33 @@ func (s *Store) processMessageEffectTriggered(ctx context.Context, tx pgx.Tx, ev
 	if err != nil {
 		return err
 	}
+	eventRows := make([]bulkUserEventRow, 0, len(meta.Participants))
 	for _, userID := range meta.Participants {
-		userEvent, err := s.insertUserEventTx(ctx, tx, userID, payload.ConversationID, UserEventConversationMessageEffectTriggered, map[string]any{
+		eventRows = append(eventRows, bulkUserEventRow{
+			UserID:         userID,
+			ConversationID: payload.ConversationID,
+			EventType:      UserEventConversationMessageEffectTriggered,
+			Payload: map[string]any{
 			"conversation_id":      payload.ConversationID,
 			"message_id":           payload.MessageID,
 			"effect_type":          payload.EffectType,
 			"triggered_by_user_id": payload.TriggeredByUserID,
 			"triggered_at_ms":      payload.TriggeredAtMS,
+			},
 		})
-		if err != nil {
-			return err
-		}
-		deliveries[userID] = append(deliveries[userID], userEvent)
+	}
+	inserted, insertedCount, err := insertUserEventsBulkTx(ctx, tx, eventRows)
+	if err != nil {
+		return err
+	}
+	appendDeliveries(deliveries, inserted)
+	if metrics != nil {
+		metrics.userEventsInserted += insertedCount
 	}
 	return nil
 }
 
-func (s *Store) processTypingEvent(ctx context.Context, tx pgx.Tx, evt pendingEvent, deliveries map[string][]Event) error {
+func (s *Store) processTypingEvent(ctx context.Context, tx pgx.Tx, evt pendingEvent, deliveries map[string][]Event, metrics *batchMetrics) error {
 	var payload TypingPayload
 	if err := json.Unmarshal(evt.Payload, &payload); err != nil {
 		return err
@@ -741,26 +1020,36 @@ func (s *Store) processTypingEvent(ctx context.Context, tx pgx.Tx, evt pendingEv
 	if err != nil {
 		return err
 	}
+	eventRows := make([]bulkUserEventRow, 0, len(meta.Participants))
 	for _, userID := range meta.Participants {
 		if userID == payload.UserID {
 			continue
 		}
-		userEvent, err := s.insertUserEventTx(ctx, tx, userID, payload.ConversationID, UserEventConversationTypingUpdated, map[string]any{
+		eventRows = append(eventRows, bulkUserEventRow{
+			UserID:         userID,
+			ConversationID: payload.ConversationID,
+			EventType:      UserEventConversationTypingUpdated,
+			Payload: map[string]any{
 			"conversation_id": payload.ConversationID,
 			"user_id":         payload.UserID,
 			"device_id":       payload.DeviceID,
 			"state":           payload.State,
 			"started_at_ms":   payload.StartedAtMS,
+			},
 		})
-		if err != nil {
-			return err
-		}
-		deliveries[userID] = append(deliveries[userID], userEvent)
+	}
+	inserted, insertedCount, err := insertUserEventsBulkTx(ctx, tx, eventRows)
+	if err != nil {
+		return err
+	}
+	appendDeliveries(deliveries, inserted)
+	if metrics != nil {
+		metrics.userEventsInserted += insertedCount
 	}
 	return nil
 }
 
-func (s *Store) processReadCheckpoint(ctx context.Context, tx pgx.Tx, evt pendingEvent, deliveries map[string][]Event) error {
+func (s *Store) processReadCheckpoint(ctx context.Context, tx pgx.Tx, evt pendingEvent, deliveries map[string][]Event, metrics *batchMetrics) error {
 	var payload ReadCheckpointPayload
 	if err := json.Unmarshal(evt.Payload, &payload); err != nil {
 		return err
@@ -780,6 +1069,9 @@ func (s *Store) processReadCheckpoint(ctx context.Context, tx pgx.Tx, evt pendin
 	`, payload.ConversationID, payload.ReaderUserID, payload.ThroughServerOrder); err != nil {
 		return err
 	}
+	if metrics != nil {
+		metrics.stateRowsAffected++
+	}
 	sendReadReceipts, err := userPrivacyFlagTx(ctx, tx, payload.ReaderUserID, "send_read_receipts")
 	if err != nil {
 		return err
@@ -787,10 +1079,10 @@ func (s *Store) processReadCheckpoint(ctx context.Context, tx pgx.Tx, evt pendin
 	if !sendReadReceipts {
 		return nil
 	}
-	return s.emitReceiptUpdates(ctx, tx, payload.ConversationID, payload.ReaderUserID, "READ", payload.ThroughServerOrder, payload.ReadAt, deliveries)
+	return s.emitReceiptUpdates(ctx, tx, payload.ConversationID, payload.ReaderUserID, "READ", payload.ThroughServerOrder, payload.ReadAt, deliveries, metrics)
 }
 
-func (s *Store) processDeliveryCheckpoint(ctx context.Context, tx pgx.Tx, evt pendingEvent, deliveries map[string][]Event) error {
+func (s *Store) processDeliveryCheckpoint(ctx context.Context, tx pgx.Tx, evt pendingEvent, deliveries map[string][]Event, metrics *batchMetrics) error {
 	var payload DeliveryCheckpointPayload
 	if err := json.Unmarshal(evt.Payload, &payload); err != nil {
 		return err
@@ -803,10 +1095,13 @@ func (s *Store) processDeliveryCheckpoint(ctx context.Context, tx pgx.Tx, evt pe
 	`, payload.ConversationID, payload.UserID, payload.ThroughServerOrder); err != nil {
 		return err
 	}
-	return s.emitReceiptUpdates(ctx, tx, payload.ConversationID, payload.UserID, "DELIVERED", payload.ThroughServerOrder, payload.DeliveredAt, deliveries)
+	if metrics != nil {
+		metrics.stateRowsAffected++
+	}
+	return s.emitReceiptUpdates(ctx, tx, payload.ConversationID, payload.UserID, "DELIVERED", payload.ThroughServerOrder, payload.DeliveredAt, deliveries, metrics)
 }
 
-func (s *Store) emitReceiptUpdates(ctx context.Context, tx pgx.Tx, conversationID, actorUserID, receiptKind string, throughServerOrder int64, at string, deliveries map[string][]Event) error {
+func (s *Store) emitReceiptUpdates(ctx context.Context, tx pgx.Tx, conversationID, actorUserID, receiptKind string, throughServerOrder int64, at string, deliveries map[string][]Event, metrics *batchMetrics) error {
 	rows, err := tx.Query(ctx, `
 		SELECT DISTINCT sender_user_id::text
 		FROM messages
@@ -832,6 +1127,7 @@ func (s *Store) emitReceiptUpdates(ctx context.Context, tx pgx.Tx, conversationI
 		return err
 	}
 	rows.Close()
+	eventRows := make([]bulkUserEventRow, 0, len(senderIDs))
 	for _, senderID := range senderIDs {
 		payload := map[string]any{
 			"conversation_id":      conversationID,
@@ -840,11 +1136,20 @@ func (s *Store) emitReceiptUpdates(ctx context.Context, tx pgx.Tx, conversationI
 			"through_server_order": throughServerOrder,
 			"status_updated_at":    at,
 		}
-		userEvent, err := s.insertUserEventTx(ctx, tx, senderID, conversationID, UserEventConversationReceiptUpdated, payload)
-		if err != nil {
-			return err
-		}
-		deliveries[senderID] = append(deliveries[senderID], userEvent)
+		eventRows = append(eventRows, bulkUserEventRow{
+			UserID:         senderID,
+			ConversationID: conversationID,
+			EventType:      UserEventConversationReceiptUpdated,
+			Payload:        payload,
+		})
+	}
+	inserted, insertedCount, err := insertUserEventsBulkTx(ctx, tx, eventRows)
+	if err != nil {
+		return err
+	}
+	appendDeliveries(deliveries, inserted)
+	if metrics != nil {
+		metrics.userEventsInserted += insertedCount
 	}
 	return nil
 }
@@ -1020,6 +1325,8 @@ func (s *Store) publishUserEvents(ctx context.Context, deliveries map[string][]E
 				continue
 			}
 			_ = s.redis.Publish(ctx, userEventChannelPrefix+userID, body).Err()
+			publishedAt := time.Now().UTC()
+			observability.RecordRealtimeUserEventPublished(evt.Type, evt.UserEventID, userEventPersistedAt(evt), publishedAt)
 			if evt.Type == UserEventConversationReceiptUpdated {
 				legacy, err := json.Marshal(map[string]any{
 					"conversation_id":      evt.Payload["conversation_id"],
@@ -1033,6 +1340,27 @@ func (s *Store) publishUserEvents(ctx context.Context, deliveries map[string][]E
 			}
 		}
 	}
+}
+
+func userEventPersistedAt(evt Event) time.Time {
+	if evt.Type != UserEventConversationMessageAppended {
+		return time.Time{}
+	}
+	message, ok := evt.Payload["message"].(map[string]any)
+	if !ok {
+		return time.Time{}
+	}
+	createdAt, _ := message["created_at"].(string)
+	if createdAt == "" {
+		return time.Time{}
+	}
+	if parsed, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(createdAt)); err == nil {
+		return parsed.UTC()
+	}
+	if parsed, err := time.Parse(time.RFC3339, strings.TrimSpace(createdAt)); err == nil {
+		return parsed.UTC()
+	}
+	return time.Time{}
 }
 
 func previewText(contentType string, content map[string]any) string {
@@ -1070,6 +1398,13 @@ func previewText(contentType string, content map[string]any) string {
 		return text[:120]
 	}
 	return text
+}
+
+func boolToInt(value bool) int {
+	if value {
+		return 1
+	}
+	return 0
 }
 
 type pendingEvent struct {

@@ -15,6 +15,23 @@ Metrics (recommended)
 - db_query_duration_seconds (histogram)
 - event_bus_publish_latency_seconds
 
+Metrics (implemented in gateway exporter)
+- ohmf_gateway_http_requests_total
+- ohmf_gateway_http_request_duration_seconds
+- ohmf_gateway_http_requests_in_flight
+- ohmf_gateway_ws_connections_active
+- ohmf_gateway_ws_messages_total
+- ohmf_gateway_messages_send_requests_total
+- ohmf_gateway_messages_send_ack_latency_seconds
+- ohmf_gateway_messages_persisted_total
+- ohmf_gateway_messages_persist_latency_seconds
+- ohmf_gateway_realtime_online_delivery_updates_total
+- ohmf_gateway_realtime_online_delivery_update_latency_seconds
+- ohmf_gateway_realtime_resume_requests_total
+- ohmf_gateway_realtime_replay_events_total
+- ohmf_gateway_realtime_replay_batch_size
+- ohmf_gateway_realtime_resync_required_total
+
 Trace semantics
 - Start root span per incoming request; propagate context to downstream services via `traceparent` header (W3C trace context).
 

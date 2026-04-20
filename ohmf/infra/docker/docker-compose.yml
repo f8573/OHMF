@@ -144,6 +144,13 @@ services:
       APP_APPS_ADDR: http://apps:18086
       APP_ACCESS_TTL_MINUTES: "15"
       APP_REFRESH_TTL_HOURS: "720"
+      APP_OTP_START_PER_PHONE_LIMIT: "100000"
+      APP_OTP_START_PER_IP_LIMIT: "100000"
+      APP_OTP_START_PER_SUBNET_LIMIT: "100000"
+      APP_OTP_VERIFY_PER_CHALLENGE_LIMIT: "100000"
+      APP_OTP_VERIFY_PER_IP_LIMIT: "100000"
+      APP_OTP_VERIFY_PER_DEVICE_LIMIT: "100000"
+      APP_OTP_VERIFY_PER_PHONE_LIMIT: "100000"
       APP_USE_KAFKA_SEND: "true"
       APP_USE_CASSANDRA_READS: "false"
       APP_ENABLE_WS_SEND: "true"
@@ -198,6 +205,7 @@ services:
     environment:
       APP_DB_DSN: postgres://${POSTGRES_USER:-ohmf}:${POSTGRES_PASSWORD:-ohmf}@db:5432/${POSTGRES_DB:-ohmf}?sslmode=disable
       APP_REDIS_ADDR: redis:6379
+      APP_METRICS_ADDR: :9091
       APP_KAFKA_BROKERS: kafka:9092
       APP_KAFKA_GROUP_ID: messages-processor-v1
       APP_KAFKA_INGRESS_TOPIC: msg.ingress.v1
@@ -208,6 +216,8 @@ services:
       APP_CASSANDRA_HOSTS: cassandra:9042
       APP_CASSANDRA_KEYSPACE: ohmf_messages
       APP_SHADOW_POSTGRES_WRITE: "true"
+    ports:
+      - "19091:9091"
 
   delivery-processor:
     build:
@@ -226,11 +236,14 @@ services:
     environment:
       APP_DB_DSN: postgres://${POSTGRES_USER:-ohmf}:${POSTGRES_PASSWORD:-ohmf}@db:5432/${POSTGRES_DB:-ohmf}?sslmode=disable
       APP_REDIS_ADDR: redis:6379
+      APP_METRICS_ADDR: :9092
       APP_KAFKA_BROKERS: kafka:9092
       APP_KAFKA_GROUP_ID: delivery-processor-v1
       APP_KAFKA_PERSISTED_TOPIC: msg.persisted.v1
       APP_KAFKA_DELIVERY_TOPIC: msg.delivery.v1
       APP_KAFKA_DELIVERY_DLQ_TOPIC: msg.delivery.dlq.v1
+    ports:
+      - "19092:9092"
 
   sms-processor:
     build:
@@ -243,11 +256,14 @@ services:
       kafka-init:
         condition: service_completed_successfully
     environment:
+      APP_METRICS_ADDR: :9093
       APP_KAFKA_BROKERS: kafka:9092
       APP_KAFKA_GROUP_ID: sms-processor-v1
       APP_KAFKA_SMS_DISPATCH_TOPIC: msg.sms.dispatch.v1
       APP_KAFKA_DELIVERY_TOPIC: msg.delivery.v1
       APP_KAFKA_SMS_DLQ_TOPIC: msg.sms.dlq.v1
+    ports:
+      - "19093:9093"
 
 volumes:
   db_data:

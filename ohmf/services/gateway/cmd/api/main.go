@@ -237,12 +237,14 @@ func main() {
 	msgHandler := messages.NewHandler(msgSvc)
 	syncSvc := sync.NewService(pool, replicationStore)
 	syncHandler := &sync.Handler{Svc: syncSvc}
-	syncFanoutWorker := wk.NewSyncFanoutWorker(replicationStore)
-	go func() {
-		if err := syncFanoutWorker.Start(ctx); err != nil {
-			logger.Error().Err(err).Msg("sync fanout worker stopped")
-		}
-	}()
+	if cfg.EnableSyncFanoutWorker {
+		syncFanoutWorker := wk.NewSyncFanoutWorker(replicationStore, cfg.DBDSN, cfg.SyncFanoutBatchSize, cfg.SyncFanoutFallbackPoll, cfg.SyncFanoutNotifyChannel)
+		go func() {
+			if err := syncFanoutWorker.Start(ctx); err != nil {
+				logger.Error().Err(err).Msg("sync fanout worker stopped")
+			}
+		}()
+	}
 
 	// Build a lightweight runtime view of which high-level services are present
 	reg := serviceregistry.New(map[string]bool{
