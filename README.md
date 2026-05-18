@@ -2,6 +2,17 @@
 
 This repository contains the OHMF services and associated local infrastructure for development.
 
+## Tech Stack
+
+- Backend: Go 1.25 microservices
+- API: HTTP + WebSocket gateway built with `chi`
+- Data stores: PostgreSQL, Redis, Cassandra
+- Messaging/event pipeline: Kafka
+- Frontend: static HTML, CSS, and vanilla JavaScript web client
+- Mobile: Android scaffold using Kotlin and Gradle
+- Local infrastructure: Docker Compose
+- Testing/tooling: Go test scripts and Playwright
+
 This guide explains how to:
 - Set up your local environment
 - Host the services locally with Docker Compose
