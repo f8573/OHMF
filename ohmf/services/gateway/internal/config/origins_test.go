@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 	"testing"
@@ -251,8 +252,8 @@ func TestGenerateAppOrigin_CollisionResistance(t *testing.T) {
 	// Generate 100 origins with different app/release IDs
 	origins := make(map[string]int)
 	for i := 0; i < 100; i++ {
-		appID := "app.ohmf.test" + string(rune(i))
-		releaseID := "v" + string(rune(i))
+		appID := fmt.Sprintf("app.ohmf.test-%d", i)
+		releaseID := fmt.Sprintf("v%d", i)
 		origin := GenerateAppOrigin(appID, releaseID, "miniapp.local", 8)
 		origins[origin]++
 	}
