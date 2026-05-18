@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   contacts:
     build:
@@ -9,7 +7,7 @@ services:
     expose:
       - "18085"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:18085/healthz"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:18085/healthz >/dev/null 2>&1 || exit 1"]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -19,10 +17,12 @@ services:
       context: .
       dockerfile: ohmf/services/apps/Dockerfile
     container_name: ohmf_apps
+    environment:
+      - APP_MIGRATIONS_DIR=/opt/ohmf/apps/migrations
     expose:
       - "18086"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:18086/healthz"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:18086/healthz >/dev/null 2>&1 || exit 1"]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -35,7 +35,7 @@ services:
     expose:
       - "18087"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:18087/healthz"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:18087/healthz >/dev/null 2>&1 || exit 1"]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -55,11 +55,14 @@ services:
       - APP_APPS_ADDR=http://apps:18086
       - APP_MEDIA_ADDR=http://media:18087
     depends_on:
-      - contacts
-      - apps
-      - media
+      contacts:
+        condition: service_healthy
+      apps:
+        condition: service_healthy
+      media:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8081/healthz"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8081/healthz >/dev/null 2>&1 || exit 1"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -71,10 +74,14 @@ services:
     volumes:
       - ./:/src:ro
     depends_on:
-      - contacts
-      - apps
-      - media
-      - gateway
+      contacts:
+        condition: service_healthy
+      apps:
+        condition: service_healthy
+      media:
+        condition: service_healthy
+      gateway:
+        condition: service_healthy
     environment:
       - INTEGRATION=1
       - GATEWAY_ADDR=http://gateway:8081
