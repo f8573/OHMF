@@ -1,3 +1,9 @@
+//go:build ignore
+// +build ignore
+
+// This file is an incomplete merge artifact kept only for reference.
+// Exclude it from builds so module-wide CI does not try to compile it.
+
 package auth
 
 import (
