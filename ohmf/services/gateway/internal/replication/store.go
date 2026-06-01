@@ -319,12 +319,26 @@ func (s *Store) ProcessBatch(ctx context.Context, batchSize int) (int, error) {
 	defer tx.Rollback(ctx)
 
 	rows, err := tx.Query(ctx, `
-		SELECT event_id, conversation_id::text, COALESCE(actor_user_id::text, ''), event_type, payload, created_at
-		FROM domain_events
-		WHERE processed_at IS NULL
-		ORDER BY event_id ASC
-		LIMIT $1
-		FOR UPDATE SKIP LOCKED
+		WITH claimable AS (
+			SELECT de.event_id
+			FROM domain_events de
+			WHERE de.processed_at IS NULL
+			  -- Claim only the earliest pending event per conversation so concurrent workers
+			  -- cannot fan out later events before earlier same-conversation events are done.
+			  AND NOT EXISTS (
+				SELECT 1
+				FROM domain_events prior
+				WHERE prior.conversation_id = de.conversation_id
+				  AND prior.processed_at IS NULL
+				  AND prior.event_id < de.event_id
+			  )
+			ORDER BY de.event_id ASC
+			LIMIT $1
+		)
+		SELECT de.event_id, de.conversation_id::text, COALESCE(de.actor_user_id::text, ''), de.event_type, de.payload, de.created_at
+		FROM domain_events de
+		JOIN claimable c ON c.event_id = de.event_id
+		FOR UPDATE OF de SKIP LOCKED
 	`, batchSize)
 	if err != nil {
 		return 0, err
