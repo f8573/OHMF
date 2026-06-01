@@ -1195,7 +1195,9 @@ func textValue(value any) string {
 	return text
 }
 
-func resolveReplyTarget(ctx context.Context, tx pgx.Tx, conversationID string, content map[string]any) (string, error) {
+func resolveReplyTarget(ctx context.Context, q interface {
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+}, conversationID string, content map[string]any) (string, error) {
 	if content == nil {
 		return "", nil
 	}
@@ -1206,7 +1208,7 @@ func resolveReplyTarget(ctx context.Context, tx pgx.Tx, conversationID string, c
 		return "", nil
 	}
 	var exists bool
-	if err := tx.QueryRow(ctx, `
+	if err := q.QueryRow(ctx, `
 		SELECT EXISTS(
 			SELECT 1
 			FROM messages
@@ -1448,6 +1450,12 @@ type conversationPolicy struct {
 	ConversationType string
 	EncryptionState  string
 	MLSEnabled       bool
+}
+
+type sendValidationResult struct {
+	Policy            conversationPolicy
+	ContentForStorage map[string]any
+	ReplyToMessageID  string
 }
 
 func (s *Service) loadConversationPolicy(ctx context.Context, q interface {
@@ -1695,7 +1703,7 @@ func (s *Service) Send(ctx context.Context, userID, senderDeviceID, conversation
 		return SendResult{}, err
 	}
 	if s.useKafkaSend && s.async != nil {
-		return s.sendAsync(ctx, userID, conversationID, idemKey, contentType, content, clientGeneratedID, "OHMF", "", "/v1/messages", traceID)
+		return s.sendAsync(ctx, userID, senderDeviceID, conversationID, idemKey, contentType, content, clientGeneratedID, "OHMF", "", "/v1/messages", traceID)
 	}
 	msg, err := s.sendSync(ctx, userID, senderDeviceID, conversationID, idemKey, contentType, content, clientGeneratedID)
 	if err != nil {
@@ -1718,7 +1726,7 @@ func (s *Service) SendToPhone(ctx context.Context, userID, senderDeviceID, phone
 		return SendResult{}, err
 	}
 	if s.useKafkaSend && s.async != nil {
-		return s.sendAsync(ctx, userID, conversationID, idemKey, contentType, content, clientGeneratedID, "SMS", phoneE164, "/v1/messages/phone", traceID)
+		return s.sendAsync(ctx, userID, senderDeviceID, conversationID, idemKey, contentType, content, clientGeneratedID, "SMS", phoneE164, "/v1/messages/phone", traceID)
 	}
 	msg, err := s.sendToPhoneSync(ctx, userID, senderDeviceID, phoneE164, idemKey, contentType, content, clientGeneratedID)
 	if err != nil {
@@ -1727,17 +1735,16 @@ func (s *Service) SendToPhone(ctx context.Context, userID, senderDeviceID, phone
 	return SendResult{Message: msg}, nil
 }
 
-func (s *Service) sendAsync(ctx context.Context, userID, conversationID, idemKey, contentType string, content map[string]any, clientGeneratedID, transportIntent, phoneE164, endpoint, traceID string) (SendResult, error) {
+func (s *Service) sendAsync(ctx context.Context, userID, senderDeviceID, conversationID, idemKey, contentType string, content map[string]any, clientGeneratedID, transportIntent, phoneE164, endpoint, traceID string) (SendResult, error) {
 	if ok, err := s.hasMembership(ctx, s.db, userID, conversationID); err != nil {
 		return SendResult{}, err
 	} else if !ok {
 		return SendResult{}, ErrConversationAccess
 	}
 
-	if blocked, _, err := s.checkBlockedRecipients(ctx, s.db, userID, conversationID); err != nil {
+	validation, err := s.validateSendInvariants(ctx, s.db, userID, senderDeviceID, conversationID, contentType, content)
+	if err != nil {
 		return SendResult{}, err
-	} else if blocked {
-		return SendResult{}, ErrConversationBlocked
 	}
 
 	cached, cachedStatus, err := s.loadIdempotency(ctx, userID, endpoint, idemKey)
@@ -1755,8 +1762,10 @@ func (s *Service) sendAsync(ctx context.Context, userID, conversationID, idemKey
 		return SendResult{Message: *cached}, nil
 	}
 
-	evt := NewIngressEvent(userID, conversationID, endpoint, idemKey, contentType, transportIntent, phoneE164, clientGeneratedID, traceID, content)
+	evt := NewIngressEvent(userID, senderDeviceID, conversationID, endpoint, idemKey, contentType, transportIntent, phoneE164, clientGeneratedID, traceID, validation.ContentForStorage)
 	provisional := evt.ProvisionalMessage()
+	provisional.SenderDeviceID = senderDeviceID
+	provisional.ReplyToMessageID = validation.ReplyToMessageID
 
 	if err := s.upsertIdempotency(ctx, userID, endpoint, idemKey, provisional, 202); err != nil {
 		return SendResult{}, err
@@ -1781,8 +1790,10 @@ func (s *Service) sendAsync(ctx context.Context, userID, conversationID, idemKey
 		MessageID:         ack.MessageID,
 		ConversationID:    ack.ConversationID,
 		SenderUserID:      userID,
+		SenderDeviceID:    senderDeviceID,
+		ReplyToMessageID:  validation.ReplyToMessageID,
 		ContentType:       contentType,
-		Content:           content,
+		Content:           validation.ContentForStorage,
 		ClientGeneratedID: provisional.ClientGeneratedID,
 		Transport:         ack.Transport,
 		ServerOrder:       ack.ServerOrder,
@@ -2803,6 +2814,94 @@ func (s *Service) sendSync(ctx context.Context, userID, senderDeviceID, conversa
 	return s.sendSyncWithEndpoint(ctx, userID, senderDeviceID, conversationID, idemKey, contentType, content, clientGeneratedID, "/v1/messages", "")
 }
 
+func (s *Service) validateSendInvariants(
+	ctx context.Context,
+	q interface {
+		Query(context.Context, string, ...any) (pgx.Rows, error)
+		QueryRow(context.Context, string, ...any) pgx.Row
+	},
+	userID, senderDeviceID, conversationID, contentType string,
+	content map[string]any,
+) (sendValidationResult, error) {
+	if blocked, _, err := s.checkBlockedRecipients(ctx, q, userID, conversationID); err != nil {
+		return sendValidationResult{}, err
+	} else if blocked {
+		return sendValidationResult{}, ErrConversationBlocked
+	}
+
+	policy, err := s.loadConversationPolicy(ctx, q, conversationID)
+	if err != nil {
+		return sendValidationResult{}, err
+	}
+	if contentType == "encrypted" || encryptedOTTConversation(policy) {
+		if strings.TrimSpace(senderDeviceID) == "" {
+			return sendValidationResult{}, ErrSenderDeviceRequired
+		}
+		ownsDevice, err := s.senderOwnsDevice(ctx, q, userID, senderDeviceID)
+		if err != nil {
+			return sendValidationResult{}, err
+		}
+		if !ownsDevice {
+			return sendValidationResult{}, ErrSenderDeviceInvalid
+		}
+	}
+	if encryptedOTTConversation(policy) && contentType != "encrypted" {
+		return sendValidationResult{}, ErrEncryptedMessageRequired
+	}
+	if contentType == "encrypted" && !encryptedOTTConversation(policy) {
+		return sendValidationResult{}, ErrEncryptedMessageInvalid
+	}
+
+	contentForStorage := cloneMessageContent(content)
+	if contentForStorage == nil {
+		contentForStorage = map[string]any{}
+	}
+	replyToMessageID, err := resolveReplyTarget(ctx, q, conversationID, contentForStorage)
+	if err != nil {
+		return sendValidationResult{}, err
+	}
+
+	return sendValidationResult{
+		Policy:            policy,
+		ContentForStorage: contentForStorage,
+		ReplyToMessageID:  replyToMessageID,
+	}, nil
+}
+
+func claimSendIdempotencyKey(ctx context.Context, tx pgx.Tx, userID, endpoint, idemKey string) (bool, *Message, error) {
+	var inserted int
+	err := tx.QueryRow(ctx, `
+		INSERT INTO idempotency_keys (actor_user_id, endpoint, key, status_code, expires_at)
+		VALUES ($1::uuid, $2, $3, 102, now() + interval '24 hour')
+		ON CONFLICT (actor_user_id, endpoint, key) DO NOTHING
+		RETURNING 1
+	`, userID, endpoint, idemKey).Scan(&inserted)
+	if err == nil {
+		return true, nil, nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return false, nil, err
+	}
+
+	var cached []byte
+	if err := tx.QueryRow(ctx, `
+		SELECT response_payload
+		FROM idempotency_keys
+		WHERE actor_user_id = $1::uuid AND endpoint = $2 AND key = $3 AND expires_at > now()
+		FOR UPDATE
+	`, userID, endpoint, idemKey).Scan(&cached); err != nil {
+		return false, nil, err
+	}
+	if len(cached) == 0 {
+		return false, nil, fmt.Errorf("idempotency_in_progress")
+	}
+	var m Message
+	if err := json.Unmarshal(cached, &m); err != nil {
+		return false, nil, err
+	}
+	return false, &m, nil
+}
+
 func (s *Service) sendSyncWithEndpoint(ctx context.Context, userID, senderDeviceID, conversationID, idemKey, contentType string, content map[string]any, clientGeneratedID, endpoint, source string) (Message, error) {
 	tx, err := s.db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
@@ -2816,49 +2915,22 @@ func (s *Service) sendSyncWithEndpoint(ctx context.Context, userID, senderDevice
 		return Message{}, ErrConversationAccess
 	}
 
-	if blocked, _, err := s.checkBlockedRecipients(ctx, tx, userID, conversationID); err != nil {
-		return Message{}, err
-	} else if blocked {
-		return Message{}, ErrConversationBlocked
-	}
-
-	var cached []byte
-	err = tx.QueryRow(ctx, `
-		SELECT response_payload
-		FROM idempotency_keys
-		WHERE actor_user_id = $1::uuid AND endpoint = $2 AND key = $3 AND expires_at > now()
-	`, userID, endpoint, idemKey).Scan(&cached)
-	if err == nil {
-		var m Message
-		if err := json.Unmarshal(cached, &m); err == nil {
-			if err := tx.Commit(ctx); err != nil {
-				return Message{}, err
-			}
-			return m, nil
-		}
-	} else if !errors.Is(err, pgx.ErrNoRows) {
-		return Message{}, err
-	}
-
-	policy, err := s.loadConversationPolicy(ctx, tx, conversationID)
+	acquired, existing, err := claimSendIdempotencyKey(ctx, tx, userID, endpoint, idemKey)
 	if err != nil {
 		return Message{}, err
 	}
-	if contentType == "encrypted" || encryptedOTTConversation(policy) {
-		if strings.TrimSpace(senderDeviceID) == "" {
-			return Message{}, ErrSenderDeviceRequired
-		}
-		ownsDevice, err := s.senderOwnsDevice(ctx, tx, userID, senderDeviceID)
-		if err != nil {
+	if !acquired {
+		if err := tx.Commit(ctx); err != nil {
 			return Message{}, err
 		}
-		if !ownsDevice {
-			return Message{}, ErrSenderDeviceInvalid
-		}
+		return *existing, nil
 	}
-	if encryptedOTTConversation(policy) && contentType != "encrypted" {
-		return Message{}, ErrEncryptedMessageRequired
+
+	validation, err := s.validateSendInvariants(ctx, tx, userID, senderDeviceID, conversationID, contentType, content)
+	if err != nil {
+		return Message{}, err
 	}
+	policy := validation.Policy
 
 	var next int64
 	err = tx.QueryRow(ctx, `
@@ -2879,14 +2951,8 @@ func (s *Service) sendSyncWithEndpoint(ctx context.Context, userID, senderDevice
 	if expiresAt.Valid {
 		expiresAtValue = expiresAt.Time
 	}
-	contentForStorage := cloneMessageContent(content)
-	if contentForStorage == nil {
-		contentForStorage = map[string]any{}
-	}
-	replyToMessageID, err := resolveReplyTarget(ctx, tx, conversationID, contentForStorage)
-	if err != nil {
-		return Message{}, err
-	}
+	contentForStorage := validation.ContentForStorage
+	replyToMessageID := validation.ReplyToMessageID
 	contentJSON, err := json.Marshal(contentForStorage)
 	if err != nil {
 		return Message{}, err
@@ -2969,10 +3035,9 @@ func (s *Service) sendSyncWithEndpoint(ctx context.Context, userID, senderDevice
 	msg.StatusUpdatedAt = msg.CreatedAt
 	msgPayload, _ := json.Marshal(msg)
 	_, err = tx.Exec(ctx, `
-		INSERT INTO idempotency_keys (actor_user_id, endpoint, key, response_payload, status_code, expires_at)
-		VALUES ($1::uuid, $2, $3, $4::jsonb, 201, now() + interval '24 hour')
-		ON CONFLICT (actor_user_id, endpoint, key)
-		DO UPDATE SET response_payload = EXCLUDED.response_payload, status_code = EXCLUDED.status_code
+		UPDATE idempotency_keys
+		SET response_payload = $4::jsonb, status_code = 201, expires_at = now() + interval '24 hour'
+		WHERE actor_user_id = $1::uuid AND endpoint = $2 AND key = $3
 	`, userID, endpoint, idemKey, string(msgPayload))
 	if err != nil {
 		return Message{}, err
@@ -3036,22 +3101,15 @@ func (s *Service) sendToPhoneSync(ctx context.Context, userID, senderDeviceID, p
 		return Message{}, ErrEncryptedMessageInvalid
 	}
 
-	var cached []byte
-	err = tx.QueryRow(ctx, `
-		SELECT response_payload
-		FROM idempotency_keys
-		WHERE actor_user_id = $1::uuid AND endpoint = '/v1/messages/phone' AND key = $2 AND expires_at > now()
-	`, userID, idemKey).Scan(&cached)
-	if err == nil {
-		var m Message
-		if err := json.Unmarshal(cached, &m); err == nil {
-			if err := tx.Commit(ctx); err != nil {
-				return Message{}, err
-			}
-			return m, nil
-		}
-	} else if !errors.Is(err, pgx.ErrNoRows) {
+	acquired, existing, err := claimSendIdempotencyKey(ctx, tx, userID, "/v1/messages/phone", idemKey)
+	if err != nil {
 		return Message{}, err
+	}
+	if !acquired {
+		if err := tx.Commit(ctx); err != nil {
+			return Message{}, err
+		}
+		return *existing, nil
 	}
 
 	var next int64
