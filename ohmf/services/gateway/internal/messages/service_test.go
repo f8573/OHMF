@@ -412,12 +412,12 @@ func TestForwardMessageCopiesSourceMetadata(t *testing.T) {
 	mock.ExpectQuery(`SELECT 1 FROM conversation_members WHERE conversation_id = \$1::uuid AND user_id = \$2::uuid`).
 		WithArgs("conversation-target", "user-1").
 		WillReturnRows(pgxmock.NewRows([]string{"one"}).AddRow(1))
+	mock.ExpectQuery(`INSERT INTO idempotency_keys \(actor_user_id, endpoint, key, status_code, expires_at\)`).
+		WithArgs("user-1", "/v1/messages/forward", "idem-forward-1").
+		WillReturnRows(pgxmock.NewRows([]string{"?column?"}).AddRow(1))
 	mock.ExpectQuery(`SELECT user_id::text FROM conversation_members WHERE conversation_id = \$1::uuid AND user_id <> \$2::uuid`).
 		WithArgs("conversation-target", "user-1").
 		WillReturnRows(pgxmock.NewRows([]string{"user_id"}))
-	mock.ExpectQuery(`SELECT response_payload FROM idempotency_keys WHERE actor_user_id = \$1::uuid AND endpoint = \$2 AND key = \$3 AND expires_at > now\(\)`).
-		WithArgs("user-1", "/v1/messages/forward", "idem-forward-1").
-		WillReturnError(pgx.ErrNoRows)
 	mock.ExpectQuery(`SELECT type, COALESCE\(encryption_state, 'PLAINTEXT'\), COALESCE\(is_mls_encrypted, false\) FROM conversations WHERE id = \$1::uuid`).
 		WithArgs("conversation-target").
 		WillReturnRows(pgxmock.NewRows([]string{"type", "encryption_state", "is_mls_encrypted"}).AddRow("GROUP", "PLAINTEXT", false))
@@ -439,9 +439,9 @@ func TestForwardMessageCopiesSourceMetadata(t *testing.T) {
 	mock.ExpectExec(`UPDATE conversations SET last_message_id = \$2::uuid, updated_at = now\(\) WHERE id = \$1::uuid`).
 		WithArgs("conversation-target", "message-forwarded").
 		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
-	mock.ExpectExec(`INSERT INTO idempotency_keys \(actor_user_id, endpoint, key, response_payload, status_code, expires_at\)`).
+	mock.ExpectExec(`UPDATE idempotency_keys`).
 		WithArgs("user-1", "/v1/messages/forward", "idem-forward-1", pgxmock.AnyArg()).
-		WillReturnResult(pgxmock.NewResult("INSERT", 1))
+		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 	mock.ExpectQuery(`SELECT user_id::text FROM conversation_members WHERE conversation_id = \$1::uuid AND user_id <> \$2::uuid`).
 		WithArgs("conversation-target", "user-1").
 		WillReturnRows(pgxmock.NewRows([]string{"user_id"}).AddRow("user-3"))
