@@ -11,6 +11,26 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+func ReadGatewayMigration(t *testing.T, name string) []byte {
+	t.Helper()
+
+	patterns := []string{
+		filepath.Join("..", "..", "migrations", name),
+		filepath.Join("..", "migrations", name),
+		filepath.Join("migrations", name),
+	}
+
+	for _, path := range patterns {
+		body, err := os.ReadFile(path)
+		if err == nil {
+			return body
+		}
+	}
+
+	t.Fatalf("read migration %q: file not found in expected test paths", name)
+	return nil
+}
+
 func OpenAndMigrateGatewayPool(t *testing.T) (context.Context, *pgxpool.Pool) {
 	t.Helper()
 
@@ -32,7 +52,13 @@ func OpenAndMigrateGatewayPool(t *testing.T) (context.Context, *pgxpool.Pool) {
 func ResetAndMigrateGateway(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
 	t.Helper()
 
-	if _, err := pool.Exec(ctx, `DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;`); err != nil {
+	if _, err := pool.Exec(ctx, `
+		DROP EXTENSION IF EXISTS pg_trgm CASCADE;
+		DROP EXTENSION IF EXISTS unaccent CASCADE;
+		DROP EXTENSION IF EXISTS pgcrypto CASCADE;
+		DROP SCHEMA IF EXISTS public CASCADE;
+		CREATE SCHEMA public;
+	`); err != nil {
 		t.Fatalf("reset public schema: %v", err)
 	}
 

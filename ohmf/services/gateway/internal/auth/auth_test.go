@@ -10,10 +10,11 @@ import (
 	"time"
 
 	miniredis "github.com/alicebob/miniredis/v2"
-	"github.com/redis/go-redis/v9"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
 	"ohmf/services/gateway/internal/config"
 	"ohmf/services/gateway/internal/otp"
+	"ohmf/services/gateway/internal/testutil"
 	"ohmf/services/gateway/internal/token"
 )
 
@@ -108,13 +109,7 @@ func TestRefreshRotatesToken(t *testing.T) {
 	defer pool.Close()
 
 	// apply baseline migrations (idempotent)
-	mig, err := os.ReadFile("../migrations/000001_init.up.sql")
-	if err != nil {
-		mig, err = os.ReadFile("migrations/000001_init.up.sql")
-		if err != nil {
-			t.Fatalf("read migration: %v", err)
-		}
-	}
+	mig := testutil.ReadGatewayMigration(t, "000001_init.up.sql")
 	if _, err := pool.Exec(ctx, string(mig)); err != nil {
 		t.Fatalf("apply migration: %v", err)
 	}
