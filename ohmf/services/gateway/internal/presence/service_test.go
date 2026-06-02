@@ -73,3 +73,40 @@ func TestGetConversationPresenceRequiresMembership(t *testing.T) {
 		t.Fatal("expected membership failure")
 	}
 }
+
+func TestGetUserPresenceMarksOnlineWhenLiveSessionExists(t *testing.T) {
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mr.Close()
+
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	defer rdb.Close()
+
+	now := time.Now().UTC()
+	sessionBody, _ := json.Marshal(map[string]any{
+		"device_id":       "device-1",
+		"session_id":      "wsv2:1",
+		"version":         "v2",
+		"last_seen_at_ms": now.UnixMilli(),
+	})
+	if err := rdb.SAdd(context.Background(), "user_sessions:user-1", "wsv2:1").Err(); err != nil {
+		t.Fatal(err)
+	}
+	if err := rdb.Set(context.Background(), "session:wsv2:1", sessionBody, time.Minute).Err(); err != nil {
+		t.Fatal(err)
+	}
+
+	svc := NewService(nil, rdb)
+	item, err := svc.GetUserPresence(context.Background(), "user-1")
+	if err != nil {
+		t.Fatalf("GetUserPresence failed: %v", err)
+	}
+	if !item.Online {
+		t.Fatalf("expected live session to imply online presence")
+	}
+	if item.SessionCount != 1 {
+		t.Fatalf("expected 1 session, got %d", item.SessionCount)
+	}
+}
