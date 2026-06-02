@@ -5,6 +5,7 @@ go 1.25
 require (
 	github.com/gocql/gocql v1.7.0
 	github.com/jackc/pgx/v5 v5.7.5
+	github.com/pashagolub/pgxmock/v4 v4.9.0
 	github.com/prometheus/client_golang v1.23.2
 	github.com/redis/go-redis/v9 v9.12.1
 	github.com/segmentio/kafka-go v0.4.49
