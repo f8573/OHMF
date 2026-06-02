@@ -200,6 +200,7 @@ services:
       APP_REDIS_ADDR: redis:6379
       APP_KAFKA_BROKERS: kafka:9092
       APP_KAFKA_GROUP_ID: messages-processor-v1
+      APP_HTTP_ADDR: :18088
       APP_KAFKA_INGRESS_TOPIC: msg.ingress.v1
       APP_KAFKA_PERSISTED_TOPIC: msg.persisted.v1
       APP_KAFKA_MICROSERVICE_TOPIC: microservice.events.v1
@@ -208,6 +209,13 @@ services:
       APP_CASSANDRA_HOSTS: cassandra:9042
       APP_CASSANDRA_KEYSPACE: ohmf_messages
       APP_SHADOW_POSTGRES_WRITE: "true"
+    ports:
+      - "18088:18088"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:18088/healthz >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
 
   delivery-processor:
     build:
@@ -228,9 +236,17 @@ services:
       APP_REDIS_ADDR: redis:6379
       APP_KAFKA_BROKERS: kafka:9092
       APP_KAFKA_GROUP_ID: delivery-processor-v1
+      APP_HTTP_ADDR: :18089
       APP_KAFKA_PERSISTED_TOPIC: msg.persisted.v1
       APP_KAFKA_DELIVERY_TOPIC: msg.delivery.v1
       APP_KAFKA_DELIVERY_DLQ_TOPIC: msg.delivery.dlq.v1
+    ports:
+      - "18089:18089"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:18089/healthz >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
 
   sms-processor:
     build:
