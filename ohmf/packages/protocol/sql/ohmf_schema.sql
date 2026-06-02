@@ -89,6 +89,11 @@ CREATE TABLE IF NOT EXISTS message_deliveries (
   failure_code TEXT
 );
 
+CREATE UNIQUE INDEX IF NOT EXISTS idx_message_deliveries_delivered_recipient
+ON message_deliveries(message_id, recipient_user_id)
+WHERE recipient_user_id IS NOT NULL
+  AND state = 'DELIVERED';
+
 -- 25.8 Attachments
 CREATE TABLE IF NOT EXISTS attachments (
   attachment_id UUID PRIMARY KEY,
