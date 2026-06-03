@@ -605,6 +605,16 @@ func (s *Service) GetMessageEditHistory(ctx context.Context, actorUserID, messag
 }
 
 func (s *Service) RecordDelivery(ctx context.Context, messageID string, dr DeliveryRecord) error {
+	if strings.EqualFold(strings.TrimSpace(dr.State), "DELIVERED") && strings.TrimSpace(dr.RecipientUserID) != "" {
+		_, err := s.db.Exec(ctx, `
+			INSERT INTO message_deliveries (id, message_id, recipient_user_id, recipient_device_id, recipient_phone_e164, transport, state, provider, submitted_at, updated_at, failure_code)
+			VALUES (gen_random_uuid(), $1, NULLIF($2, '')::uuid, NULLIF($3, '')::uuid, NULLIF($4, ''), $5, 'DELIVERED', NULLIF($6, ''), NULLIF($7, '')::timestamptz, now(), NULLIF($8, ''))
+			ON CONFLICT (message_id, recipient_user_id)
+			WHERE recipient_user_id IS NOT NULL AND state = 'DELIVERED'
+			DO NOTHING
+		`, messageID, dr.RecipientUserID, dr.RecipientDeviceID, dr.RecipientPhone, dr.Transport, dr.Provider, nullableTimestamp(dr.SubmittedAt), dr.FailureCode)
+		return err
+	}
 	_, err := s.db.Exec(ctx, `
 		INSERT INTO message_deliveries (id, message_id, recipient_user_id, recipient_device_id, recipient_phone_e164, transport, state, provider, submitted_at, updated_at, failure_code)
 		VALUES (gen_random_uuid(), $1, NULLIF($2, '')::uuid, NULLIF($3, '')::uuid, NULLIF($4, ''), $5, $6, NULLIF($7, ''), NULLIF($8, '')::timestamptz, now(), NULLIF($9, ''))
@@ -2638,14 +2648,10 @@ func (s *Service) DeliverPendingToUser(ctx context.Context, recipientUserID stri
 			INSERT INTO message_deliveries (
 				id, message_id, recipient_user_id, transport, state, submitted_at, updated_at
 			)
-			SELECT gen_random_uuid(), $1::uuid, $2::uuid, $3, 'DELIVERED', now(), now()
-			WHERE NOT EXISTS (
-				SELECT 1
-				FROM message_deliveries md
-				WHERE md.message_id = $1::uuid
-				  AND md.recipient_user_id = $2::uuid
-				  AND md.state = 'DELIVERED'
-			)
+			VALUES (gen_random_uuid(), $1::uuid, $2::uuid, $3, 'DELIVERED', now(), now())
+			ON CONFLICT (message_id, recipient_user_id)
+			WHERE recipient_user_id IS NOT NULL AND state = 'DELIVERED'
+			DO NOTHING
 		`, messageID, recipientUserID, transport)
 		if err != nil {
 			return nil, err
@@ -3268,14 +3274,10 @@ func (s *Service) publishOnlineDeliveryUpdates(ctx context.Context, recipients [
 			INSERT INTO message_deliveries (
 				id, message_id, recipient_user_id, transport, state, submitted_at, updated_at
 			)
-			SELECT gen_random_uuid(), $1::uuid, $2::uuid, $3, 'DELIVERED', now(), now()
-			WHERE NOT EXISTS (
-				SELECT 1
-				FROM message_deliveries md
-				WHERE md.message_id = $1::uuid
-				  AND md.recipient_user_id = $2::uuid
-				  AND md.state = 'DELIVERED'
-			)
+			VALUES (gen_random_uuid(), $1::uuid, $2::uuid, $3, 'DELIVERED', now(), now())
+			ON CONFLICT (message_id, recipient_user_id)
+			WHERE recipient_user_id IS NOT NULL AND state = 'DELIVERED'
+			DO NOTHING
 		`, msg.MessageID, recipientID, msg.Transport)
 		if err != nil || tag.RowsAffected() == 0 {
 			continue
