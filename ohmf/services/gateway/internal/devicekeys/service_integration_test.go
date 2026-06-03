@@ -7,12 +7,11 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"os"
-	"path/filepath"
-	"sort"
 	"testing"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"ohmf/services/gateway/internal/testutil"
 )
 
 func TestPublishAndClaimBundles(t *testing.T) {
@@ -133,37 +132,7 @@ func TestPublishAndClaimBundles(t *testing.T) {
 func applyAllMigrations(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
 	t.Helper()
 
-	patterns := []string{
-		filepath.Join("..", "..", "migrations", "*.up.sql"),
-		filepath.Join("..", "migrations", "*.up.sql"),
-		filepath.Join("migrations", "*.up.sql"),
-	}
-
-	var paths []string
-	for _, pattern := range patterns {
-		matches, err := filepath.Glob(pattern)
-		if err != nil {
-			t.Fatalf("glob migrations %q: %v", pattern, err)
-		}
-		if len(matches) > 0 {
-			paths = matches
-			break
-		}
-	}
-	if len(paths) == 0 {
-		t.Fatal("no gateway migrations found")
-	}
-
-	sort.Strings(paths)
-	for _, path := range paths {
-		body, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatalf("read migration %q: %v", path, err)
-		}
-		if _, err := pool.Exec(ctx, string(body)); err != nil {
-			t.Fatalf("apply migration %q: %v", path, err)
-		}
-	}
+	testutil.ResetAndMigrateGateway(t, ctx, pool)
 }
 
 func insertTestUser(t *testing.T, ctx context.Context, pool *pgxpool.Pool) string {

@@ -20,6 +20,7 @@ type IngressEvent struct {
 	MessageID         string         `json:"message_id"`
 	ConversationID    string         `json:"conversation_id"`
 	SenderUserID      string         `json:"sender_user_id"`
+	SenderDeviceID    string         `json:"sender_device_id,omitempty"`
 	IdempotencyKey    string         `json:"idempotency_key"`
 	Endpoint          string         `json:"endpoint"`
 	ClientGeneratedID string         `json:"client_generated_id,omitempty"`
@@ -98,7 +99,7 @@ func (p *AsyncPipeline) WaitAck(ctx context.Context, eventID string, timeout tim
 	return PersistedAck{}, false, nil
 }
 
-func NewIngressEvent(userID, conversationID, endpoint, idemKey, contentType, transportIntent, recipientPhone, clientGeneratedID, traceID string, content map[string]any) IngressEvent {
+func NewIngressEvent(userID, senderDeviceID, conversationID, endpoint, idemKey, contentType, transportIntent, recipientPhone, clientGeneratedID, traceID string, content map[string]any) IngressEvent {
 	if traceID == "" {
 		traceID = uuid.NewString()
 	}
@@ -107,6 +108,7 @@ func NewIngressEvent(userID, conversationID, endpoint, idemKey, contentType, tra
 		MessageID:         uuid.NewString(),
 		ConversationID:    conversationID,
 		SenderUserID:      userID,
+		SenderDeviceID:    senderDeviceID,
 		IdempotencyKey:    idemKey,
 		Endpoint:          endpoint,
 		ClientGeneratedID: clientGeneratedID,
