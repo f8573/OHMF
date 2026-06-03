@@ -4,8 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/segmentio/kafka-go"
@@ -16,6 +20,7 @@ func TestProcessMessageSkipsDuplicateDeliveryEvent(t *testing.T) {
 	store := newMemoryDeliveryRecorder()
 	presence := &stubPresenceStore{online: map[string]bool{"recipient-1": true}}
 	publisher := &stubDeliveryPublisher{}
+	observer := &stubDeliveryMetricsObserver{}
 	msg := kafkaMessage(t, persistedEvent{
 		EventID:         "evt-1",
 		MessageID:       "11111111-1111-1111-1111-111111111111",
@@ -27,10 +32,10 @@ func TestProcessMessageSkipsDuplicateDeliveryEvent(t *testing.T) {
 		TraceID:         "trace-1",
 	})
 
-	if err := processMessage(ctx, store, presence, publisher, msg); err != nil {
+	if err := processMessageWithObserver(ctx, store, presence, publisher, msg, observer); err != nil {
 		t.Fatalf("first processMessage failed: %v", err)
 	}
-	if err := processMessage(ctx, store, presence, publisher, msg); err != nil {
+	if err := processMessageWithObserver(ctx, store, presence, publisher, msg, observer); err != nil {
 		t.Fatalf("second processMessage failed: %v", err)
 	}
 
@@ -45,6 +50,9 @@ func TestProcessMessageSkipsDuplicateDeliveryEvent(t *testing.T) {
 	}
 	if got := countString(presence.channels, "delivery:user:33333333-3333-3333-3333-333333333333"); got != 1 {
 		t.Fatalf("expected sender pubsub notification once, got %d", got)
+	}
+	if observer.duplicates != 1 {
+		t.Fatalf("expected duplicate observer to count 1 duplicate, got %d", observer.duplicates)
 	}
 }
 
@@ -165,6 +173,62 @@ func TestPGDeliveryRecorderTreatsConflictAsDuplicate(t *testing.T) {
 	}
 }
 
+func TestObservabilityHandlers(t *testing.T) {
+	obs := newProcessorObservability("delivery", ":0", []string{"127.0.0.1:1"}, []dependencyCheck{
+		{name: "postgres", check: func(context.Context) error { return nil }},
+		{name: "redis", check: func(context.Context) error { return nil }},
+	})
+	obs.recordSuccess(20 * time.Millisecond)
+	obs.recordError(40 * time.Millisecond)
+	obs.recordDLQPublish()
+	obs.recordDuplicate()
+	obs.setConsumerLag(3)
+
+	server := httptest.NewServer(obs.handler())
+	defer server.Close()
+
+	healthResp, err := http.Get(server.URL + "/healthz")
+	if err != nil {
+		t.Fatalf("healthz request failed: %v", err)
+	}
+	defer healthResp.Body.Close()
+	if healthResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 from healthz, got %d", healthResp.StatusCode)
+	}
+
+	readyResp, err := http.Get(server.URL + "/readyz")
+	if err != nil {
+		t.Fatalf("readyz request failed: %v", err)
+	}
+	defer readyResp.Body.Close()
+	if readyResp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 from readyz with failing kafka check, got %d", readyResp.StatusCode)
+	}
+
+	metricsResp, err := http.Get(server.URL + "/metrics")
+	if err != nil {
+		t.Fatalf("metrics request failed: %v", err)
+	}
+	defer metricsResp.Body.Close()
+	body, err := io.ReadAll(metricsResp.Body)
+	if err != nil {
+		t.Fatalf("read metrics body: %v", err)
+	}
+	text := string(body)
+	for _, want := range []string{
+		"ohmf_delivery_processor_processed_total 1",
+		"ohmf_delivery_processor_errors_total 1",
+		"ohmf_delivery_processor_dlq_published_total 1",
+		"ohmf_delivery_processor_duplicates_total 1",
+		"ohmf_delivery_processor_last_success_timestamp_seconds",
+		"ohmf_delivery_processor_consumer_lag_messages 3",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("expected metrics output to contain %q", want)
+		}
+	}
+}
+
 type memoryDeliveryRecorder struct {
 	deliveries map[string]struct{}
 	failures   map[string]int
@@ -211,6 +275,14 @@ type stubDeliveryPublisher struct {
 func (p *stubDeliveryPublisher) Publish(_ context.Context, key string, _ []byte) error {
 	p.keys = append(p.keys, key)
 	return nil
+}
+
+type stubDeliveryMetricsObserver struct {
+	duplicates int
+}
+
+func (o *stubDeliveryMetricsObserver) RecordDuplicate() {
+	o.duplicates++
 }
 
 type stubQueryRower struct {
