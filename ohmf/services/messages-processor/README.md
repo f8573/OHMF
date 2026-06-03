@@ -6,7 +6,7 @@ Consumes `msg.ingress.v1`, validates metadata against Postgres, persists canonic
 - `microservice.events.v1`
 - `msg.sms.dispatch.v1` (for SMS-intent events)
 
-Also writes gateway ack correlation payload into Redis key `msg:ack:{event_id}`.
+Also writes the gateway ack correlation payload into Redis key `msg:ack:{event_id}` and publishes the same payload on `msg:ack:notify:{event_id}` so the gateway can wait for persistence without high-frequency Redis polling.
 
 ## Retry and DLQ Semantics
 
