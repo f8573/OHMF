@@ -572,6 +572,7 @@ components:
       enum: [SENT, DELIVERED, READ, FAIL_DELIVERY, FAIL_SEND]
     SendMessageResponse:
       type: object
+      description: When `queued` is true, this is a provisional response. `server_order` remains `0` until the canonical persisted message is observed through normal sync.
       required: [message_id, server_order, transport, status, queued]
       properties:
         message_id: { type: string }
@@ -584,6 +585,7 @@ components:
         ack_timeout_ms: { type: integer, nullable: true }
     SendPhoneMessageResponse:
       type: object
+      description: When `queued` is true, this is a provisional response. `server_order` remains `0` until the canonical persisted message is observed through normal sync.
       required: [message_id, conversation_id, server_order, transport, status, queued]
       properties:
         message_id: { type: string }
@@ -1924,7 +1926,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/SendMessageResponse' }
         '202':
-          description: Accepted and queued for persistence
+          description: Accepted and queued for persistence. The response is provisional and clients must reconcile canonical ordering through normal sync.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/SendMessageResponse' }
@@ -1942,7 +1944,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/SendPhoneMessageResponse' }
         '202':
-          description: Accepted and queued for persistence
+          description: Accepted and queued for persistence. The response is provisional and clients must reconcile canonical ordering through normal sync.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/SendPhoneMessageResponse' }

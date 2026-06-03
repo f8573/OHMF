@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"regexp"
+	"strings"
 	"testing"
 	"time"
 
@@ -141,8 +142,11 @@ func TestHandleFetchedMessageSkipsUnsafeDuplicateDownstreamPublishesOnRedelivery
 	if redis.setCalls != 2 {
 		t.Fatalf("expected redis ack overwrite to be attempted on both deliveries, got %d", redis.setCalls)
 	}
-	if len(redis.publishChannels) != 1 {
-		t.Fatalf("expected recipient fanout to publish once across duplicate redelivery, got %d", len(redis.publishChannels))
+	if got := countChannelsWithPrefix(redis.publishChannels, ackSignalPrefix); got != 2 {
+		t.Fatalf("expected redis ack notify publish on both deliveries, got %d", got)
+	}
+	if got := countChannelsWithPrefix(redis.publishChannels, "message:user:"); got != 1 {
+		t.Fatalf("expected recipient fanout to publish once across duplicate redelivery, got %d", got)
 	}
 	if len(dlq.messages) != 0 {
 		t.Fatalf("expected no DLQ publish on successful duplicate redelivery, got %d", len(dlq.messages))
@@ -362,6 +366,16 @@ func (s *stubRedisStore) Set(_ context.Context, _ string, _ any, _ time.Duration
 func (s *stubRedisStore) Publish(_ context.Context, channel string, _ any) error {
 	s.publishChannels = append(s.publishChannels, channel)
 	return nil
+}
+
+func countChannelsWithPrefix(channels []string, prefix string) int {
+	count := 0
+	for _, channel := range channels {
+		if strings.HasPrefix(channel, prefix) {
+			count++
+		}
+	}
+	return count
 }
 
 type stubCassandraStore struct {
