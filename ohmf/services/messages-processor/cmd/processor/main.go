@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/gocql/gocql"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 	"github.com/segmentio/kafka-go"
@@ -24,6 +26,7 @@ type config struct {
 	KafkaSMSDispatchTopic  string
 	KafkaDLQTopic          string
 	KafkaGroupID           string
+	HTTPAddr               string
 	PostgresDSN            string
 	RedisAddr              string
 	CassandraHosts         string
@@ -72,6 +75,11 @@ type ackPayload struct {
 	ClientGeneratedID string `json:"client_generated_id,omitempty"`
 }
 
+const (
+	ackKeyPrefix    = "msg:ack:"
+	ackSignalPrefix = "msg:ack:notify:"
+)
+
 type conversationMeta struct {
 	Type           string
 	Participants   []string
@@ -95,17 +103,135 @@ type messageCreatedDomainEventPayload struct {
 
 type processor struct {
 	cfg           config
-	pg            *pgxpool.Pool
-	redis         *redis.Client
-	cassandra     *gocql.Session
-	reader        *kafka.Reader
-	persistedW    *kafka.Writer
-	microserviceW *kafka.Writer
-	smsW          *kafka.Writer
-	dlqW          *kafka.Writer
+	pg            processorDB
+	redis         redisStore
+	cassandra     cassandraStore
+	reader        kafkaReader
+	persistedW    kafkaMessageWriter
+	microserviceW kafkaMessageWriter
+	smsW          kafkaMessageWriter
+	dlqW          kafkaMessageWriter
+	obs           *processorObservability
 }
 
 const domainEventMessageCreated = "message_created"
+
+const (
+	sideEffectPersistedPublished = "persisted_published"
+	sideEffectMicroserviceSent   = "microservice_published"
+	sideEffectSMSDispatchSent    = "sms_dispatch_published"
+	sideEffectRecipientFanout    = "recipient_fanout_published"
+)
+
+type processorDB interface {
+	BeginTx(context.Context, pgx.TxOptions) (pgx.Tx, error)
+	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
+}
+
+type redisStore interface {
+	Set(context.Context, string, any, time.Duration) error
+	Publish(context.Context, string, any) error
+}
+
+type cassandraStore interface {
+	WriteMessage(context.Context, ingressEvent, string, int64, time.Time) error
+	Close()
+}
+
+type kafkaReader interface {
+	FetchMessage(context.Context) (kafka.Message, error)
+	CommitMessages(context.Context, ...kafka.Message) error
+	Close() error
+}
+
+type kafkaMessageWriter interface {
+	WriteMessages(context.Context, ...kafka.Message) error
+	Close() error
+}
+
+type redisClient struct {
+	client *redis.Client
+}
+
+func (r redisClient) Set(ctx context.Context, key string, value any, expiration time.Duration) error {
+	return r.client.Set(ctx, key, value, expiration).Err()
+}
+
+func (r redisClient) Publish(ctx context.Context, channel string, value any) error {
+	return r.client.Publish(ctx, channel, value).Err()
+}
+
+type cassandraSession struct {
+	session *gocql.Session
+}
+
+func (c cassandraSession) Close() {
+	c.session.Close()
+}
+
+func (c cassandraSession) WriteMessage(ctx context.Context, evt ingressEvent, messageID string, serverOrder int64, persistedAt time.Time) error {
+	msgUUID, err := gocql.ParseUUID(messageID)
+	if err != nil {
+		return err
+	}
+	convUUID, err := gocql.ParseUUID(evt.ConversationID)
+	if err != nil {
+		return err
+	}
+	senderUUID, err := gocql.ParseUUID(evt.SenderUserID)
+	if err != nil {
+		return err
+	}
+	contentJSON, _ := json.Marshal(evt.Content)
+	bucket := persistedAt.UTC().Format("20060102")
+	return c.session.Query(`
+		INSERT INTO messages_by_conversation
+		(conversation_id, bucket_yyyymmdd, server_order, message_id, sender_user_id, content_type, content_json, transport, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, convUUID, bucket, serverOrder, msgUUID, senderUUID, evt.ContentType, string(contentJSON), mapTransport(evt.TransportIntent), persistedAt).WithContext(ctx).Exec()
+}
+
+type storedResponsePayload struct {
+	MessageID         string                  `json:"message_id"`
+	ConversationID    string                  `json:"conversation_id"`
+	SenderUserID      string                  `json:"sender_user_id"`
+	ContentType       string                  `json:"content_type"`
+	Content           map[string]any          `json:"content"`
+	ClientGeneratedID string                  `json:"client_generated_id,omitempty"`
+	Transport         string                  `json:"transport"`
+	ServerOrder       int64                   `json:"server_order"`
+	Status            string                  `json:"status"`
+	CreatedAt         string                  `json:"created_at"`
+	SideEffects       storedResponseSideState `json:"side_effects,omitempty"`
+}
+
+type storedResponseSideState struct {
+	PersistedPublished    bool `json:"persisted_published,omitempty"`
+	MicroservicePublished bool `json:"microservice_published,omitempty"`
+	SMSDispatchPublished  bool `json:"sms_dispatch_published,omitempty"`
+	RecipientFanoutSent   bool `json:"recipient_fanout_published,omitempty"`
+}
+
+type retryableProcessError struct {
+	err error
+}
+
+func (e *retryableProcessError) Error() string {
+	return e.err.Error()
+}
+
+func (e *retryableProcessError) Unwrap() error {
+	return e.err
+}
+
+func retryableError(format string, args ...any) error {
+	return &retryableProcessError{err: fmt.Errorf(format, args...)}
+}
+
+func isRetryableProcessError(err error) bool {
+	var target *retryableProcessError
+	return errors.As(err, &target)
+}
 
 func main() {
 	ctx := context.Background()
@@ -139,8 +265,8 @@ func main() {
 	p := &processor{
 		cfg:       cfg,
 		pg:        pg,
-		redis:     rdb,
-		cassandra: cass,
+		redis:     redisClient{client: rdb},
+		cassandra: cassandraSession{session: cass},
 		reader: kafka.NewReader(kafka.ReaderConfig{
 			Brokers:     brokers,
 			GroupID:     cfg.KafkaGroupID,
@@ -158,6 +284,20 @@ func main() {
 	defer p.microserviceW.Close()
 	defer p.smsW.Close()
 	defer p.dlqW.Close()
+	p.obs = newProcessorObservability(
+		"messages",
+		cfg.HTTPAddr,
+		splitCSV(cfg.KafkaBrokers),
+		[]dependencyCheck{
+			{name: "postgres", check: func(ctx context.Context) error { return pg.Ping(ctx) }},
+			{name: "redis", check: func(ctx context.Context) error { return rdb.Ping(ctx).Err() }},
+			{name: "cassandra", check: func(ctx context.Context) error {
+				var releaseVersion string
+				return cass.Query(`SELECT release_version FROM system.local`).WithContext(ctx).Scan(&releaseVersion)
+			}},
+		},
+	)
+	p.obs.start()
 
 	log.Printf("messages-processor started")
 	for {
@@ -167,13 +307,30 @@ func main() {
 			time.Sleep(300 * time.Millisecond)
 			continue
 		}
-		if err := p.processMessage(ctx, msg); err != nil {
-			log.Printf("process failed: %v", err)
-			_ = p.publishDLQ(ctx, msg, err)
+		p.obs.setConsumerLag(messageLag(msg))
+		p.handleFetchedMessage(ctx, msg)
+	}
+}
+
+func (p *processor) handleFetchedMessage(ctx context.Context, msg kafka.Message) {
+	startedAt := time.Now()
+	if err := p.processMessage(ctx, msg); err != nil {
+		p.obs.recordError(time.Since(startedAt))
+		log.Printf("process failed: %v", err)
+		if isRetryableProcessError(err) {
+			log.Printf("recoverable processor failure; leaving offset uncommitted for retry")
+			return
 		}
-		if err := p.reader.CommitMessages(ctx, msg); err != nil {
-			log.Printf("commit failed: %v", err)
+		if dlqErr := p.publishDLQ(ctx, msg, err); dlqErr != nil {
+			log.Printf("dlq publish failed: %v", dlqErr)
+			return
 		}
+		p.obs.recordDLQPublish()
+	} else {
+		p.obs.recordSuccess(time.Since(startedAt))
+	}
+	if err := p.reader.CommitMessages(ctx, msg); err != nil {
+		log.Printf("commit failed: %v", err)
 	}
 }
 
@@ -217,15 +374,15 @@ func (p *processor) processMessage(ctx context.Context, msg kafka.Message) error
 		messageID   string
 		persistedAt = time.Now().UTC()
 		newMessage  bool
+		sideEffects storedResponseSideState
 	)
 	if err == nil && existingStatus == 201 {
-		var existing struct {
-			MessageID   string `json:"message_id"`
-			ServerOrder int64  `json:"server_order"`
-		}
+		p.obs.recordDuplicate()
+		var existing storedResponsePayload
 		if uErr := json.Unmarshal(existingPayload, &existing); uErr == nil && existing.MessageID != "" {
 			messageID = existing.MessageID
 			serverOrder = existing.ServerOrder
+			sideEffects = existing.SideEffects
 		}
 	}
 
@@ -263,17 +420,18 @@ func (p *processor) processMessage(ctx context.Context, msg kafka.Message) error
 		}
 	}
 
-	payload, _ := json.Marshal(map[string]any{
-		"message_id":          messageID,
-		"conversation_id":     evt.ConversationID,
-		"sender_user_id":      evt.SenderUserID,
-		"content_type":        evt.ContentType,
-		"content":             evt.Content,
-		"client_generated_id": evt.ClientGeneratedID,
-		"transport":           mapTransport(evt.TransportIntent),
-		"server_order":        serverOrder,
-		"status":              "SENT",
-		"created_at":          persistedAt.Format(time.RFC3339),
+	payload, _ := json.Marshal(storedResponsePayload{
+		MessageID:         messageID,
+		ConversationID:    evt.ConversationID,
+		SenderUserID:      evt.SenderUserID,
+		ContentType:       evt.ContentType,
+		Content:           evt.Content,
+		ClientGeneratedID: evt.ClientGeneratedID,
+		Transport:         mapTransport(evt.TransportIntent),
+		ServerOrder:       serverOrder,
+		Status:            "SENT",
+		CreatedAt:         persistedAt.Format(time.RFC3339),
+		SideEffects:       sideEffects,
 	})
 	_, err = tx.Exec(ctx, `
 		INSERT INTO idempotency_keys (actor_user_id, endpoint, key, response_payload, status_code, expires_at)
@@ -313,11 +471,11 @@ func (p *processor) processMessage(ctx context.Context, msg kafka.Message) error
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		return err
+		return retryableError("postgres commit failed: %w", err)
 	}
 
-	if err := p.writeCassandra(ctx, evt, messageID, serverOrder, persistedAt); err != nil {
-		return err
+	if err := p.cassandra.WriteMessage(ctx, evt, messageID, serverOrder, persistedAt); err != nil {
+		return retryableError("cassandra write failed after postgres commit: %w", err)
 	}
 
 	ackBody, _ := json.Marshal(ackPayload{
@@ -330,8 +488,11 @@ func (p *processor) processMessage(ctx context.Context, msg kafka.Message) error
 		PersistedAtMS:     persistedAt.UnixMilli(),
 		ClientGeneratedID: evt.ClientGeneratedID,
 	})
-	if err := p.redis.Set(ctx, "msg:ack:"+evt.EventID, string(ackBody), 24*time.Hour).Err(); err != nil {
-		return err
+	if err := p.redis.Set(ctx, ackKeyPrefix+evt.EventID, string(ackBody), 24*time.Hour); err != nil {
+		return retryableError("redis ack failed after persistence: %w", err)
+	}
+	if err := p.redis.Publish(ctx, ackSignalPrefix+evt.EventID, string(ackBody)); err != nil {
+		return retryableError("redis ack notify failed after persistence: %w", err)
 	}
 
 	persisted := persistedEvent{
@@ -347,58 +508,54 @@ func (p *processor) processMessage(ctx context.Context, msg kafka.Message) error
 		TraceID:         evt.TraceID,
 	}
 	body, _ := json.Marshal(persisted)
-	if err := p.persistedW.WriteMessages(ctx, kafka.Message{
-		Key:   []byte(evt.ConversationID),
-		Value: body,
-		Time:  time.Now().UTC(),
-	}); err != nil {
-		return err
+	if !sideEffects.PersistedPublished {
+		if err := p.persistedW.WriteMessages(ctx, kafka.Message{
+			Key:   []byte(evt.ConversationID),
+			Value: body,
+			Time:  time.Now().UTC(),
+		}); err != nil {
+			return retryableError("persisted topic publish failed after persistence: %w", err)
+		}
+		if err := p.markSideEffect(ctx, evt, sideEffectPersistedPublished); err != nil {
+			return retryableError("mark persisted topic side effect failed: %w", err)
+		}
 	}
-	if err := p.microserviceW.WriteMessages(ctx, kafka.Message{
-		Key:   []byte(evt.ConversationID),
-		Value: body,
-		Time:  time.Now().UTC(),
-	}); err != nil {
-		return err
+	if !sideEffects.MicroservicePublished {
+		if err := p.microserviceW.WriteMessages(ctx, kafka.Message{
+			Key:   []byte(evt.ConversationID),
+			Value: body,
+			Time:  time.Now().UTC(),
+		}); err != nil {
+			return retryableError("microservice topic publish failed after persistence: %w", err)
+		}
+		if err := p.markSideEffect(ctx, evt, sideEffectMicroserviceSent); err != nil {
+			return retryableError("mark microservice topic side effect failed: %w", err)
+		}
 	}
-	if mapTransport(evt.TransportIntent) == "SMS" {
+	if mapTransport(evt.TransportIntent) == "SMS" && !sideEffects.SMSDispatchPublished {
 		if err := p.smsW.WriteMessages(ctx, kafka.Message{
 			Key:   []byte(evt.ConversationID),
 			Value: body,
 			Time:  time.Now().UTC(),
 		}); err != nil {
-			return err
+			return retryableError("sms dispatch publish failed after persistence: %w", err)
+		}
+		if err := p.markSideEffect(ctx, evt, sideEffectSMSDispatchSent); err != nil {
+			return retryableError("mark sms dispatch side effect failed: %w", err)
 		}
 	}
-	for _, recipientID := range recipients {
-		if strings.TrimSpace(recipientID) == "" {
-			continue
+	if !sideEffects.RecipientFanoutSent {
+		for _, recipientID := range recipients {
+			if strings.TrimSpace(recipientID) == "" {
+				continue
+			}
+			_ = p.redis.Publish(ctx, "message:user:"+recipientID, payload)
 		}
-		_ = p.redis.Publish(ctx, "message:user:"+recipientID, payload).Err()
+		if err := p.markSideEffect(ctx, evt, sideEffectRecipientFanout); err != nil {
+			return retryableError("mark recipient fanout side effect failed: %w", err)
+		}
 	}
 	return nil
-}
-
-func (p *processor) writeCassandra(ctx context.Context, evt ingressEvent, messageID string, serverOrder int64, persistedAt time.Time) error {
-	msgUUID, err := gocql.ParseUUID(messageID)
-	if err != nil {
-		return err
-	}
-	convUUID, err := gocql.ParseUUID(evt.ConversationID)
-	if err != nil {
-		return err
-	}
-	senderUUID, err := gocql.ParseUUID(evt.SenderUserID)
-	if err != nil {
-		return err
-	}
-	contentJSON, _ := json.Marshal(evt.Content)
-	bucket := persistedAt.UTC().Format("20060102")
-	return p.cassandra.Query(`
-		INSERT INTO messages_by_conversation
-		(conversation_id, bucket_yyyymmdd, server_order, message_id, sender_user_id, content_type, content_json, transport, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, convUUID, bucket, serverOrder, msgUUID, senderUUID, evt.ContentType, string(contentJSON), mapTransport(evt.TransportIntent), persistedAt).WithContext(ctx).Exec()
 }
 
 func (p *processor) publishDLQ(ctx context.Context, msg kafka.Message, cause error) error {
@@ -415,6 +572,20 @@ func (p *processor) publishDLQ(ctx context.Context, msg kafka.Message, cause err
 		Value: payload,
 		Time:  time.Now().UTC(),
 	})
+}
+
+func (p *processor) markSideEffect(ctx context.Context, evt ingressEvent, effect string) error {
+	_, err := p.pg.Exec(ctx, `
+		UPDATE idempotency_keys
+		SET response_payload = jsonb_set(
+			COALESCE(response_payload, '{}'::jsonb),
+			$4::text[],
+			'true'::jsonb,
+			true
+		)
+		WHERE actor_user_id = $1::uuid AND endpoint = $2 AND key = $3
+	`, evt.SenderUserID, evt.Endpoint, evt.IdempotencyKey, []string{"side_effects", effect})
+	return err
 }
 
 func loadRecipients(ctx context.Context, tx pgx.Tx, conversationID, senderID string) ([]string, error) {
@@ -516,6 +687,7 @@ func loadConfig() config {
 		KafkaSMSDispatchTopic:  getenv("APP_KAFKA_SMS_DISPATCH_TOPIC", "msg.sms.dispatch.v1"),
 		KafkaDLQTopic:          getenv("APP_KAFKA_DLQ_TOPIC", "msg.ingress.dlq.v1"),
 		KafkaGroupID:           getenv("APP_KAFKA_GROUP_ID", "messages-processor-v1"),
+		HTTPAddr:               getenv("APP_HTTP_ADDR", ":18088"),
 		PostgresDSN:            getenv("APP_DB_DSN", "postgres://ohmf:ohmf@localhost:5432/ohmf?sslmode=disable"),
 		RedisAddr:              getenv("APP_REDIS_ADDR", "localhost:6379"),
 		CassandraHosts:         getenv("APP_CASSANDRA_HOSTS", "localhost:9042"),
@@ -579,6 +751,17 @@ func writer(brokers []string, topic string) *kafka.Writer {
 		RequiredAcks: kafka.RequireAll,
 		BatchTimeout: 10 * time.Millisecond,
 	}
+}
+
+func messageLag(msg kafka.Message) float64 {
+	if msg.HighWaterMark <= 0 {
+		return 0
+	}
+	lag := msg.HighWaterMark - msg.Offset - 1
+	if lag < 0 {
+		return 0
+	}
+	return float64(lag)
 }
 
 func splitCSV(v string) []string {

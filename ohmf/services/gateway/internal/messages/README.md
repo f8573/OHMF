@@ -9,6 +9,7 @@ Expected behavior
 - Accept validated message requests from the gateway HTTP handlers.
 - Apply canonicalization: normalize phone numbers, enforce content-length, attach receipt metadata.
 - Persist ingest audit record and publish MessageIngress event to bus.
+- Async send waits for a processor persistence ack via Redis. If that ack times out, the gateway returns a provisional queued response with `server_order = 0`; clients reconcile the canonical persisted message through the normal sync/list path.
 
 Full specification details
 - Input: JSON matching GatewayMessageRequest (see gateway README).
