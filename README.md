@@ -1,6 +1,15 @@
-# Messages Local Development
+# OHMF Local Development
 
-This repository contains the OHMF services and associated local infrastructure for development.
+OHMF is a messaging-platform prototype built primarily in Go.
+It combines an HTTP/WebSocket gateway, background processors, and a local Docker stack for end-to-end development.
+Postgres is the authoritative store for core conversation and delivery state, while Kafka and Redis handle asynchronous and realtime distribution paths.
+The repo also includes a web client, integration tooling, and bundled infrastructure for running the stack locally.
+Several distributed-systems reliability fixes are already implemented and tested, especially around idempotency, fanout ordering, retries, presence, and processor observability.
+This repository is useful as a development environment and as a correctness case study; it should not be read as a claim of finished production readiness.
+
+## Reliability and correctness hardening
+
+See [docs/reliability-hardening.md](docs/reliability-hardening.md) for a concise case study of the hardening work already implemented, including idempotency, retry, fanout ordering, presence, typing, and processor health work.
 
 ## Tech Stack
 
@@ -31,8 +40,9 @@ This guide explains how to:
 Install the following first:
 - Docker Desktop (running)
 - Git
-- Go 1.25+ (optional if you only run services via Docker)
 - PowerShell (Windows) or a POSIX shell (Linux/macOS)
+
+You do not need a system Go installation if you use the bundled toolchain at `ohmf/.tools/go/bin/go.exe`.
 
 ## 1) Start Local Hosting
 
@@ -113,15 +123,15 @@ Run once:
 docker compose run --rm itest
 ```
 
-## 5) Run Repository Tests
+## 5) How to run tests
 
-Windows PowerShell:
+From repo root, the bundled Go binary is:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\run-tests.ps1 -Integration
+.\ohmf\.tools\go\bin\go.exe
 ```
 
-For gateway-only Go tests, prefer the bundled toolchain:
+Example gateway test run:
 
 ```powershell
 Push-Location .\ohmf\services\gateway
@@ -129,7 +139,11 @@ Push-Location .\ohmf\services\gateway
 Pop-Location
 ```
 
-Linux/macOS:
+Repository-wide helpers:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\run-tests.ps1 -Integration
+```
 
 ```bash
 chmod +x scripts/*.sh

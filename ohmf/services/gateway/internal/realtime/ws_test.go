@@ -221,6 +221,88 @@ func TestTypingStateIsCleanedUpOnDisconnect(t *testing.T) {
 	}
 }
 
+func TestDisconnectOnePodKeepsGlobalPresenceWhileAnotherSessionIsActive(t *testing.T) {
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("start miniredis: %v", err)
+	}
+	defer mr.Close()
+
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	defer rdb.Close()
+
+	handlerA := &Handler{redis: rdb, clients: map[string]map[*client]struct{}{}}
+	handlerB := &Handler{redis: rdb, clients: map[string]map[*client]struct{}{}}
+	clientA := &client{userID: "user-1", sessionID: "wsv1:pod-a", send: make(chan []byte, 1)}
+	clientB := &client{userID: "user-1", sessionID: "wsv1:pod-b", send: make(chan []byte, 1)}
+
+	handlerA.register(clientA)
+	handlerB.register(clientB)
+	handlerA.touchConnection(context.Background(), clientA)
+	handlerB.touchConnection(context.Background(), clientB)
+
+	handlerA.unregister(clientA)
+
+	if !mr.Exists("presence:user:user-1") {
+		t.Fatalf("expected presence key to remain while another session is active")
+	}
+	sessionIDs, err := rdb.SMembers(context.Background(), "user_sessions:user-1").Result()
+	if err != nil {
+		t.Fatalf("load user sessions: %v", err)
+	}
+	if len(sessionIDs) != 1 || sessionIDs[0] != "wsv1:pod-b" {
+		t.Fatalf("unexpected remaining sessions: %#v", sessionIDs)
+	}
+
+	handlerB.unregister(clientB)
+
+	if mr.Exists("presence:user:user-1") {
+		t.Fatalf("expected presence key to be removed after final disconnect")
+	}
+}
+
+func TestTouchConnectionCleansUpStaleSessions(t *testing.T) {
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("start miniredis: %v", err)
+	}
+	defer mr.Close()
+
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	defer rdb.Close()
+
+	handler := &Handler{redis: rdb, clients: map[string]map[*client]struct{}{}}
+	staleClient := &client{userID: "user-1", sessionID: "wsv1:stale", send: make(chan []byte, 1)}
+	liveClient := &client{userID: "user-1", sessionID: "wsv1:live", send: make(chan []byte, 1)}
+
+	handler.touchConnection(context.Background(), staleClient)
+	handler.touchConnection(context.Background(), liveClient)
+
+	mr.FastForward(50 * time.Second)
+	handler.touchConnection(context.Background(), liveClient)
+	mr.FastForward(50 * time.Second)
+
+	if !mr.Exists("session:wsv1:live") {
+		t.Fatalf("expected live session to remain before cleanup")
+	}
+	if mr.Exists("session:wsv1:stale") {
+		t.Fatalf("expected stale session key to expire")
+	}
+
+	handler.touchConnection(context.Background(), liveClient)
+
+	sessionIDs, err := rdb.SMembers(context.Background(), "user_sessions:user-1").Result()
+	if err != nil {
+		t.Fatalf("load user sessions: %v", err)
+	}
+	if len(sessionIDs) != 1 || sessionIDs[0] != "wsv1:live" {
+		t.Fatalf("unexpected sessions after cleanup: %#v", sessionIDs)
+	}
+	if !mr.Exists("presence:user:user-1") {
+		t.Fatalf("expected presence key to remain for live session")
+	}
+}
+
 func decodeWSMessage(t *testing.T, ch <-chan []byte) struct {
 	Event string         `json:"event"`
 	Data  map[string]any `json:"data"`

@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"os"
-	"path/filepath"
-	"sort"
 	"testing"
 	"time"
 
@@ -13,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
+	"ohmf/services/gateway/internal/testutil"
 )
 
 func TestSendPublishesRealtimeMessageToRecipients(t *testing.T) {
@@ -124,68 +123,7 @@ func TestSendPublishesRealtimeMessageToRecipients(t *testing.T) {
 func applyAllMigrations(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
 	t.Helper()
 
-	if _, err := pool.Exec(ctx, `
-		CREATE TABLE IF NOT EXISTS test_applied_migrations (
-			name TEXT PRIMARY KEY,
-			applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
-		)
-	`); err != nil {
-		t.Fatalf("ensure test_applied_migrations table: %v", err)
-	}
-
-	patterns := []string{
-		filepath.Join("..", "..", "migrations", "*.up.sql"),
-		filepath.Join("..", "migrations", "*.up.sql"),
-		filepath.Join("migrations", "*.up.sql"),
-	}
-
-	var paths []string
-	for _, pattern := range patterns {
-		matches, err := filepath.Glob(pattern)
-		if err != nil {
-			t.Fatalf("glob migrations %q: %v", pattern, err)
-		}
-		if len(matches) > 0 {
-			paths = matches
-			break
-		}
-	}
-	if len(paths) == 0 {
-		t.Fatal("no gateway migrations found")
-	}
-
-	sort.Strings(paths)
-	for _, path := range paths {
-		name := filepath.Base(path)
-		var alreadyApplied bool
-		if err := pool.QueryRow(ctx, `
-			SELECT EXISTS (
-				SELECT 1
-				FROM test_applied_migrations
-				WHERE name = $1
-			)
-		`, name).Scan(&alreadyApplied); err != nil {
-			t.Fatalf("check applied migration %q: %v", name, err)
-		}
-		if alreadyApplied {
-			continue
-		}
-
-		body, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatalf("read migration %q: %v", path, err)
-		}
-		if _, err := pool.Exec(ctx, string(body)); err != nil {
-			t.Fatalf("apply migration %q: %v", path, err)
-		}
-		if _, err := pool.Exec(ctx, `
-			INSERT INTO test_applied_migrations (name)
-			VALUES ($1)
-			ON CONFLICT (name) DO NOTHING
-		`, name); err != nil {
-			t.Fatalf("record applied migration %q: %v", name, err)
-		}
-	}
+	testutil.ResetAndMigrateGateway(t, ctx, pool)
 }
 
 func insertTestUser(t *testing.T, ctx context.Context, pool *pgxpool.Pool) string {

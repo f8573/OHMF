@@ -3,6 +3,7 @@ package messages
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -12,7 +13,9 @@ import (
 )
 
 const (
-	ackKeyPrefix = "msg:ack:"
+	ackKeyPrefix          = "msg:ack:"
+	ackSignalPrefix       = "msg:ack:notify:"
+	legacyAckPollInterval = time.Second
 )
 
 type IngressEvent struct {
@@ -20,6 +23,7 @@ type IngressEvent struct {
 	MessageID         string         `json:"message_id"`
 	ConversationID    string         `json:"conversation_id"`
 	SenderUserID      string         `json:"sender_user_id"`
+	SenderDeviceID    string         `json:"sender_device_id,omitempty"`
 	IdempotencyKey    string         `json:"idempotency_key"`
 	Endpoint          string         `json:"endpoint"`
 	ClientGeneratedID string         `json:"client_generated_id,omitempty"`
@@ -75,30 +79,63 @@ func (p *AsyncPipeline) WaitAck(ctx context.Context, eventID string, timeout tim
 	if p == nil || p.redis == nil {
 		return PersistedAck{}, false, nil
 	}
-	key := ackKeyPrefix + eventID
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		payload, err := p.redis.Get(ctx, key).Result()
-		if err == nil {
-			var ack PersistedAck
-			if uErr := json.Unmarshal([]byte(payload), &ack); uErr != nil {
-				return PersistedAck{}, false, uErr
+	waitCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	key := AckRedisKey(eventID)
+	if ack, ok, err := p.readAck(waitCtx, key); ok || err != nil {
+		return ack, ok, err
+	}
+
+	pubsub := p.redis.Subscribe(waitCtx, ackSignalChannel(eventID))
+	defer pubsub.Close()
+	if _, err := pubsub.Receive(waitCtx); err != nil {
+		return ackWaitResult(ctx, waitCtx, err)
+	}
+
+	// Re-check the durable ack key after the subscription is live so a key write
+	// that raced with subscription setup is still observed without polling.
+	if ack, ok, err := p.readAck(waitCtx, key); ok || err != nil {
+		return ack, ok, err
+	}
+
+	msgCh := pubsub.Channel()
+	legacyTicker := time.NewTicker(legacyAckPollInterval)
+	defer legacyTicker.Stop()
+
+	for {
+		select {
+		case <-waitCtx.Done():
+			// One final authoritative key read avoids timing out on an ack that
+			// landed just before the wait context expired.
+			if ack, ok, err := p.readAck(context.Background(), key); ok || err != nil {
+				return ack, ok, err
+			}
+			return ackWaitResult(ctx, waitCtx, waitCtx.Err())
+		case msg, ok := <-msgCh:
+			if !ok {
+				if ack, found, err := p.readAck(waitCtx, key); found || err != nil {
+					return ack, found, err
+				}
+				return ackWaitResult(ctx, waitCtx, errors.New("redis ack subscription closed"))
+			}
+			ack, err := decodeAckPayload(msg.Payload)
+			if err != nil {
+				return PersistedAck{}, false, err
 			}
 			return ack, true, nil
-		}
-		if err != nil && err != redis.Nil {
-			return PersistedAck{}, false, err
-		}
-		select {
-		case <-ctx.Done():
-			return PersistedAck{}, false, ctx.Err()
-		case <-time.After(50 * time.Millisecond):
+		case <-legacyTicker.C:
+			// Sparse fallback polling is retained for rolling-deploy compatibility
+			// and missed/lost Pub/Sub notifications. The durable ack key remains
+			// authoritative; Pub/Sub is only a wake-up optimization.
+			if ack, ok, err := p.readAck(waitCtx, key); ok || err != nil {
+				return ack, ok, err
+			}
 		}
 	}
-	return PersistedAck{}, false, nil
 }
 
-func NewIngressEvent(userID, conversationID, endpoint, idemKey, contentType, transportIntent, recipientPhone, clientGeneratedID, traceID string, content map[string]any) IngressEvent {
+func NewIngressEvent(userID, senderDeviceID, conversationID, endpoint, idemKey, contentType, transportIntent, recipientPhone, clientGeneratedID, traceID string, content map[string]any) IngressEvent {
 	if traceID == "" {
 		traceID = uuid.NewString()
 	}
@@ -107,6 +144,7 @@ func NewIngressEvent(userID, conversationID, endpoint, idemKey, contentType, tra
 		MessageID:         uuid.NewString(),
 		ConversationID:    conversationID,
 		SenderUserID:      userID,
+		SenderDeviceID:    senderDeviceID,
 		IdempotencyKey:    idemKey,
 		Endpoint:          endpoint,
 		ClientGeneratedID: clientGeneratedID,
@@ -136,4 +174,41 @@ func (e IngressEvent) ProvisionalMessage() Message {
 
 func AckRedisKey(eventID string) string {
 	return fmt.Sprintf("%s%s", ackKeyPrefix, eventID)
+}
+
+func ackSignalChannel(eventID string) string {
+	return fmt.Sprintf("%s%s", ackSignalPrefix, eventID)
+}
+
+func (p *AsyncPipeline) readAck(ctx context.Context, key string) (PersistedAck, bool, error) {
+	payload, err := p.redis.Get(ctx, key).Result()
+	if err == nil {
+		ack, err := decodeAckPayload(payload)
+		if err != nil {
+			return PersistedAck{}, false, err
+		}
+		return ack, true, nil
+	}
+	if err != nil && err != redis.Nil {
+		return PersistedAck{}, false, err
+	}
+	return PersistedAck{}, false, nil
+}
+
+func decodeAckPayload(payload string) (PersistedAck, error) {
+	var ack PersistedAck
+	if err := json.Unmarshal([]byte(payload), &ack); err != nil {
+		return PersistedAck{}, err
+	}
+	return ack, nil
+}
+
+func ackWaitResult(parentCtx, waitCtx context.Context, err error) (PersistedAck, bool, error) {
+	if parentErr := parentCtx.Err(); parentErr != nil {
+		return PersistedAck{}, false, parentErr
+	}
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(waitCtx.Err(), context.DeadlineExceeded) {
+		return PersistedAck{}, false, nil
+	}
+	return PersistedAck{}, false, err
 }

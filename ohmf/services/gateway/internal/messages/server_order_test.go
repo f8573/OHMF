@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"ohmf/services/gateway/internal/testutil"
 )
 
 func TestConcurrentServerOrderMonotonic(t *testing.T) {
@@ -22,16 +23,7 @@ func TestConcurrentServerOrderMonotonic(t *testing.T) {
 	}
 	defer pool.Close()
 
-	mig, err := os.ReadFile("../../migrations/000001_init.up.sql")
-	if err != nil {
-		mig, err = os.ReadFile("../migrations/000001_init.up.sql")
-		if err != nil {
-			mig, err = os.ReadFile("migrations/000001_init.up.sql")
-			if err != nil {
-				t.Fatalf("read migration: %v", err)
-			}
-		}
-	}
+	mig := testutil.ReadGatewayMigration(t, "000001_init.up.sql")
 	if _, err := pool.Exec(ctx, string(mig)); err != nil {
 		t.Fatalf("apply migration: %v", err)
 	}

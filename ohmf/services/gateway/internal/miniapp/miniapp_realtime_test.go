@@ -26,7 +26,6 @@ import (
 // TestSingleClientRealtimeEventDelivery tests that a single client receives real-time events
 // within the expected latency when subscribed to a session.
 func TestSingleClientRealtimeEventDelivery(t *testing.T) {
-	t.Parallel()
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
 	}
@@ -122,7 +121,6 @@ func TestSingleClientRealtimeEventDelivery(t *testing.T) {
 // TestMultipleClientsReceiveEvent tests that multiple clients subscribed to the same session
 // both receive identical event payloads.
 func TestMultipleClientsReceiveEvent(t *testing.T) {
-	t.Parallel()
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
 	}
@@ -229,7 +227,6 @@ func TestMultipleClientsReceiveEvent(t *testing.T) {
 // TestReconnectWithCursorResume tests that a client can reconnect and retrieve missed events
 // using polling with a cursor-based resume token.
 func TestReconnectWithCursorResume(t *testing.T) {
-	t.Parallel()
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
 	}
@@ -316,7 +313,6 @@ func TestReconnectWithCursorResume(t *testing.T) {
 // TestUnsubscribeStopsEventDelivery tests that unsubscribing from a session stops event delivery.
 // If unsubscribe is not implemented, closing the connection should stop events.
 func TestUnsubscribeStopsEventDelivery(t *testing.T) {
-	t.Parallel()
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
 	}
@@ -414,7 +410,6 @@ func TestUnsubscribeStopsEventDelivery(t *testing.T) {
 // TestSubscriptionPersistencyAcrossStateUpdates tests that subscriptions remain active
 // and all events are delivered in order even when state changes occur.
 func TestSubscriptionPersistencyAcrossStateUpdates(t *testing.T) {
-	t.Parallel()
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
 	}

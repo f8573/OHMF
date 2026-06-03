@@ -88,6 +88,9 @@ func (s *Service) GetUserPresence(ctx context.Context, userID string) (UserPrese
 		return result.Sessions[i].LastSeenAtMS > result.Sessions[j].LastSeenAtMS
 	})
 	result.SessionCount = len(result.Sessions)
+	if result.SessionCount > 0 {
+		result.Online = true
+	}
 	return result, nil
 }
 
