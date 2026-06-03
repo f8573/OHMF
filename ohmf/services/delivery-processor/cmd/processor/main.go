@@ -3,11 +3,13 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log"
 	"os"
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 	"github.com/segmentio/kafka-go"
@@ -24,6 +26,82 @@ type persistedEvent struct {
 	PersistedAtMS   int64    `json:"persisted_at_ms"`
 	DeliveryTargets []string `json:"delivery_targets"`
 	TraceID         string   `json:"trace_id"`
+}
+
+const insertDeliveredReceiptSQL = `
+	INSERT INTO message_deliveries (
+		message_id,
+		recipient_user_id,
+		transport,
+		state,
+		submitted_at,
+		updated_at
+	) VALUES ($1::uuid, $2::uuid, $3, 'DELIVERED', now(), now())
+	ON CONFLICT (message_id, recipient_user_id)
+	WHERE recipient_user_id IS NOT NULL AND state = 'DELIVERED'
+	DO NOTHING
+	RETURNING id
+`
+
+type deliveryRecorder interface {
+	RecordDelivered(context.Context, persistedEvent, string) (bool, error)
+}
+
+type presenceStore interface {
+	IsOnline(context.Context, string) (bool, error)
+	Publish(context.Context, string, []byte) error
+}
+
+type deliveryPublisher interface {
+	Publish(context.Context, string, []byte) error
+}
+
+type queryRower interface {
+	QueryRow(context.Context, string, ...any) pgx.Row
+}
+
+type pgDeliveryRecorder struct {
+	db queryRower
+}
+
+func (r pgDeliveryRecorder) RecordDelivered(ctx context.Context, evt persistedEvent, recipientID string) (bool, error) {
+	var deliveryID string
+	err := r.db.QueryRow(ctx, insertDeliveredReceiptSQL, evt.MessageID, recipientID, evt.Transport).Scan(&deliveryID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
+type redisPresenceStore struct {
+	client *redis.Client
+}
+
+func (s redisPresenceStore) IsOnline(ctx context.Context, recipientID string) (bool, error) {
+	ok, err := s.client.Exists(ctx, "presence:user:"+recipientID).Result()
+	if err != nil {
+		return false, err
+	}
+	return ok > 0, nil
+}
+
+func (s redisPresenceStore) Publish(ctx context.Context, channel string, body []byte) error {
+	return s.client.Publish(ctx, channel, body).Err()
+}
+
+type kafkaDeliveryPublisher struct {
+	writer *kafka.Writer
+}
+
+func (p kafkaDeliveryPublisher) Publish(ctx context.Context, key string, body []byte) error {
+	return p.writer.WriteMessages(ctx, kafka.Message{
+		Key:   []byte(key),
+		Value: body,
+		Time:  time.Now().UTC(),
+	})
 }
 
 func main() {
@@ -80,6 +158,10 @@ func main() {
 }
 
 func process(ctx context.Context, pg *pgxpool.Pool, rdb *redis.Client, deliveryWriter *kafka.Writer, msg kafka.Message) error {
+	return processMessage(ctx, pgDeliveryRecorder{db: pg}, redisPresenceStore{client: rdb}, kafkaDeliveryPublisher{writer: deliveryWriter}, msg)
+}
+
+func processMessage(ctx context.Context, deliveries deliveryRecorder, presence presenceStore, publisher deliveryPublisher, msg kafka.Message) error {
 	var evt persistedEvent
 	if err := json.Unmarshal(msg.Value, &evt); err != nil {
 		return err
@@ -93,7 +175,18 @@ func process(ctx context.Context, pg *pgxpool.Pool, rdb *redis.Client, deliveryW
 		if strings.TrimSpace(recipientID) == "" {
 			continue
 		}
-		if ok, err := rdb.Exists(ctx, "presence:user:"+recipientID).Result(); err != nil || ok == 0 {
+		online, err := presence.IsOnline(ctx, recipientID)
+		if err != nil {
+			return err
+		}
+		if !online {
+			continue
+		}
+		created, err := deliveries.RecordDelivered(ctx, evt, recipientID)
+		if err != nil {
+			return err
+		}
+		if !created {
 			continue
 		}
 		delivery := map[string]any{
@@ -108,28 +201,12 @@ func process(ctx context.Context, pg *pgxpool.Pool, rdb *redis.Client, deliveryW
 			"trace_id":          evt.TraceID,
 		}
 		body, _ := json.Marshal(delivery)
-		if _, err := pg.Exec(ctx, `
-			INSERT INTO message_deliveries (
-				message_id,
-				recipient_user_id,
-				transport,
-				state,
-				submitted_at,
-				updated_at
-			) VALUES ($1::uuid, $2::uuid, $3, $4, now(), now())
-		`, evt.MessageID, recipientID, evt.Transport, "DELIVERED"); err != nil {
+		if err := publisher.Publish(ctx, recipientID, body); err != nil {
 			return err
 		}
-		if err := deliveryWriter.WriteMessages(ctx, kafka.Message{
-			Key:   []byte(recipientID),
-			Value: body,
-			Time:  time.Now().UTC(),
-		}); err != nil {
-			return err
-		}
-		_ = rdb.Publish(ctx, "delivery:user:"+recipientID, body).Err()
+		_ = presence.Publish(ctx, "delivery:user:"+recipientID, body)
 		if strings.TrimSpace(evt.SenderUserID) != "" && evt.SenderUserID != recipientID {
-			_ = rdb.Publish(ctx, "delivery:user:"+evt.SenderUserID, body).Err()
+			_ = presence.Publish(ctx, "delivery:user:"+evt.SenderUserID, body)
 		}
 	}
 	return nil
