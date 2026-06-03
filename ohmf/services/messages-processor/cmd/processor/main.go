@@ -24,6 +24,7 @@ type config struct {
 	KafkaSMSDispatchTopic  string
 	KafkaDLQTopic          string
 	KafkaGroupID           string
+	HTTPAddr               string
 	PostgresDSN            string
 	RedisAddr              string
 	CassandraHosts         string
@@ -103,6 +104,7 @@ type processor struct {
 	microserviceW *kafka.Writer
 	smsW          *kafka.Writer
 	dlqW          *kafka.Writer
+	obs           *processorObservability
 }
 
 const domainEventMessageCreated = "message_created"
@@ -158,6 +160,20 @@ func main() {
 	defer p.microserviceW.Close()
 	defer p.smsW.Close()
 	defer p.dlqW.Close()
+	p.obs = newProcessorObservability(
+		"messages",
+		cfg.HTTPAddr,
+		splitCSV(cfg.KafkaBrokers),
+		[]dependencyCheck{
+			{name: "postgres", check: func(ctx context.Context) error { return pg.Ping(ctx) }},
+			{name: "redis", check: func(ctx context.Context) error { return rdb.Ping(ctx).Err() }},
+			{name: "cassandra", check: func(ctx context.Context) error {
+				var releaseVersion string
+				return cass.Query(`SELECT release_version FROM system.local`).WithContext(ctx).Scan(&releaseVersion)
+			}},
+		},
+	)
+	p.obs.start()
 
 	log.Printf("messages-processor started")
 	for {
@@ -167,9 +183,18 @@ func main() {
 			time.Sleep(300 * time.Millisecond)
 			continue
 		}
+		p.obs.setConsumerLag(messageLag(msg))
+		startedAt := time.Now()
 		if err := p.processMessage(ctx, msg); err != nil {
+			p.obs.recordError(time.Since(startedAt))
 			log.Printf("process failed: %v", err)
-			_ = p.publishDLQ(ctx, msg, err)
+			if dlqErr := p.publishDLQ(ctx, msg, err); dlqErr != nil {
+				log.Printf("dlq publish failed: %v", dlqErr)
+			} else {
+				p.obs.recordDLQPublish()
+			}
+		} else {
+			p.obs.recordSuccess(time.Since(startedAt))
 		}
 		if err := p.reader.CommitMessages(ctx, msg); err != nil {
 			log.Printf("commit failed: %v", err)
@@ -219,6 +244,7 @@ func (p *processor) processMessage(ctx context.Context, msg kafka.Message) error
 		newMessage  bool
 	)
 	if err == nil && existingStatus == 201 {
+		p.obs.recordDuplicate()
 		var existing struct {
 			MessageID   string `json:"message_id"`
 			ServerOrder int64  `json:"server_order"`
@@ -516,6 +542,7 @@ func loadConfig() config {
 		KafkaSMSDispatchTopic:  getenv("APP_KAFKA_SMS_DISPATCH_TOPIC", "msg.sms.dispatch.v1"),
 		KafkaDLQTopic:          getenv("APP_KAFKA_DLQ_TOPIC", "msg.ingress.dlq.v1"),
 		KafkaGroupID:           getenv("APP_KAFKA_GROUP_ID", "messages-processor-v1"),
+		HTTPAddr:               getenv("APP_HTTP_ADDR", ":18088"),
 		PostgresDSN:            getenv("APP_DB_DSN", "postgres://ohmf:ohmf@localhost:5432/ohmf?sslmode=disable"),
 		RedisAddr:              getenv("APP_REDIS_ADDR", "localhost:6379"),
 		CassandraHosts:         getenv("APP_CASSANDRA_HOSTS", "localhost:9042"),
@@ -579,6 +606,17 @@ func writer(brokers []string, topic string) *kafka.Writer {
 		RequiredAcks: kafka.RequireAll,
 		BatchTimeout: 10 * time.Millisecond,
 	}
+}
+
+func messageLag(msg kafka.Message) float64 {
+	if msg.HighWaterMark <= 0 {
+		return 0
+	}
+	lag := msg.HighWaterMark - msg.Offset - 1
+	if lag < 0 {
+		return 0
+	}
+	return float64(lag)
 }
 
 func splitCSV(v string) []string {

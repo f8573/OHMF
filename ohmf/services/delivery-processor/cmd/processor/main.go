@@ -104,12 +104,21 @@ func (p kafkaDeliveryPublisher) Publish(ctx context.Context, key string, body []
 	})
 }
 
+type deliveryMetricsObserver interface {
+	RecordDuplicate()
+}
+
+type noopDeliveryMetricsObserver struct{}
+
+func (noopDeliveryMetricsObserver) RecordDuplicate() {}
+
 func main() {
 	ctx := context.Background()
 	brokers := splitCSV(getenv("APP_KAFKA_BROKERS", "localhost:9092"))
 	persistedTopic := getenv("APP_KAFKA_PERSISTED_TOPIC", "msg.persisted.v1")
 	deliveryTopic := getenv("APP_KAFKA_DELIVERY_TOPIC", "msg.delivery.v1")
 	dlqTopic := getenv("APP_KAFKA_DELIVERY_DLQ_TOPIC", "msg.delivery.dlq.v1")
+	httpAddr := getenv("APP_HTTP_ADDR", ":18089")
 	pg, err := pgxpool.New(ctx, getenv("APP_DB_DSN", "postgres://ohmf:ohmf@localhost:5432/ohmf?sslmode=disable"))
 	if err != nil {
 		log.Fatalf("postgres init failed: %v", err)
@@ -139,6 +148,17 @@ func main() {
 		log.Fatalf("redis ping failed: %v", err)
 	}
 
+	obs := newProcessorObservability(
+		"delivery",
+		httpAddr,
+		brokers,
+		[]dependencyCheck{
+			{name: "postgres", check: func(ctx context.Context) error { return pg.Ping(ctx) }},
+			{name: "redis", check: func(ctx context.Context) error { return rdb.Ping(ctx).Err() }},
+		},
+	)
+	obs.start()
+
 	log.Printf("delivery-processor started")
 	for {
 		msg, err := reader.FetchMessage(ctx)
@@ -147,9 +167,18 @@ func main() {
 			time.Sleep(300 * time.Millisecond)
 			continue
 		}
-		if err := process(ctx, pg, rdb, deliveryWriter, msg); err != nil {
+		obs.setConsumerLag(messageLag(msg))
+		startedAt := time.Now()
+		if err := process(ctx, pg, rdb, deliveryWriter, msg, obs); err != nil {
+			obs.recordError(time.Since(startedAt))
 			log.Printf("process failed: %v", err)
-			_ = publishDLQ(ctx, dlqWriter, msg, err)
+			if dlqErr := publishDLQ(ctx, dlqWriter, msg, err); dlqErr != nil {
+				log.Printf("dlq publish failed: %v", dlqErr)
+			} else {
+				obs.recordDLQPublish()
+			}
+		} else {
+			obs.recordSuccess(time.Since(startedAt))
 		}
 		if err := reader.CommitMessages(ctx, msg); err != nil {
 			log.Printf("commit failed: %v", err)
@@ -157,11 +186,15 @@ func main() {
 	}
 }
 
-func process(ctx context.Context, pg *pgxpool.Pool, rdb *redis.Client, deliveryWriter *kafka.Writer, msg kafka.Message) error {
-	return processMessage(ctx, pgDeliveryRecorder{db: pg}, redisPresenceStore{client: rdb}, kafkaDeliveryPublisher{writer: deliveryWriter}, msg)
+func process(ctx context.Context, pg *pgxpool.Pool, rdb *redis.Client, deliveryWriter *kafka.Writer, msg kafka.Message, observer deliveryMetricsObserver) error {
+	return processMessageWithObserver(ctx, pgDeliveryRecorder{db: pg}, redisPresenceStore{client: rdb}, kafkaDeliveryPublisher{writer: deliveryWriter}, msg, observer)
 }
 
 func processMessage(ctx context.Context, deliveries deliveryRecorder, presence presenceStore, publisher deliveryPublisher, msg kafka.Message) error {
+	return processMessageWithObserver(ctx, deliveries, presence, publisher, msg, noopDeliveryMetricsObserver{})
+}
+
+func processMessageWithObserver(ctx context.Context, deliveries deliveryRecorder, presence presenceStore, publisher deliveryPublisher, msg kafka.Message, observer deliveryMetricsObserver) error {
 	var evt persistedEvent
 	if err := json.Unmarshal(msg.Value, &evt); err != nil {
 		return err
@@ -187,6 +220,7 @@ func processMessage(ctx context.Context, deliveries deliveryRecorder, presence p
 			return err
 		}
 		if !created {
+			observer.RecordDuplicate()
 			continue
 		}
 		delivery := map[string]any{
@@ -236,6 +270,17 @@ func writer(brokers []string, topic string) *kafka.Writer {
 		RequiredAcks: kafka.RequireAll,
 		BatchTimeout: 10 * time.Millisecond,
 	}
+}
+
+func messageLag(msg kafka.Message) float64 {
+	if msg.HighWaterMark <= 0 {
+		return 0
+	}
+	lag := msg.HighWaterMark - msg.Offset - 1
+	if lag < 0 {
+		return 0
+	}
+	return float64(lag)
 }
 
 func splitCSV(v string) []string {
