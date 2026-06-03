@@ -75,6 +75,11 @@ type ackPayload struct {
 	ClientGeneratedID string `json:"client_generated_id,omitempty"`
 }
 
+const (
+	ackKeyPrefix    = "msg:ack:"
+	ackSignalPrefix = "msg:ack:notify:"
+)
+
 type conversationMeta struct {
 	Type           string
 	Participants   []string
@@ -483,8 +488,11 @@ func (p *processor) processMessage(ctx context.Context, msg kafka.Message) error
 		PersistedAtMS:     persistedAt.UnixMilli(),
 		ClientGeneratedID: evt.ClientGeneratedID,
 	})
-	if err := p.redis.Set(ctx, "msg:ack:"+evt.EventID, string(ackBody), 24*time.Hour); err != nil {
+	if err := p.redis.Set(ctx, ackKeyPrefix+evt.EventID, string(ackBody), 24*time.Hour); err != nil {
 		return retryableError("redis ack failed after persistence: %w", err)
+	}
+	if err := p.redis.Publish(ctx, ackSignalPrefix+evt.EventID, string(ackBody)); err != nil {
+		return retryableError("redis ack notify failed after persistence: %w", err)
 	}
 
 	persisted := persistedEvent{
