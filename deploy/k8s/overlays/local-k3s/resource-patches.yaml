@@ -1,0 +1,81 @@
+# Conservative resource sizing for a single-node dev machine (~16 GB / 8 core).
+#
+# Totals at these requests are tiny (well under ~0.5 vCPU and ~0.5 GiB summed
+# across the running pods), so the profile schedules cleanly on one node with
+# room to spare. Limits are capped low to prevent any one pod from starving the
+# host. These are strategic-merge patches keyed by resource name.
+#
+# NOTE: this is sizing for *fit on one laptop*, not capacity planning. It is not
+# tuned for throughput and makes no performance claim.
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway
+spec:
+  replicas: 1
+  template:
+    spec:
+      containers:
+        - name: gateway
+          resources:
+            requests:
+              cpu: 25m
+              memory: 48Mi
+            limits:
+              cpu: 200m
+              memory: 96Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: apps
+spec:
+  replicas: 1
+  template:
+    spec:
+      containers:
+        - name: apps
+          resources:
+            requests:
+              cpu: 25m
+              memory: 48Mi
+            limits:
+              cpu: 200m
+              memory: 96Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+spec:
+  replicas: 1
+  template:
+    spec:
+      containers:
+        - name: postgres
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+spec:
+  replicas: 1
+  template:
+    spec:
+      containers:
+        - name: redis
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 150m
+              memory: 96Mi

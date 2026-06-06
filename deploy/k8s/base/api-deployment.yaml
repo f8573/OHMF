@@ -1,0 +1,118 @@
+# apps — the mini-app registry backend service (cmd: ohmf/services/apps).
+#
+# In this profile it runs Postgres-backed (APP_DB_DSN set), which exercises the
+# in-cluster postgres-dev instance: real app -> in-cluster DB connectivity is
+# what makes the "deploys on Kubernetes" claim concrete rather than cosmetic.
+#
+# It is the gateway's primary proxy backend (gateway /v1/apps -> this service).
+#
+# IMAGE: built locally. For k3s/k3d/kind you must load the image into the
+# cluster first (see deploy/k8s/README.md), because imagePullPolicy is Never —
+# there is no registry push in this profile.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: apps
+  labels:
+    app.kubernetes.io/name: apps
+    app.kubernetes.io/part-of: ohmf
+    app.kubernetes.io/component: backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: apps
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: apps
+        app.kubernetes.io/part-of: ohmf
+        app.kubernetes.io/component: backend
+    spec:
+      # apps exits non-zero if APP_DB_DSN is set but Postgres is unreachable at
+      # startup. Kubernetes would restart it until Postgres is ready, but this
+      # init container makes startup deterministic and avoids noisy CrashLoops.
+      initContainers:
+        - name: wait-for-postgres
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              echo "waiting for postgres:5432..."
+              until nc -z postgres 5432; do sleep 2; done
+              echo "postgres is reachable"
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 100m
+              memory: 32Mi
+      containers:
+        - name: apps
+          image: ohmf-apps:dev
+          imagePullPolicy: Never # local image; load into k3s/k3d/kind first
+          ports:
+            - name: http
+              containerPort: 18086
+          env:
+            - name: APP_ENV
+              valueFrom:
+                configMapKeyRef:
+                  name: ohmf-config
+                  key: APP_ENV
+            - name: APP_ADDR
+              valueFrom:
+                configMapKeyRef:
+                  name: ohmf-config
+                  key: APPS_ADDR
+            - name: APP_MIGRATIONS_DIR
+              valueFrom:
+                configMapKeyRef:
+                  name: ohmf-config
+                  key: APP_MIGRATIONS_DIR
+            - name: APP_DB_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: ohmf-secrets
+                  key: APP_DB_DSN
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 3
+            failureThreshold: 6
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: apps
+  labels:
+    app.kubernetes.io/name: apps
+    app.kubernetes.io/part-of: ohmf
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: apps
+  ports:
+    - name: http
+      port: 18086
+      targetPort: http

@@ -2,12 +2,23 @@
 
 Mapping: OHMF spec section 17 (Infrastructure & Deployment)
 
+> NOTE: This page mirrors the spec's *design intent*. Most items below (Helm,
+> Terraform, Vault/KMS, mTLS, ELK/OTel, IaC-in-CI) are **not implemented in this repo**.
+> Local Docker Compose under `infra/docker` is the full local stack. A minimal
+> **local single-node k3s** Kubernetes profile (Kustomize, app + Postgres/Redis,
+> gateway in smoke mode) now exists under `deploy/k8s/` — it is *not* production-grade,
+> *not* autoscaling, and *not* benchmark-validated. Read the rest as a target, not as
+> shipped capability.
+
 Purpose
 - Document infra components, environment setups, and deployment patterns for local dev and production.
 
 Expected behavior
-- Provide reproducible Docker Compose for local dev.
-- Provide manifests for production (Kubernetes/Helm, Terraform references).
+- Provide reproducible Docker Compose for local dev. (Present today.)
+- Provide a minimal local single-node Kubernetes (k3s) profile for app-deployment
+  credibility. (Present today under `deploy/k8s/`; single-node only, not production.)
+- Design intent only, NOT in this repo: Helm charts, production/multi-node Kubernetes,
+  and Terraform. None are committed.
 
 Key elements
 - Local compose: Postgres, Redis, Kafka (or nats), gateway, auth, users, messages.

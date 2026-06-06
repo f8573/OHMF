@@ -1,0 +1,19 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Overlay: local single-node k3s (also works on k3d / kind / Docker Desktop
+# Kubernetes). This is the profile the smoke script applies.
+#
+# It pulls in the base and applies conservative resource sizing intended to be
+# comfortable on a ~16 GB RAM / 8-core development laptop while leaving plenty
+# of headroom for the rest of the OS and a running IDE.
+
+resources:
+  - ../../base
+
+# Strategic-merge patches that adjust resource sizing per workload, kept in a
+# single multi-document file keyed by resource name. `patchesStrategicMerge` is
+# used (rather than the newer `patches:`) because the Kustomize bundled with
+# kubectl v1.30 does not split a multi-document file passed to `patches: -path:`.
+patchesStrategicMerge:
+  - resource-patches.yaml

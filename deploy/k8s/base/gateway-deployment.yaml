@@ -1,0 +1,66 @@
+# gateway — the API / realtime edge service (cmd: ohmf/services/gateway/cmd/api).
+#
+# Runs in SMOKE mode here (APP_SMOKE_MODE=1): it serves /healthz, /readyz,
+# /metrics and reverse-proxies /v1/{contacts,apps,media}, without initializing
+# DB/Redis/Kafka/Cassandra. This is the single most important reason the stage-1
+# k3s profile is honest and reliable: the edge becomes Ready without the heavy
+# event-store dependencies that are out of scope for a single dev node.
+#
+# Running the FULL gateway (WebSockets, Kafka producer, Cassandra reads) is NOT
+# part of this profile — it needs Kafka + Cassandra, which stay on Docker
+# Compose for now. See deploy/k8s/README.md ("Staged deployment path").
+#
+# IMAGE: built locally; imagePullPolicy Never — load into the cluster first.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway
+  labels:
+    app.kubernetes.io/name: gateway
+    app.kubernetes.io/part-of: ohmf
+    app.kubernetes.io/component: edge
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: gateway
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: gateway
+        app.kubernetes.io/part-of: ohmf
+        app.kubernetes.io/component: edge
+    spec:
+      containers:
+        - name: gateway
+          image: ohmf-gateway:dev
+          imagePullPolicy: Never # local image; load into k3s/k3d/kind first
+          ports:
+            - name: http
+              containerPort: 8081
+          envFrom:
+            - configMapRef:
+                name: ohmf-config
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 3
+            failureThreshold: 6
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi

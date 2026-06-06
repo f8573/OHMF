@@ -1,0 +1,32 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ohmf-config
+  labels:
+    app.kubernetes.io/part-of: ohmf
+# Non-secret configuration only. Secret-shaped values (passwords, DSNs with
+# credentials, JWT secret) live in a Secret — see secrets.example.yaml.
+data:
+  # ---- gateway (runs in SMOKE mode in this profile) ----
+  # APP_SMOKE_MODE=1 makes the gateway serve /healthz, /readyz, /metrics and
+  # reverse-proxy /v1/{contacts,apps,media} WITHOUT requiring DB/Redis/Kafka/
+  # Cassandra. This is what lets the stage-1 k3s profile come up cleanly with
+  # lighter dependencies. See ohmf/services/gateway/cmd/api/main.go.
+  APP_SMOKE_MODE: "1"
+  APP_ADDR: ":8081"
+  APP_LOG_LEVEL: "info"
+  # Backend proxy targets. Only `apps` is deployed in the stage-1 profile;
+  # contacts/media are not, so gateway proxies to them would 502. The gateway
+  # /healthz does NOT depend on these — it stays healthy regardless.
+  APP_CONTACTS_ADDR: "http://contacts:18085"
+  APP_APPS_ADDR: "http://apps:18086"
+  APP_MEDIA_ADDR: "http://media:18087"
+
+  # ---- apps (mini-app registry backend, Postgres-backed in this profile) ----
+  APP_ENV: "dev"
+  APPS_ADDR: ":18086"
+  APP_MIGRATIONS_DIR: "/opt/ohmf/apps/migrations"
+
+  # ---- postgres-dev ----
+  POSTGRES_USER: "ohmf"
+  POSTGRES_DB: "ohmf"

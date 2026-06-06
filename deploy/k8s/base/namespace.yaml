@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ohmf
+  labels:
+    app.kubernetes.io/part-of: ohmf
+    # Local single-node profile only. Not a production namespace.
+    ohmf.dev/profile: local-dev

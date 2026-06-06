@@ -1,0 +1,18 @@
+# ClusterIP only. No Ingress / LoadBalancer in this profile — reach the gateway
+# via `kubectl port-forward` (see deploy/k8s/scripts/smoke-k3s.sh). Exposing it
+# publicly is out of scope and would imply guarantees this profile does not make.
+apiVersion: v1
+kind: Service
+metadata:
+  name: gateway
+  labels:
+    app.kubernetes.io/name: gateway
+    app.kubernetes.io/part-of: ohmf
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: gateway
+  ports:
+    - name: http
+      port: 8081
+      targetPort: http
