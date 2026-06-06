@@ -78,7 +78,7 @@ Environment variables:
   - **staging/prod:** Requires `APP_DB_DSN` (PostgreSQL mandatory)
 - `APP_ADDR`
   - listen address, default `:18086`
-- `APP_DB_DSN` (production-grade; optional in dev mode)
+- `APP_DB_DSN` (used in staging/prod; optional in dev mode)
   - PostgreSQL connection string; enables database-backed registry
   - **Required for all non-dev environments**
   - Example: `postgres://user:pass@localhost:5432/ohmf?sslmode=require`

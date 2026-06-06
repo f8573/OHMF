@@ -15,3 +15,18 @@ node_modules/
 ohmf/AGENTS.md
 ohmf/docs/
 # removed: generated binaries and captured outputs do not belong in source control
+
+# generated binaries (any compiled output should not be tracked)
+*.exe
+tools/validate_openapi/validate_openapi
+
+# build caches / local state
+.gradle/
+.gocache/
+
+# test and tooling outputs
+test-results/
+coverage.out
+
+# scratch / repro files
+tmp/
