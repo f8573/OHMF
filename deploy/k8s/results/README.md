@@ -71,5 +71,7 @@ A result file (e.g. `2026-06-06-smoke.md` / `.txt`) should include:
 
 ## Status
 
-_No recorded run yet._ Run the smoke script on a local cluster and add a dated
-artifact here.
+Recorded run: [`2026-06-06-local-k3s-smoke.md`](2026-06-06-local-k3s-smoke.md)
+— stage-1 overlay applied to a local single-node `kind` cluster (k8s v1.32.2);
+all active deployments reached Ready and `gateway /healthz -> ok` (smoke
+**PASSED**). Local deployment smoke only — no performance/HA/production claims.

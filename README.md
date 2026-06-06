@@ -187,7 +187,9 @@ These are stated up front so the repo is read accurately:
   duplicate that side effect on retry. (See `docs/reliability-hardening.md` §5.)
 - **Kubernetes is local-single-node only.** `deploy/k8s/` has Kustomize manifests for a local k3s
   smoke deployment (gateway in smoke mode + `apps` + Postgres/Redis), with probes and resource
-  limits. There is no Helm, no autoscaling, no multi-node/HA, and no production deployment; the full
+  limits. These were applied and verified on a local single-node cluster — see the dated smoke
+  artifact under [`deploy/k8s/results/`](deploy/k8s/results/) (all active deployments Ready,
+  `gateway /healthz -> ok`). There is no Helm, no autoscaling, no multi-node/HA, and no production deployment; the full
   Kafka/Cassandra pipeline and the message processors are not part of that profile (they stay on
   Docker Compose). All services expose `/healthz`, `/readyz`, and `/metrics`, which make them
   orchestratable.
