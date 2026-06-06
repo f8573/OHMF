@@ -1,95 +1,226 @@
-# OHMF Local Development
+# OHMF — Distributed Real-Time Messaging Backend
 
-OHMF is a messaging-platform prototype built primarily in Go.
-It combines an HTTP/WebSocket gateway, background processors, and a local Docker stack for end-to-end development.
-Postgres is the authoritative store for core conversation and delivery state, while Kafka and Redis handle asynchronous and realtime distribution paths.
-The repo also includes a web client, integration tooling, and bundled infrastructure for running the stack locally.
-Several distributed-systems reliability fixes are already implemented and tested, especially around idempotency, fanout ordering, retries, presence, and processor observability.
-This repository is useful as a development environment and as a correctness case study; it should not be read as a claim of finished production readiness.
+OHMF is a distributed real-time messaging backend written in Go. It accepts messages over an
+HTTP/WebSocket gateway, moves them through a Kafka event pipeline to background processors, and
+persists conversation state durably in PostgreSQL (with Cassandra wired in as a secondary message
+store). Redis carries presence and low-latency realtime fan-out. The whole stack runs locally under
+Docker Compose.
 
-## Reliability and correctness hardening
+The project exists to be a concrete, inspectable example of the correctness problems that show up in
+a multi-service messaging system — idempotency under concurrent sends, per-conversation ordering
+across multiple workers, at-least-once delivery with duplicate suppression, and cross-pod presence —
+and to show those problems being solved with tests that pin the behavior down. It is a working
+development environment and a correctness case study, **not** a finished, production-operated system.
 
-See [docs/reliability-hardening.md](docs/reliability-hardening.md) for a concise case study of the hardening work already implemented, including idempotency, retry, fanout ordering, presence, typing, and processor health work.
+> Status: actively developed. Core send/persist/deliver paths and reliability hardening are
+> implemented and unit/integration tested. Cluster orchestration and large-scale load-test evidence
+> are **not** yet in the repository — see [Limitations](#limitations) and
+> [Benchmarks](#benchmarks-and-load-testing).
 
-## Tech Stack
+## Why this exists
 
-- Backend: Go 1.25 microservices
-- API: HTTP + WebSocket gateway built with `chi`
-- Data stores: PostgreSQL, Redis, Cassandra
-- Messaging/event pipeline: Kafka
-- Frontend: static HTML, CSS, and vanilla JavaScript web client
-- Mobile: Android scaffold using Kotlin and Gradle
-- Local infrastructure: Docker Compose
-- Testing/tooling: Go test scripts and Playwright
+Most "chat app" projects stop at create-read-update-delete over a database. The interesting and
+hard part of messaging is everything around that: what happens when the same send is retried, when
+two workers fan out the same conversation concurrently, when a delivery event is redelivered, or
+when a user is connected to two pods at once. OHMF is built to make those failure paths explicit and
+to demonstrate the engineering — not just the happy path. The reliability work is documented with
+the specific test that proves each behavior in
+[docs/reliability-hardening.md](docs/reliability-hardening.md).
 
-This guide explains how to:
-- Set up your local environment
-- Host the services locally with Docker Compose
-- Verify the system is running
-- Run tests
+## Stack
 
-## Repository Layout
+What is actually present and used in the code (verified against `go.mod` files and the compose stack):
 
-- `docker-compose.yml`: local compose stack at repo root
-- `ohmf/`: core OHMF services, docs, and scripts
-- `scripts/`: cross-platform test scripts
-- `postgres-data/`: Postgres bind-mounted data directory used by root compose stack
+| Layer | Technology | Where |
+| --- | --- | --- |
+| Language | Go 1.25 (multi-module) | `ohmf/services/*` |
+| API / realtime | HTTP + WebSocket gateway (`go-chi/chi`, `gorilla/websocket`) | `ohmf/services/gateway` |
+| Event pipeline | Apache Kafka (`segmentio/kafka-go`) | `ohmf/services/gateway/internal/bus`, processors |
+| Authoritative store | PostgreSQL | gateway + processors |
+| Secondary message store | Cassandra (`gocql`) — shadow-write enabled, reads off by default | `ohmf/services/gateway/internal/messages/cassandra_store.go` |
+| Presence / realtime fan-out | Redis | gateway, processors |
+| Observability | Prometheus + Grafana dashboards | `ohmf/infra/observability` |
+| Local orchestration | Docker Compose | `docker-compose.yml`, `ohmf/infra/docker` |
+| Web client | Static HTML/CSS/vanilla JS | `ohmf/apps/web` |
+| CI | GitHub Actions (OpenAPI validation, Go tests, docker build, containerized integration test) | `.github/workflows` |
 
-## Prerequisites
+Kubernetes: minimal plain-Kubernetes (Kustomize) manifests for a **local
+single-node k3s smoke deployment** live under `deploy/k8s/`. They deploy the
+gateway (smoke mode) plus the `apps` backend with an in-cluster Postgres/Redis,
+with probes and conservative resource limits. This is **not** production-grade,
+**not** Helm, **not** autoscaling, and **not** benchmark-validated; the full
+event pipeline (Kafka, Cassandra, processors) stays on Docker Compose. See
+`deploy/k8s/README.md`.
 
-Install the following first:
-- Docker Desktop (running)
-- Git
-- PowerShell (Windows) or a POSIX shell (Linux/macOS)
+Not currently in the repo: Helm charts, and standalone WebSocket load-test
+scripts or captured benchmark artifacts. These are referenced as design intent
+only and are called out below.
 
-You do not need a system Go installation if you use the bundled toolchain at `ohmf/.tools/go/bin/go.exe`.
+## Architecture
 
-## 1) Start Local Hosting
-
-From the repository root:
-
-```powershell
-docker compose up -d --build
+```
+                       WebSocket / HTTP clients
+                                 │
+                                 ▼
+                      ┌──────────────────────┐
+                      │   Gateway (API)      │  auth, validation, idempotency,
+                      │  chi + gorilla/ws    │  realtime fan-out
+                      └──────────────────────┘
+                                 │ produce: msg.ingress.v1
+                                 ▼
+                          ┌─────────────┐
+                          │    Kafka    │  partitioned topics + DLQs
+                          └─────────────┘
+                                 │ consume
+                                 ▼
+                ┌───────────────────────────────────┐
+                │ messages-processor                │  persist + retry semantics
+                └───────────────────────────────────┘
+                     │                 │
+                     ▼                 ▼
+              ┌────────────┐    ┌────────────┐
+              │ PostgreSQL │    │ Cassandra  │  (authoritative)   (shadow write)
+              └────────────┘    └────────────┘
+                     │ produce: msg.persisted.v1
+                     ▼
+                ┌───────────────────────────────────┐
+                │ delivery-processor / sms-processor│  delivery receipts, SMS dispatch
+                └───────────────────────────────────┘
+                                 │ msg.delivery.v1
+                                 ▼
+                        Gateway ──► clients (via Redis pub/sub + WS)
 ```
 
-Check status:
+Redis sits alongside the gateway and processors for presence reference-counting, typing/user-event
+fan-out, and async-send ack wake-ups. PostgreSQL is the source of truth for messages and delivery
+receipts; Kafka and Redis are best-effort distribution paths around that authoritative state. A
+fuller description of components, data flow, the concurrency model, failure assumptions, and
+trade-offs is in [docs/architecture.md](docs/architecture.md).
 
-```powershell
+## Quickstart
+
+Prerequisites: Docker Desktop running, Git, and a shell (PowerShell on Windows, or any POSIX shell).
+A system Go install is optional — a pinned toolchain is bundled at `ohmf/.tools/go/bin/go.exe`.
+
+Bring up the local stack from the repo root:
+
+```bash
+docker compose up -d --build
 docker compose ps
 ```
 
+Health-check the gateway (it is not published to the host by default):
+
+```bash
+docker compose exec gateway wget -qO- http://localhost:8081/healthz
+```
+
+Run the Go tests for the gateway:
+
+```bash
+cd ohmf/services/gateway
+../../.tools/go/bin/go.exe test ./...      # Windows bundled toolchain
+# or, with a system Go: go test ./...
+```
+
+Run the repository test helper / containerized integration test:
+
+```bash
+./scripts/run-tests.sh --integration            # POSIX
+docker compose run --rm itest                    # containerized integration tests
+```
+
+A larger compose stack that includes Kafka, Cassandra, Redis, and all processors lives at
+`ohmf/infra/docker/docker-compose.yml`; see [Full stack](#full-ohmf-stack-kafka--cassandra--redis)
+below. For the complete day-to-day local-hosting guide, see
+[Local development guide](#local-development-guide).
+
+## Benchmarks and load testing
+
+**Honest status:** the repository does not yet contain WebSocket load-test scripts or captured
+benchmark artifacts (latency histograms, message-loss accounting, environment manifests). The only
+load-oriented file today is `ohmf/services/gateway/_tools/e2ee-load-test.go`, which is an in-process
+simulation of E2EE message *generation* — it does not open WebSocket connections, does not measure
+p95 latency, and does not measure message loss. Treat it as a micro-benchmark scaffold, not as
+evidence of system throughput.
+
+Reported local/containerized benchmark **target** (design goal, not yet substantiated by artifacts
+in this repo): sustained ~3,100 concurrent WebSocket clients, p95 latency under 150 ms, and zero
+observed message loss under the tested configuration. **The supporting methodology and raw results
+should be produced and verified before this claim is used externally.**
+
+Benchmark documentation is being consolidated under [benchmarks/](benchmarks/README.md), which
+describes what a credible run must capture (driver, environment, metrics, how message loss is
+defined, where sample output lives) so results can be reproduced rather than asserted.
+
+## Project structure
+
+```
+.
+├── docker-compose.yml          # root local stack (Postgres + gateway + integration tests)
+├── docs/
+│   ├── architecture.md         # components, data flow, concurrency, trade-offs, limits
+│   └── reliability-hardening.md# correctness case study, each fix linked to its test
+├── benchmarks/                 # load-test methodology + status (see README)
+├── scripts/                    # cross-platform test runners
+├── ohmf/
+│   ├── services/
+│   │   ├── gateway/            # HTTP + WebSocket API, realtime, messages, e2ee, presence
+│   │   ├── messages-processor/ # Kafka consumer: persist + retry semantics
+│   │   ├── delivery-processor/ # delivery receipts, idempotent
+│   │   ├── sms-processor/      # SMS dispatch
+│   │   ├── contacts | apps | media | auth | users | ...
+│   ├── infra/
+│   │   ├── docker/             # full stack: Kafka, Cassandra, Redis, processors
+│   │   └── observability/      # Prometheus + Grafana
+│   ├── apps/                   # web client + Android scaffold
+│   └── packages/protocol/      # OpenAPI + SQL schema
+└── .github/workflows/          # CI: OpenAPI validation, Go tests, docker build, integration
+```
+
+## Limitations
+
+These are stated up front so the repo is read accurately:
+
+- **Delivery semantics are at-least-once, not exactly-once.** Postgres is authoritative; Kafka and
+  Redis are best-effort around it. A crash between a side effect and its idempotency marker can
+  duplicate that side effect on retry. (See `docs/reliability-hardening.md` §5.)
+- **Kubernetes is local-single-node only.** `deploy/k8s/` has Kustomize manifests for a local k3s
+  smoke deployment (gateway in smoke mode + `apps` + Postgres/Redis), with probes and resource
+  limits. There is no Helm, no autoscaling, no multi-node/HA, and no production deployment; the full
+  Kafka/Cassandra pipeline and the message processors are not part of that profile (they stay on
+  Docker Compose). All services expose `/healthz`, `/readyz`, and `/metrics`, which make them
+  orchestratable.
+- **Cassandra is in shadow-write mode.** It is wired up and written to, but reads default to Postgres
+  (`APP_USE_CASSANDRA_READS=false`). The Cassandra read path is not the live serving path.
+- **No substantiated load-test results.** See [Benchmarks](#benchmarks-and-load-testing).
+- **Ordering is per-conversation, not global.** Fan-out preserves `server_order` within a
+  conversation, not a total order across conversations.
+
+---
+
+## Local development guide
+
+The sections below are the detailed local-hosting reference. The [Quickstart](#quickstart) above is
+enough to get the stack running; this is for day-to-day work.
+
 ### About `postgres-data` (root stack)
 
-You do not manually populate `postgres-data/`.
-It is populated automatically by the `postgres` container on first startup because root `docker-compose.yml` uses:
+You do not manually populate `postgres-data/`. It is populated automatically by the `postgres`
+container on first startup because the root `docker-compose.yml` bind-mounts it:
 
 ```yaml
 volumes:
   - ./postgres-data:/var/lib/postgresql/data
 ```
 
-Behavior:
-- First `docker compose up`: Postgres initializes data files in `postgres-data/`
-- Next runs: existing data is reused (persistent local state)
+- First `docker compose up`: Postgres initializes data files in `postgres-data/`.
+- Next runs: existing data is reused (persistent local state).
+- Hard reset: `docker compose down -v`.
 
-Reset options:
-- Root stack hard reset: `docker compose down -v`
-- If needed, remove the local data directory contents and bring the stack up again
+### Local service endpoints
 
-## 2) Verify Services
-
-The gateway is not published to the host by default in the root compose file.
-Use an in-container health check:
-
-```powershell
-docker compose exec gateway curl -f http://localhost:8081/healthz
-```
-
-If successful, the command returns HTTP 200.
-
-## 3) Local Service Endpoints
-
-Inside Docker network (service-to-service):
+Inside the Docker network (service-to-service):
 - Contacts: `http://contacts:18085`
 - Apps: `http://apps:18086`
 - Media: `http://media:18087`
@@ -98,50 +229,25 @@ Inside Docker network (service-to-service):
 From your host machine:
 - Postgres: `localhost:5432`
 
-To expose gateway on your host (optional), add this to the `gateway` service in `docker-compose.yml`:
+To expose the gateway on your host, add to the `gateway` service in `docker-compose.yml`:
 
 ```yaml
 ports:
   - "8081:8081"
 ```
 
-Then recreate the service:
+Then recreate it: `docker compose up -d --build gateway`. Host access is then at
+`http://localhost:8081/healthz`.
+
+### Running tests
 
 ```powershell
-docker compose up -d --build gateway
-```
-
-After that, host access works at `http://localhost:8081/healthz`.
-
-## 4) Run Integration Test Container
-
-The compose stack includes an `itest` container that runs integration tests.
-
-Run once:
-
-```powershell
-docker compose run --rm itest
-```
-
-## 5) How to run tests
-
-From repo root, the bundled Go binary is:
-
-```powershell
-.\ohmf\.tools\go\bin\go.exe
-```
-
-Example gateway test run:
-
-```powershell
+# Windows, bundled toolchain
 Push-Location .\ohmf\services\gateway
 & ..\..\.tools\go\bin\go.exe test ./...
 Pop-Location
-```
 
-Repository-wide helpers:
-
-```powershell
+# Repository helpers
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\run-tests.ps1 -Integration
 ```
 
@@ -150,103 +256,60 @@ chmod +x scripts/*.sh
 ./scripts/run-tests.sh --integration
 ```
 
-## 6) Useful Daily Commands
-
-View logs for all services:
+### Useful daily commands
 
 ```powershell
-docker compose logs -f
+docker compose logs -f                 # all services
+docker compose logs -f gateway         # one service
+docker compose restart gateway         # restart one service
+docker compose down                    # stop
+docker compose down -v                 # stop + remove volumes (clean reset)
 ```
 
-View logs for one service:
-
-```powershell
-docker compose logs -f gateway
-```
-
-Restart one service:
-
-```powershell
-docker compose restart gateway
-```
-
-Refresh the full OHMF API automatically when gateway Go files change:
+Refresh the gateway automatically when its Go files change:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\ohmf\scripts\watch-api.ps1
 ```
 
-Stop the environment:
+### Full OHMF stack (Kafka + Cassandra + Redis)
 
-```powershell
-docker compose down
-```
-
-Stop and remove volumes (clean reset):
-
-```powershell
-docker compose down -v
-```
-
-## 7) Full OHMF Stack (Alternative)
-
-A larger compose setup also exists under:
-- `ohmf/infra/docker/docker-compose.yml`
-
-Start it from repo root with:
+A larger compose setup with the event pipeline and processors lives at
+`ohmf/infra/docker/docker-compose.yml`:
 
 ```powershell
 docker compose -f .\ohmf\infra\docker\docker-compose.yml up -d --build
 ```
 
-That stack includes additional components (Kafka, Redis, Cassandra, processors, and API variants) for broader end-to-end testing.
+It includes Kafka (with partitioned topics and DLQs), Cassandra, Redis, the API, and the
+`messages-`, `delivery-`, and `sms-` processors, plus Prometheus and Grafana.
 
-### Using `ohmf/scripts/run-dev.ps1` (recommended on Windows)
-
-`ohmf/scripts/run-dev.ps1` is a convenience launcher for the OHMF stack.
-It does all of the following:
-- Finds Docker
-- Stops/removes old OHMF containers
-- Picks available ports if defaults are busy
-- Writes `ohmf/apps/web/runtime-config.js`
-- Starts: `db`, `api`, `client`, `messages-processor`, and `delivery-processor`
-
-Run it:
+On Windows, `ohmf/scripts/run-dev.ps1` is a convenience launcher that finds Docker, clears old OHMF
+containers, picks free ports, writes `ohmf/apps/web/runtime-config.js`, and starts the core
+services:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\ohmf\scripts\run-dev.ps1
+# optional: -CLIENT_PORT 5173 -CONTAINER_PORT 8080 -HOST_PORT 18080
 ```
 
-Optional parameters:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\ohmf\scripts\run-dev.ps1 -CLIENT_PORT 5173 -CONTAINER_PORT 8080 -HOST_PORT 18080
-```
-
-Important data note for this flow:
-- `run-dev.ps1` uses `ohmf/infra/docker/docker-compose.yml`
-- That compose file stores Postgres in Docker named volume `db_data` (not `postgres-data/`)
-
-Reset OHMF DB volume used by `run-dev.ps1`:
+Note: `run-dev.ps1` uses `ohmf/infra/docker/docker-compose.yml`, which stores Postgres in the Docker
+named volume `db_data` (not `postgres-data/`). Reset that volume with:
 
 ```powershell
 docker compose -f .\ohmf\infra\docker\docker-compose.yml -f .\ohmf\infra\docker\docker-compose.client.yml down -v
 ```
 
-## Troubleshooting
+### Troubleshooting
 
-- Docker build errors:
-  - Ensure Docker Desktop is running
-  - Retry with `docker compose build --no-cache`
-- Gateway API not reflecting `.go` edits:
-  - Run `.\ohmf\scripts\watch-api.ps1` so Docker rebuilds and restarts the API service on each change
-- Postgres startup conflicts:
-  - Confirm nothing else is using port 5432
-  - Run `docker compose down -v` and start again
-- Health check failures:
-  - Run `docker compose logs -f <service>` to inspect failures
+- **Docker build errors:** ensure Docker Desktop is running; retry with `docker compose build --no-cache`.
+- **Gateway not reflecting `.go` edits:** run `.\ohmf\scripts\watch-api.ps1`.
+- **Postgres startup conflicts:** confirm nothing else uses port 5432; `docker compose down -v` and retry.
+- **Health-check failures:** `docker compose logs -f <service>`.
 
-## Next Steps
+### Next steps / further docs
 
-- API and architecture docs: `ohmf/docs/`
-- Setup reference for the OHMF folder: `ohmf/SETUP.md`
+- Architecture: [docs/architecture.md](docs/architecture.md)
+- Reliability case study: [docs/reliability-hardening.md](docs/reliability-hardening.md)
+- Benchmark methodology and status: [benchmarks/README.md](benchmarks/README.md)
+- Per-service API/architecture docs: `ohmf/docs/` and `ohmf/SETUP.md`
