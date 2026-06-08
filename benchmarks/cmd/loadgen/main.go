@@ -59,6 +59,8 @@ type scenarioConfig struct {
 	KafkaLagTimeoutSeconds int               `json:"kafka_lag_timeout_seconds"`
 	RequestTimeoutSeconds  int               `json:"request_timeout_seconds"`
 	DuplicateEvery         int               `json:"duplicate_every"`
+	SkipReconcile          bool              `json:"skip_reconcile,omitempty"`
+	IncludeLatencySamples  bool              `json:"include_latency_samples,omitempty"`
 	Phases                 []phaseConfig     `json:"phases,omitempty"`
 	Metadata               map[string]string `json:"metadata,omitempty"`
 }
@@ -110,6 +112,7 @@ type runArtifacts struct {
 	Latency               latencySummary         `json:"latency"`
 	Reconcile             reconcileSummary       `json:"reconcile"`
 	Conversations         []conversationArtifact `json:"conversations"`
+	LatencySamplesMS      []float64              `json:"latency_samples_ms,omitempty"`
 	Limitations           []string               `json:"limitations"`
 	Supported             string                 `json:"supported_claim"`
 }
@@ -294,13 +297,25 @@ func main() {
 		failWithArtifacts(summaryJSONPath, summaryMDPath, state, cancelled, nil, limitNotes, err)
 	}
 
-	pgBefore, pgMode, pgErr := postgresCount(ctx, cfg, state.conversations)
-	if pgErr != nil {
-		limitNotes = append(limitNotes, "Postgres pre-run reconciliation unavailable: "+pgErr.Error())
-	}
-	cassBefore, cassMode, cassErr := cassandraCount(ctx, cfg, state.conversations)
-	if cassErr != nil {
-		limitNotes = append(limitNotes, "Cassandra pre-run reconciliation unavailable: "+cassErr.Error())
+	var (
+		pgBefore   int64
+		pgMode     string
+		pgErr      error
+		cassBefore int64
+		cassMode   string
+		cassErr    error
+	)
+	if cfg.SkipReconcile {
+		limitNotes = append(limitNotes, "Run-scoped Postgres/Cassandra/Kafka reconciliation was intentionally skipped in this shard run; a host-side aggregator must perform final reconciliation across shard artifacts.")
+	} else {
+		pgBefore, pgMode, pgErr = postgresCount(ctx, cfg, state.conversations)
+		if pgErr != nil {
+			limitNotes = append(limitNotes, "Postgres pre-run reconciliation unavailable: "+pgErr.Error())
+		}
+		cassBefore, cassMode, cassErr = cassandraCount(ctx, cfg, state.conversations)
+		if cassErr != nil {
+			limitNotes = append(limitNotes, "Cassandra pre-run reconciliation unavailable: "+cassErr.Error())
+		}
 	}
 
 	if err := executeRun(ctx, client, state); err != nil {
@@ -315,38 +330,43 @@ func main() {
 		RunScopedReconcileMode: strings.TrimSpace(strings.Join(filterEmpty([]string{pgMode, cassMode}), "; ")),
 		Limitations:            append([]string{}, limitNotes...),
 	}
+	if cfg.SkipReconcile {
+		reconcile.RunScopedReconcileMode = "disabled in shard mode; host-side aggregator required for final Postgres/Cassandra/Kafka reconciliation"
+	}
 	if reconcile.RunScopedReconcileMode == "" {
 		reconcile.RunScopedReconcileMode = "documented limitation: no reconciler succeeded"
 	}
 
-	if pgErr == nil {
-		reconcile.PostgresBefore = pgBefore
-		pgAfter, _, err := postgresCount(ctx, cfg, state.conversations)
-		if err != nil {
-			reconcile.Limitations = append(reconcile.Limitations, "Postgres post-run reconciliation unavailable: "+err.Error())
-		} else {
-			reconcile.PostgresAfter = pgAfter
-			reconcile.PostgresDelta = pgAfter - pgBefore
+	if !cfg.SkipReconcile {
+		if pgErr == nil {
+			reconcile.PostgresBefore = pgBefore
+			pgAfter, _, err := postgresCount(ctx, cfg, state.conversations)
+			if err != nil {
+				reconcile.Limitations = append(reconcile.Limitations, "Postgres post-run reconciliation unavailable: "+err.Error())
+			} else {
+				reconcile.PostgresAfter = pgAfter
+				reconcile.PostgresDelta = pgAfter - pgBefore
+			}
 		}
-	}
-	if cassErr == nil {
-		reconcile.CassandraBefore = cassBefore
-		cassAfter, _, err := cassandraCount(ctx, cfg, state.conversations)
-		if err != nil {
-			reconcile.Limitations = append(reconcile.Limitations, "Cassandra post-run reconciliation unavailable: "+err.Error())
-		} else {
-			reconcile.CassandraAfter = cassAfter
-			reconcile.CassandraDelta = cassAfter - cassBefore
+		if cassErr == nil {
+			reconcile.CassandraBefore = cassBefore
+			cassAfter, _, err := cassandraCount(ctx, cfg, state.conversations)
+			if err != nil {
+				reconcile.Limitations = append(reconcile.Limitations, "Cassandra post-run reconciliation unavailable: "+err.Error())
+			} else {
+				reconcile.CassandraAfter = cassAfter
+				reconcile.CassandraDelta = cassAfter - cassBefore
+			}
 		}
-	}
 
-	lagAtEnd, lagZero, lagSeconds, lagErr := waitForLag(ctx, cfg)
-	if lagErr != nil {
-		reconcile.Limitations = append(reconcile.Limitations, "Kafka lag reconciliation unavailable: "+lagErr.Error())
-	} else {
-		reconcile.KafkaLagAtEnd = lagAtEnd
-		reconcile.KafkaLagSettledToZero = lagZero
-		reconcile.KafkaLagZeroSeconds = lagSeconds
+		lagAtEnd, lagZero, lagSeconds, lagErr := waitForLag(ctx, cfg)
+		if lagErr != nil {
+			reconcile.Limitations = append(reconcile.Limitations, "Kafka lag reconciliation unavailable: "+lagErr.Error())
+		} else {
+			reconcile.KafkaLagAtEnd = lagAtEnd
+			reconcile.KafkaLagSettledToZero = lagZero
+			reconcile.KafkaLagZeroSeconds = lagSeconds
+		}
 	}
 
 	summary := buildSummary(state, cancelled, reconcile, env, limitNotes, resultDir)
@@ -782,7 +802,7 @@ func buildSummary(state *runState, cancelled bool, reconcile reconcileSummary, e
 
 	sort.Float64s(latencies)
 	missing := int64(0)
-	if reconcile.PostgresDelta > 0 || acceptedByIdem > 0 {
+	if strings.Contains(reconcile.RunScopedReconcileMode, "Postgres reconciled") {
 		missing = int64(acceptedByIdem) - reconcile.PostgresDelta
 	}
 	counts := countSummary{
@@ -809,6 +829,10 @@ func buildSummary(state *runState, cancelled bool, reconcile reconcileSummary, e
 			limitations = append(limitations, note)
 		}
 	}
+	var latencySamples []float64
+	if state.config.IncludeLatencySamples {
+		latencySamples = latencies
+	}
 	if strings.TrimSpace(reconcile.RunScopedReconcileMode) == "" {
 		reconcile.RunScopedReconcileMode = "fresh-conversation counts fallback only"
 	}
@@ -825,6 +849,7 @@ func buildSummary(state *runState, cancelled bool, reconcile reconcileSummary, e
 		Latency:               latency,
 		Reconcile:             reconcile,
 		Conversations:         conversations,
+		LatencySamplesMS:      latencySamples,
 		Limitations:           limitations,
 		Supported: fmt.Sprintf(
 			"This artifact supports only a local %s benchmark claim for scenario %q at run_id %q, with client-observed accept latency and run-scoped Postgres/Cassandra reconciliation by fresh test conversation where available.",
