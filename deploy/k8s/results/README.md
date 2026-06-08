@@ -1,77 +1,54 @@
-# k3s smoke results
+# k3s results
 
-This directory holds **recorded artifacts** from actually running the stage-1
-k3s smoke deployment (`deploy/k8s/scripts/smoke-k3s.sh`). The point is evidence:
-a claim like "OHMF deploys on Kubernetes" should be backed by a real, dated run
-on a known machine, not by assertion.
+This directory holds **recorded artifacts from real local-cluster runs**.
+Those artifacts are the evidence boundary for any Kubernetes claim in this
+repository.
 
-> **Do not commit a "passing" result unless the smoke script was actually run
-> and passed on a real cluster.** A fabricated result is worse than no result.
-> If you have not run it yet, leave this directory with only this template.
+Do not commit a passing result unless the command was actually run on a real
+cluster and the recorded outputs match what happened.
 
-## How to record a run
+## Current artifact types
 
-```bash
-deploy/k8s/scripts/smoke-k3s.sh | tee deploy/k8s/results/$(date +%Y-%m-%d)-smoke.txt
-```
+- `*-local-k3s-smoke.md`
+  - stage-1 smoke profile (`deploy/k8s/scripts/smoke-k3s.sh`)
+- `*-local-k3s-full-smoke.md`
+  - full local pipeline smoke (`deploy/k8s/scripts/smoke-k3s-full.sh`)
+- `*-local-k3s-full-hpa-smoke.md`
+  - gateway HPA smoke (`deploy/k8s/scripts/hpa-smoke-k3s-full.sh`)
 
-Then capture the supporting output:
+## What a full-pipeline artifact should contain
 
-```bash
-kubectl -n ohmf get pods -o wide
-kubectl -n ohmf get svc
-kubectl version --short
-```
+- date and local time
+- machine summary
+- cluster flavor and versions
+- images built/loaded
+- exact commands run
+- `kubectl get pods -n ohmf`
+- `kubectl get svc -n ohmf`
+- gateway health output
+- proof of pipeline persistence:
+  - authenticated send through the gateway
+  - Postgres message count
+  - Cassandra message count
+  - Kafka consumer-group lag or offset state
+- known limitations observed during the run
 
-## What a completed artifact should contain
+## What an HPA artifact should contain
 
-A result file (e.g. `2026-06-06-smoke.md` / `.txt`) should include:
+- initial gateway replicas
+- the HPA spec that was applied
+- confirmation that Metrics Server was available
+- load method used
+- `kubectl get hpa`
+- `kubectl top pod -n ohmf`
+- replica changes during load
+- replica changes after load stopped
+- limitations:
+  - local single-node only
+  - synthetic load only
+  - threshold chosen for visibility, not production tuning
 
-1. **Date** of the run.
-2. **Machine specs** — CPU cores, RAM, OS/version.
-3. **Kubernetes flavor and version** — k3s/k3d/kind/Docker Desktop, plus
-   `kubectl version` (client + server) and `kubectl get nodes`.
-4. **Images used** — names and tags (`ohmf-gateway:dev`, `ohmf-apps:dev`, …) and
-   how they were loaded into the cluster.
-5. **`kubectl get pods -n ohmf` output** — showing pods `Running`/`Ready`
-   (remember `messages-processor` is `replicas: 0`, so 0 pods is expected).
-6. **`kubectl get svc -n ohmf` output**.
-7. **Health check output** — the `gateway /healthz -> ok` line and the
-   `Smoke check PASSED` line from the script.
-8. **Known limitations observed** — e.g. gateway proxies to contacts/media
-   returning 502 (those backends are not deployed), Postgres data being
-   ephemeral, anything that needed a retry.
+## Existing artifacts
 
-## Template
-
-```markdown
-# k3s smoke — <YYYY-MM-DD>
-
-- Operator: <name>
-- Machine: <e.g. 8-core / 16 GB / Windows 11 + WSL2 / Ubuntu 24.04>
-- Cluster: <k3d v5.x | kind vX | k3s vX | Docker Desktop Kubernetes>
-- kubectl: <client / server versions>
-- Images: ohmf-gateway:dev, ohmf-apps:dev  (loaded via <k3d image import | kind load | ...>)
-
-## kubectl get pods -n ohmf
-<paste>
-
-## kubectl get svc -n ohmf
-<paste>
-
-## Health check
-<paste: "gateway /healthz -> ok" and "Smoke check PASSED">
-
-## Known limitations / notes
-- Postgres storage is emptyDir (ephemeral).
-- contacts/media backends not deployed (gateway proxies to them 502; health unaffected).
-- Kafka/Cassandra/processors not part of this profile (stage-2 / Docker Compose).
-- <anything else observed>
-```
-
-## Status
-
-Recorded run: [`2026-06-06-local-k3s-smoke.md`](2026-06-06-local-k3s-smoke.md)
-— stage-1 overlay applied to a local single-node `kind` cluster (k8s v1.32.2);
-all active deployments reached Ready and `gateway /healthz -> ok` (smoke
-**PASSED**). Local deployment smoke only — no performance/HA/production claims.
+- [`2026-06-06-local-k3s-smoke.md`](2026-06-06-local-k3s-smoke.md)
+  - stage-1 local smoke

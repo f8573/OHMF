@@ -101,12 +101,10 @@ provided by a monotonic `server_order`.
 ## Known limitations
 
 - Delivery semantics are **at-least-once**, not exactly-once.
-- **Kubernetes is local-single-node only.** `deploy/k8s/` ships Kustomize manifests for a local k3s
-  smoke deployment (gateway in smoke mode + `apps` + Postgres/Redis, with probes and resource
-  limits). No Helm, no autoscaling, no multi-node/HA, no production deployment, and no benchmark
-  validation; the Kafka/Cassandra event pipeline and the processors are not in that profile. All
-  services expose `/healthz`, `/readyz`, and `/metrics` so they *can* be orchestrated.
+- **Kubernetes is local-single-node only.** `deploy/k8s/` ships Kustomize manifests for a lighter smoke profile (`local-k3s`), a fuller local pipeline profile (`local-k3s-full`), and an optional local gateway HPA layer (`local-k3s-full-hpa`). Recorded results now show those profiles working on a real local single-node cluster, including a gateway HPA smoke where replicas increased under synthetic load. They still do **not** establish production readiness, Helm, multi-node/HA, durable storage, ingress/TLS, network policy, or benchmark validation. All services expose `/healthz`, `/readyz`, and `/metrics` so they *can* be orchestrated.
 - **No substantiated load-test results** live in the repo yet; see
   [../benchmarks/README.md](../benchmarks/README.md).
 - Cassandra read path is **off by default** (shadow-write only).
 - Ordering guarantees are **per conversation**, not a global total order.
+
+
