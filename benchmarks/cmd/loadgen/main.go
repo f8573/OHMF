@@ -3,7 +3,10 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -28,11 +31,19 @@ import (
 type scenarioConfig struct {
 	Scenario               string            `json:"scenario"`
 	RunID                  string            `json:"run_id,omitempty"`
+	SystemUnderTestCommit  string            `json:"system_under_test_commit,omitempty"`
 	BaseURL                string            `json:"base_url"`
 	DriverLocation         string            `json:"driver_location"`
 	RatePerSecond          int               `json:"rate_per_second"`
 	DurationSeconds        int               `json:"duration_seconds"`
 	ActiveConversations    int               `json:"active_conversations"`
+	UserCount              int               `json:"user_count,omitempty"`
+	UserIndexOffset        int               `json:"user_index_offset,omitempty"`
+	PerUserRate            int               `json:"per_user_rate,omitempty"`
+	AggregateTargetRate    int               `json:"aggregate_target_rate,omitempty"`
+	ConversationsPerUser   int               `json:"conversations_per_user,omitempty"`
+	PrincipalProvisioning  string            `json:"principal_provisioning_mode,omitempty"`
+	JWTSecret              string            `json:"jwt_secret,omitempty"`
 	MessageText            string            `json:"message_text"`
 	AuthOTPCode            string            `json:"auth_otp_code"`
 	Namespace              string            `json:"namespace"`
@@ -48,7 +59,16 @@ type scenarioConfig struct {
 	KafkaLagTimeoutSeconds int               `json:"kafka_lag_timeout_seconds"`
 	RequestTimeoutSeconds  int               `json:"request_timeout_seconds"`
 	DuplicateEvery         int               `json:"duplicate_every"`
+	Phases                 []phaseConfig     `json:"phases,omitempty"`
 	Metadata               map[string]string `json:"metadata,omitempty"`
+}
+
+type phaseConfig struct {
+	Name                string `json:"name"`
+	UserCount           int    `json:"user_count"`
+	PerUserRate         int    `json:"per_user_rate"`
+	AggregateTargetRate int    `json:"aggregate_target_rate,omitempty"`
+	DurationSeconds     int    `json:"duration_seconds"`
 }
 
 type envCapture struct {
@@ -78,18 +98,20 @@ type machineCapture struct {
 }
 
 type runArtifacts struct {
-	Scenario      string                 `json:"scenario"`
-	RunID         string                 `json:"run_id"`
-	ResultDir     string                 `json:"result_dir"`
-	DriverMode    string                 `json:"driver_mode"`
-	CompletedUTC  string                 `json:"completed_utc"`
-	Cancelled     bool                   `json:"cancelled"`
-	Counts        countSummary           `json:"counts"`
-	Latency       latencySummary         `json:"latency"`
-	Reconcile     reconcileSummary       `json:"reconcile"`
-	Conversations []conversationArtifact `json:"conversations"`
-	Limitations   []string               `json:"limitations"`
-	Supported     string                 `json:"supported_claim"`
+	Scenario              string                 `json:"scenario"`
+	RunID                 string                 `json:"run_id"`
+	SystemUnderTestCommit string                 `json:"system_under_test_commit,omitempty"`
+	ResultDir             string                 `json:"result_dir"`
+	DriverMode            string                 `json:"driver_mode"`
+	CompletedUTC          string                 `json:"completed_utc"`
+	Cancelled             bool                   `json:"cancelled"`
+	Phases                []phaseArtifact        `json:"phases"`
+	Counts                countSummary           `json:"counts"`
+	Latency               latencySummary         `json:"latency"`
+	Reconcile             reconcileSummary       `json:"reconcile"`
+	Conversations         []conversationArtifact `json:"conversations"`
+	Limitations           []string               `json:"limitations"`
+	Supported             string                 `json:"supported_claim"`
 }
 
 type countSummary struct {
@@ -126,8 +148,20 @@ type reconcileSummary struct {
 	Limitations            []string `json:"limitations"`
 }
 
+type phaseArtifact struct {
+	Name                string           `json:"name"`
+	UserCount           int              `json:"user_count"`
+	PerUserRate         int              `json:"per_user_rate"`
+	AggregateTargetRate int              `json:"aggregate_target_rate"`
+	DurationSeconds     int              `json:"duration_seconds"`
+	Requested           int64            `json:"requested"`
+	Accepted            int64            `json:"accepted"`
+	SendFailures        map[string]int64 `json:"send_failures,omitempty"`
+}
+
 type conversationArtifact struct {
 	ConversationID string `json:"conversation_id"`
+	SenderUser     string `json:"sender_user_id,omitempty"`
 	RecipientUser  string `json:"recipient_user_id"`
 }
 
@@ -154,9 +188,13 @@ type messageAck struct {
 }
 
 type sendJob struct {
-	Sequence       int64
-	ConversationID string
-	IdempotencyKey string
+	PhaseName         string
+	Sequence          int64
+	PrincipalIndex    int
+	ConversationID    string
+	IdempotencyKey    string
+	ClientGeneratedID string
+	Token             string
 }
 
 type sendResult struct {
@@ -170,8 +208,9 @@ type sendResult struct {
 type runState struct {
 	config                scenarioConfig
 	startedAt             time.Time
-	usersToken            string
+	principals            []principalState
 	conversations         []conversationArtifact
+	phases                []phaseArtifact
 	scheduledUnique       int64
 	sentAttempts          int64
 	acceptedResponses     int64
@@ -181,6 +220,14 @@ type runState struct {
 	acceptedMessageIDs    map[string]struct{}
 	duplicateAcceptedKeys map[string]struct{}
 	mu                    sync.Mutex
+}
+
+type principalState struct {
+	UserID        string
+	DeviceID      string
+	Phone         string
+	Token         string
+	Conversations []conversationArtifact
 }
 
 func main() {
@@ -321,6 +368,12 @@ func loadConfig(path string) (scenarioConfig, error) {
 		RatePerSecond:          5,
 		DurationSeconds:        10,
 		ActiveConversations:    1,
+		UserCount:              1,
+		PerUserRate:            5,
+		AggregateTargetRate:    5,
+		ConversationsPerUser:   1,
+		PrincipalProvisioning:  "auth_api",
+		JWTSecret:              "dev-only-change-me",
 		MessageText:            "hello from loadgen",
 		AuthOTPCode:            "123456",
 		Namespace:              "ohmf",
@@ -337,6 +390,7 @@ func loadConfig(path string) (scenarioConfig, error) {
 		RequestTimeoutSeconds:  15,
 	}
 	if path == "" {
+		normalizeConfig(&cfg)
 		return cfg, validateConfig(cfg)
 	}
 	raw, err := os.ReadFile(path)
@@ -346,6 +400,7 @@ func loadConfig(path string) (scenarioConfig, error) {
 	if err := json.Unmarshal(raw, &cfg); err != nil {
 		return cfg, fmt.Errorf("parse config: %w", err)
 	}
+	normalizeConfig(&cfg)
 	return cfg, validateConfig(cfg)
 }
 
@@ -359,49 +414,165 @@ func validateConfig(cfg scenarioConfig) error {
 	if cfg.DriverLocation == "" {
 		return errors.New("driver_location is required")
 	}
-	if cfg.RatePerSecond <= 0 {
-		return errors.New("rate_per_second must be > 0")
+	if cfg.UserCount <= 0 {
+		return errors.New("user_count must be > 0")
 	}
-	if cfg.DurationSeconds <= 0 {
-		return errors.New("duration_seconds must be > 0")
+	if cfg.ConversationsPerUser <= 0 {
+		return errors.New("conversations_per_user must be > 0")
 	}
-	if cfg.ActiveConversations <= 0 {
-		return errors.New("active_conversations must be > 0")
+	if len(cfg.Phases) == 0 {
+		return errors.New("at least one phase is required")
+	}
+	switch cfg.PrincipalProvisioning {
+	case "auth_api", "seed_db":
+	default:
+		return errors.New("principal_provisioning_mode must be auth_api or seed_db")
+	}
+	for _, phase := range cfg.Phases {
+		if strings.TrimSpace(phase.Name) == "" {
+			return errors.New("phase name is required")
+		}
+		if phase.UserCount <= 0 {
+			return fmt.Errorf("phase %q user_count must be > 0", phase.Name)
+		}
+		if phase.PerUserRate <= 0 {
+			return fmt.Errorf("phase %q per_user_rate must be > 0", phase.Name)
+		}
+		if phase.DurationSeconds <= 0 {
+			return fmt.Errorf("phase %q duration_seconds must be > 0", phase.Name)
+		}
+		if phase.UserCount > cfg.UserCount {
+			return fmt.Errorf("phase %q user_count %d exceeds configured user_count %d", phase.Name, phase.UserCount, cfg.UserCount)
+		}
+		if phase.AggregateTargetRate != phase.UserCount*phase.PerUserRate {
+			return fmt.Errorf("phase %q aggregate_target_rate must equal user_count * per_user_rate", phase.Name)
+		}
 	}
 	return nil
 }
 
-func setupRun(ctx context.Context, client *http.Client, state *runState) error {
-	senderPhone := buildPhone(state.config.RunID, 0)
-	token, _, err := verifyUser(ctx, client, state.config, senderPhone, "loadgen-sender-"+state.config.RunID)
-	if err != nil {
-		return fmt.Errorf("verify sender: %w", err)
+func normalizeConfig(cfg *scenarioConfig) {
+	if cfg.JWTSecret == "" {
+		cfg.JWTSecret = "dev-only-change-me"
 	}
-	state.usersToken = token
+	if cfg.ConversationsPerUser <= 0 {
+		if cfg.ActiveConversations > 0 {
+			cfg.ConversationsPerUser = cfg.ActiveConversations
+		} else {
+			cfg.ConversationsPerUser = 1
+		}
+	}
+	if cfg.UserCount <= 0 {
+		cfg.UserCount = 1
+	}
+	if cfg.PerUserRate <= 0 {
+		switch {
+		case cfg.UserCount == 1 && cfg.RatePerSecond > 0:
+			cfg.PerUserRate = cfg.RatePerSecond
+		case cfg.AggregateTargetRate > 0 && cfg.UserCount > 0 && cfg.AggregateTargetRate%cfg.UserCount == 0:
+			cfg.PerUserRate = cfg.AggregateTargetRate / cfg.UserCount
+		}
+	}
+	if cfg.AggregateTargetRate <= 0 && cfg.UserCount > 0 && cfg.PerUserRate > 0 {
+		cfg.AggregateTargetRate = cfg.UserCount * cfg.PerUserRate
+	}
+	if cfg.PrincipalProvisioning == "" {
+		if cfg.UserCount > 1 || len(cfg.Phases) > 0 {
+			cfg.PrincipalProvisioning = "seed_db"
+		} else {
+			cfg.PrincipalProvisioning = "auth_api"
+		}
+	}
+	if len(cfg.Phases) == 0 {
+		phaseName := strings.TrimSpace(cfg.Scenario)
+		if phaseName == "" {
+			phaseName = "main"
+		}
+		cfg.Phases = []phaseConfig{{
+			Name:                phaseName,
+			UserCount:           cfg.UserCount,
+			PerUserRate:         cfg.PerUserRate,
+			AggregateTargetRate: cfg.UserCount * cfg.PerUserRate,
+			DurationSeconds:     cfg.DurationSeconds,
+		}}
+	}
+	maxUsers := cfg.UserCount
+	for i := range cfg.Phases {
+		if cfg.Phases[i].AggregateTargetRate <= 0 {
+			cfg.Phases[i].AggregateTargetRate = cfg.Phases[i].UserCount * cfg.Phases[i].PerUserRate
+		}
+		if cfg.Phases[i].UserCount > maxUsers {
+			maxUsers = cfg.Phases[i].UserCount
+		}
+	}
+	cfg.UserCount = maxUsers
+}
 
-	for i := 0; i < state.config.ActiveConversations; i++ {
-		phone := buildPhone(state.config.RunID, i+1)
-		_, userID, err := verifyUser(ctx, client, state.config, phone, fmt.Sprintf("loadgen-recipient-%02d", i+1))
-		if err != nil {
-			return fmt.Errorf("verify recipient %d: %w", i+1, err)
-		}
-		convID, err := createConversation(ctx, client, state.config, token, userID)
-		if err != nil {
-			return fmt.Errorf("create conversation %d: %w", i+1, err)
-		}
-		state.conversations = append(state.conversations, conversationArtifact{
-			ConversationID: convID,
-			RecipientUser:  userID,
+func setupRun(ctx context.Context, client *http.Client, state *runState) error {
+	state.phases = make([]phaseArtifact, 0, len(state.config.Phases))
+	for _, phase := range state.config.Phases {
+		state.phases = append(state.phases, phaseArtifact{
+			Name:                phase.Name,
+			UserCount:           phase.UserCount,
+			PerUserRate:         phase.PerUserRate,
+			AggregateTargetRate: phase.AggregateTargetRate,
+			DurationSeconds:     phase.DurationSeconds,
+			SendFailures:        map[string]int64{},
 		})
+	}
+
+	for i := 0; i < state.config.UserCount; i++ {
+		userIndex := state.config.UserIndexOffset + i
+		senderPhone := buildPhone(state.config.RunID, userIndex*2)
+		deviceName := fmt.Sprintf("loadgen-sender-%03d-%s", userIndex, state.config.RunID)
+		token, senderUserID, senderDeviceID, err := provisionPrincipal(ctx, client, state.config, senderPhone, deviceName)
+		if err != nil {
+			return fmt.Errorf("provision sender %d: %w", i, err)
+		}
+		principal := principalState{
+			UserID:   senderUserID,
+			DeviceID: senderDeviceID,
+			Phone:    senderPhone,
+			Token:    token,
+		}
+
+		for j := 0; j < state.config.ConversationsPerUser; j++ {
+			recipientIndex := userIndex*state.config.ConversationsPerUser + j
+			recipientPhone := buildPhone(state.config.RunID, 500+recipientIndex)
+			_, recipientUserID, _, err := provisionPrincipal(ctx, client, state.config, recipientPhone, fmt.Sprintf("loadgen-recipient-%03d-%02d", userIndex, j))
+			if err != nil {
+				return fmt.Errorf("provision recipient %d/%d: %w", i, j, err)
+			}
+			convID, err := createConversation(ctx, client, state.config, token, recipientUserID)
+			if err != nil {
+				return fmt.Errorf("create conversation user=%d conv=%d: %w", i, j, err)
+			}
+			conv := conversationArtifact{
+				ConversationID: convID,
+				SenderUser:     senderUserID,
+				RecipientUser:  recipientUserID,
+			}
+			principal.Conversations = append(principal.Conversations, conv)
+			state.conversations = append(state.conversations, conv)
+		}
+		state.principals = append(state.principals, principal)
 	}
 	return nil
 }
 
 func executeRun(ctx context.Context, client *http.Client, state *runState) error {
-	totalUnique := int64(state.config.RatePerSecond * state.config.DurationSeconds)
+	totalUnique := int64(0)
+	for _, phase := range state.config.Phases {
+		totalUnique += int64(phase.UserCount * phase.PerUserRate * phase.DurationSeconds)
+	}
 	state.scheduledUnique = totalUnique
 
-	workers := state.config.RatePerSecond
+	workers := 0
+	for _, phase := range state.config.Phases {
+		if phase.AggregateTargetRate > workers {
+			workers = phase.AggregateTargetRate
+		}
+	}
 	if workers < 4 {
 		workers = 4
 	}
@@ -432,48 +603,74 @@ func executeRun(ctx context.Context, client *http.Client, state *runState) error
 		}
 	}()
 
-	start := time.Now()
-	interval := time.Second / time.Duration(state.config.RatePerSecond)
 	var lastIdem string
-	for i := int64(0); i < totalUnique; i++ {
-		select {
-		case <-ctx.Done():
-			close(jobs)
-			wg.Wait()
-			close(results)
-			collect.Wait()
-			return ctx.Err()
-		default:
+	globalSequence := int64(0)
+	runStart := time.Now()
+	phaseStart := runStart
+	for _, phase := range state.config.Phases {
+		subInterval := time.Second / time.Duration(phase.PerUserRate)
+		stagger := time.Duration(0)
+		if phase.UserCount > 0 {
+			stagger = subInterval / time.Duration(phase.UserCount)
 		}
-		target := start.Add(time.Duration(i) * interval)
-		if sleep := time.Until(target); sleep > 0 {
-			timer := time.NewTimer(sleep)
-			select {
-			case <-ctx.Done():
-				timer.Stop()
-				close(jobs)
-				wg.Wait()
-				close(results)
-				collect.Wait()
-				return ctx.Err()
-			case <-timer.C:
+		for second := 0; second < phase.DurationSeconds; second++ {
+			secondStart := phaseStart.Add(time.Duration(second) * time.Second)
+			for slot := 0; slot < phase.PerUserRate; slot++ {
+				slotBase := secondStart.Add(time.Duration(slot) * subInterval)
+				for userIdx := 0; userIdx < phase.UserCount; userIdx++ {
+					select {
+					case <-ctx.Done():
+						close(jobs)
+						wg.Wait()
+						close(results)
+						collect.Wait()
+						return ctx.Err()
+					default:
+					}
+					target := slotBase.Add(time.Duration(userIdx) * stagger)
+					if sleep := time.Until(target); sleep > 0 {
+						timer := time.NewTimer(sleep)
+						select {
+						case <-ctx.Done():
+							timer.Stop()
+							close(jobs)
+							wg.Wait()
+							close(results)
+							collect.Wait()
+							return ctx.Err()
+						case <-timer.C:
+						}
+					}
+					principal := state.principals[userIdx]
+					conversation := principal.Conversations[(second*phase.PerUserRate+slot)%len(principal.Conversations)]
+					idem := fmt.Sprintf("m4-%s-u%03d-%s-%06d", state.config.RunID, state.config.UserIndexOffset+userIdx, sanitizeName(phase.Name), globalSequence)
+					lastIdem = idem
+					jobs <- sendJob{
+						PhaseName:         phase.Name,
+						Sequence:          globalSequence,
+						PrincipalIndex:    userIdx,
+						ConversationID:    conversation.ConversationID,
+						IdempotencyKey:    idem,
+						ClientGeneratedID: fmt.Sprintf("%s-u%03d-%06d", state.config.RunID, state.config.UserIndexOffset+userIdx, globalSequence),
+						Token:             principal.Token,
+					}
+					state.markScheduled(phase.Name)
+					if state.config.DuplicateEvery > 0 && (globalSequence+1)%int64(state.config.DuplicateEvery) == 0 {
+						jobs <- sendJob{
+							PhaseName:         phase.Name,
+							Sequence:          globalSequence,
+							PrincipalIndex:    userIdx,
+							ConversationID:    conversation.ConversationID,
+							IdempotencyKey:    lastIdem,
+							ClientGeneratedID: fmt.Sprintf("%s-u%03d-%06d-dup", state.config.RunID, state.config.UserIndexOffset+userIdx, globalSequence),
+							Token:             principal.Token,
+						}
+					}
+					globalSequence++
+				}
 			}
 		}
-		conversationID := state.conversations[i%int64(len(state.conversations))].ConversationID
-		idem := fmt.Sprintf("m4-%s-%06d", state.config.RunID, i)
-		lastIdem = idem
-		jobs <- sendJob{
-			Sequence:       i,
-			ConversationID: conversationID,
-			IdempotencyKey: idem,
-		}
-		if state.config.DuplicateEvery > 0 && (i+1)%int64(state.config.DuplicateEvery) == 0 {
-			jobs <- sendJob{
-				Sequence:       i,
-				ConversationID: conversationID,
-				IdempotencyKey: lastIdem,
-			}
-		}
+		phaseStart = phaseStart.Add(time.Duration(phase.DurationSeconds) * time.Second)
 	}
 
 	close(jobs)
@@ -483,24 +680,35 @@ func executeRun(ctx context.Context, client *http.Client, state *runState) error
 	return nil
 }
 
+func (s *runState) markScheduled(phaseName string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.phases {
+		if s.phases[i].Name == phaseName {
+			s.phases[i].Requested++
+			return
+		}
+	}
+}
+
 func doSend(ctx context.Context, client *http.Client, state *runState, job sendJob) sendResult {
 	body := map[string]any{
 		"conversation_id":     job.ConversationID,
 		"idempotency_key":     job.IdempotencyKey,
 		"content_type":        "text",
-		"client_generated_id": fmt.Sprintf("%s-%06d", state.config.RunID, job.Sequence),
+		"client_generated_id": job.ClientGeneratedID,
 		"content": map[string]any{
-			"text": fmt.Sprintf("%s [%s #%06d]", state.config.MessageText, state.config.RunID, job.Sequence),
+			"text": fmt.Sprintf("%s [%s %s #%06d]", state.config.MessageText, state.config.RunID, job.PhaseName, job.Sequence),
 		},
 	}
 	start := time.Now()
-	raw, status, err := apiRequest(ctx, client, state.config.BaseURL, http.MethodPost, "/v1/messages", state.usersToken, body)
+	raw, status, err := apiRequest(ctx, client, state.config.BaseURL, http.MethodPost, "/v1/messages", job.Token, body)
 	latencyMS := float64(time.Since(start).Microseconds()) / 1000.0
 	if err != nil {
 		return sendResult{Job: job, Failure: classifyError(err), LatencyMS: latencyMS}
 	}
 	if status < 200 || status > 299 {
-		return sendResult{Job: job, Failure: "http_" + strconv.Itoa(status), LatencyMS: latencyMS}
+		return sendResult{Job: job, Failure: classifyHTTPFailure(status, raw), LatencyMS: latencyMS}
 	}
 	var ack messageAck
 	if err := json.Unmarshal(raw, &ack); err != nil {
@@ -528,14 +736,35 @@ func (s *runState) record(result sendResult) {
 			s.duplicateAcceptedKeys[result.Job.IdempotencyKey] = struct{}{}
 			if prior != result.MessageID {
 				s.sendFailures["duplicate_idempotency_mismatch"]++
+				s.markPhaseFailureLocked(result.Job.PhaseName, "duplicate_idempotency_mismatch")
 			}
 			return
 		}
 		s.acceptedByIdem[result.Job.IdempotencyKey] = result.MessageID
 		s.acceptedMessageIDs[result.MessageID] = struct{}{}
+		s.markPhaseAcceptedLocked(result.Job.PhaseName)
 		return
 	}
 	s.sendFailures[result.Failure]++
+	s.markPhaseFailureLocked(result.Job.PhaseName, result.Failure)
+}
+
+func (s *runState) markPhaseAcceptedLocked(phaseName string) {
+	for i := range s.phases {
+		if s.phases[i].Name == phaseName {
+			s.phases[i].Accepted++
+			return
+		}
+	}
+}
+
+func (s *runState) markPhaseFailureLocked(phaseName, failure string) {
+	for i := range s.phases {
+		if s.phases[i].Name == phaseName {
+			s.phases[i].SendFailures[failure]++
+			return
+		}
+	}
 }
 
 func buildSummary(state *runState, cancelled bool, reconcile reconcileSummary, env envCapture, limitNotes []string, resultDir string) runArtifacts {
@@ -546,6 +775,7 @@ func buildSummary(state *runState, cancelled bool, reconcile reconcileSummary, e
 	duplicateKeys := len(state.duplicateAcceptedKeys)
 	acceptedMessageIDs := len(state.acceptedMessageIDs)
 	conversations := append([]conversationArtifact(nil), state.conversations...)
+	phases := clonePhases(state.phases)
 	sentAttempts := state.sentAttempts
 	acceptedResponses := state.acceptedResponses
 	state.mu.Unlock()
@@ -583,17 +813,19 @@ func buildSummary(state *runState, cancelled bool, reconcile reconcileSummary, e
 		reconcile.RunScopedReconcileMode = "fresh-conversation counts fallback only"
 	}
 	return runArtifacts{
-		Scenario:      state.config.Scenario,
-		RunID:         state.config.RunID,
-		ResultDir:     resultDir,
-		DriverMode:    state.config.DriverLocation,
-		CompletedUTC:  time.Now().UTC().Format(time.RFC3339),
-		Cancelled:     cancelled,
-		Counts:        counts,
-		Latency:       latency,
-		Reconcile:     reconcile,
-		Conversations: conversations,
-		Limitations:   limitations,
+		Scenario:              state.config.Scenario,
+		RunID:                 state.config.RunID,
+		SystemUnderTestCommit: state.config.SystemUnderTestCommit,
+		ResultDir:             resultDir,
+		DriverMode:            state.config.DriverLocation,
+		CompletedUTC:          time.Now().UTC().Format(time.RFC3339),
+		Cancelled:             cancelled,
+		Phases:                phases,
+		Counts:                counts,
+		Latency:               latency,
+		Reconcile:             reconcile,
+		Conversations:         conversations,
+		Limitations:           limitations,
 		Supported: fmt.Sprintf(
 			"This artifact supports only a local %s benchmark claim for scenario %q at run_id %q, with client-observed accept latency and run-scoped Postgres/Cassandra reconciliation by fresh test conversation where available.",
 			state.config.DriverLocation,
@@ -611,6 +843,9 @@ func renderMarkdown(summary runArtifacts, cfg scenarioConfig, env envCapture) st
 	b.WriteString("- Driver location: `" + summary.DriverMode + "`\n")
 	b.WriteString("- Completed UTC: `" + summary.CompletedUTC + "`\n")
 	b.WriteString("- Git HEAD: `" + env.GitHead + "`\n")
+	if summary.SystemUnderTestCommit != "" {
+		b.WriteString("- System-under-test commit: `" + summary.SystemUnderTestCommit + "`\n")
+	}
 	if env.WorkingTreeStatus != "" {
 		b.WriteString("- Working tree at generation: `" + env.WorkingTreeStatus + "`\n")
 	}
@@ -618,6 +853,15 @@ func renderMarkdown(summary runArtifacts, cfg scenarioConfig, env envCapture) st
 		b.WriteString("- Git HEAD note: " + env.GitHeadNote + "\n")
 	}
 	b.WriteString("- Host: `" + env.Machine.Hostname + "` on `" + env.Machine.OS + "/" + env.Machine.Arch + "`\n")
+	b.WriteString("\n## Phases\n\n")
+	for _, phase := range summary.Phases {
+		b.WriteString(fmt.Sprintf("- `%s`: users=`%d`, per_user_rate=`%d msg/sec`, aggregate=`%d msg/sec`, duration=`%ds`, requested=`%d`, accepted=`%d`\n", phase.Name, phase.UserCount, phase.PerUserRate, phase.AggregateTargetRate, phase.DurationSeconds, phase.Requested, phase.Accepted))
+		if len(phase.SendFailures) > 0 {
+			for _, key := range sortedKeys(phase.SendFailures) {
+				b.WriteString(fmt.Sprintf("- `%s` failure `%s`: `%d`\n", phase.Name, key, phase.SendFailures[key]))
+			}
+		}
+	}
 	b.WriteString("\n## Counts\n\n")
 	b.WriteString(fmt.Sprintf("- Requested unique sends: `%d`\n", summary.Counts.Requested))
 	b.WriteString(fmt.Sprintf("- Sent attempts: `%d`\n", summary.Counts.SentAttempts))
@@ -656,20 +900,32 @@ func renderMarkdown(summary runArtifacts, cfg scenarioConfig, env envCapture) st
 	return b.String()
 }
 
-func verifyUser(ctx context.Context, client *http.Client, cfg scenarioConfig, phone, deviceName string) (string, string, error) {
+func provisionPrincipal(ctx context.Context, client *http.Client, cfg scenarioConfig, phone, deviceName string) (string, string, string, error) {
+	switch cfg.PrincipalProvisioning {
+	case "seed_db":
+		return seedUserAndMintToken(ctx, cfg, phone, deviceName)
+	case "auth_api":
+		token, userID, deviceID, err := verifyUser(ctx, client, cfg, phone, deviceName)
+		return token, userID, deviceID, err
+	default:
+		return "", "", "", fmt.Errorf("unsupported principal provisioning mode %q", cfg.PrincipalProvisioning)
+	}
+}
+
+func verifyUser(ctx context.Context, client *http.Client, cfg scenarioConfig, phone, deviceName string) (string, string, string, error) {
 	raw, status, err := apiRequest(ctx, client, cfg.BaseURL, http.MethodPost, "/v1/auth/phone/start", "", map[string]any{
 		"phone_e164": phone,
 		"channel":    "SMS",
 	})
 	if err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
 	if status < 200 || status > 299 {
-		return "", "", fmt.Errorf("auth start status %d", status)
+		return "", "", "", fmt.Errorf("auth start status %d", status)
 	}
 	var start authStartResponse
 	if err := json.Unmarshal(raw, &start); err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
 	raw, status, err = apiRequest(ctx, client, cfg.BaseURL, http.MethodPost, "/v1/auth/phone/verify", "", map[string]any{
 		"challenge_id": start.ChallengeID,
@@ -680,16 +936,89 @@ func verifyUser(ctx context.Context, client *http.Client, cfg scenarioConfig, ph
 		},
 	})
 	if err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
 	if status < 200 || status > 299 {
-		return "", "", fmt.Errorf("auth verify status %d", status)
+		return "", "", "", fmt.Errorf("auth verify status %d", status)
 	}
 	var verify authVerifyResponse
 	if err := json.Unmarshal(raw, &verify); err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
-	return verify.Tokens.AccessToken, verify.User.UserID, nil
+	deviceID := ""
+	if rawDeviceID, ok := parseNestedString(raw, "device", "device_id"); ok {
+		deviceID = rawDeviceID
+	}
+	return verify.Tokens.AccessToken, verify.User.UserID, deviceID, nil
+}
+
+func seedUserAndMintToken(ctx context.Context, cfg scenarioConfig, phone, deviceName string) (string, string, string, error) {
+	query := fmt.Sprintf("WITH upsert_user AS (INSERT INTO users (primary_phone_e164, phone_verified_at) VALUES ('%s', now()) ON CONFLICT (primary_phone_e164) DO UPDATE SET phone_verified_at = EXCLUDED.phone_verified_at, updated_at = now() RETURNING id::text AS user_id), insert_device AS (INSERT INTO devices (user_id, platform, device_name, capabilities, last_seen_at) SELECT user_id::uuid, 'WEB', '%s', ARRAY['MINI_APPS']::text[], now() FROM upsert_user RETURNING id::text AS device_id, user_id::text) SELECT user_id || '|' || device_id FROM insert_device;", escapeSQLString(phone), escapeSQLString(deviceName))
+	out, err := runCommand(ctx, "kubectl", "-n", cfg.Namespace, "exec", cfg.PostgresResource, "--", "sh", "-lc", fmt.Sprintf("psql -U %s -d %s -t -A -c %q", cfg.PostgresUser, cfg.PostgresDB, query))
+	if err != nil {
+		return "", "", "", err
+	}
+	line := strings.TrimSpace(lastNonEmptyLine(out))
+	parts := strings.Split(strings.TrimSpace(line), "|")
+	if len(parts) != 2 {
+		return "", "", "", fmt.Errorf("unexpected seed principal output: %q", out)
+	}
+	token, err := mintAccessToken(parts[0], parts[1], cfg.JWTSecret, 24*time.Hour)
+	if err != nil {
+		return "", "", "", err
+	}
+	return token, parts[0], parts[1], nil
+}
+
+func mintAccessToken(userID, deviceID, secret string, ttl time.Duration) (string, error) {
+	header := map[string]any{
+		"alg": "HS256",
+		"typ": "JWT",
+	}
+	claims := map[string]any{
+		"uid":      userID,
+		"did":      deviceID,
+		"profiles": []string{"MINI_APPS"},
+		"iat":      time.Now().Unix(),
+		"exp":      time.Now().Add(ttl).Unix(),
+	}
+	headerJSON, err := json.Marshal(header)
+	if err != nil {
+		return "", err
+	}
+	claimsJSON, err := json.Marshal(claims)
+	if err != nil {
+		return "", err
+	}
+	encodedHeader := base64.RawURLEncoding.EncodeToString(headerJSON)
+	encodedClaims := base64.RawURLEncoding.EncodeToString(claimsJSON)
+	signingInput := encodedHeader + "." + encodedClaims
+	mac := hmac.New(sha256.New, []byte(secret))
+	if _, err := mac.Write([]byte(signingInput)); err != nil {
+		return "", err
+	}
+	signature := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+	return signingInput + "." + signature, nil
+}
+
+func parseNestedString(raw []byte, path ...string) (string, bool) {
+	var value any
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return "", false
+	}
+	current := value
+	for _, key := range path {
+		obj, ok := current.(map[string]any)
+		if !ok {
+			return "", false
+		}
+		current, ok = obj[key]
+		if !ok {
+			return "", false
+		}
+	}
+	text, ok := current.(string)
+	return text, ok && text != ""
 }
 
 func createConversation(ctx context.Context, client *http.Client, cfg scenarioConfig, token, participant string) (string, error) {
@@ -1004,6 +1333,21 @@ func classifyError(err error) string {
 	}
 }
 
+func classifyHTTPFailure(status int, raw []byte) string {
+	base := "http_" + strconv.Itoa(status)
+	if status != http.StatusTooManyRequests {
+		return base
+	}
+	scope, ok := parseNestedString(raw, "details", "scope")
+	if !ok {
+		scope, ok = parseNestedString(raw, "scope")
+	}
+	if ok {
+		return base + "_" + strings.ToLower(scope)
+	}
+	return base
+}
+
 func ensureRunID(input string) string {
 	if input != "" {
 		return input
@@ -1017,10 +1361,10 @@ func ensureRunID(input string) string {
 
 func buildPhone(runID string, index int) string {
 	digits := digitsOnly(runID)
-	if len(digits) < 6 {
-		digits += "000000"
+	if len(digits) < 4 {
+		digits += "0000"
 	}
-	return fmt.Sprintf("+1555%s%02d", digits[len(digits)-6:], index)
+	return fmt.Sprintf("+1555%s%03d", digits[len(digits)-4:], index%1000)
 }
 
 func digitsOnly(input string) string {
@@ -1064,6 +1408,18 @@ func cloneMap(input map[string]int64) map[string]int64 {
 	return out
 }
 
+func clonePhases(input []phaseArtifact) []phaseArtifact {
+	if len(input) == 0 {
+		return nil
+	}
+	out := make([]phaseArtifact, 0, len(input))
+	for _, phase := range input {
+		phase.SendFailures = cloneMap(phase.SendFailures)
+		out = append(out, phase)
+	}
+	return out
+}
+
 func sortedKeys(input map[string]int64) []string {
 	keys := make([]string, 0, len(input))
 	for key := range input {
@@ -1097,6 +1453,21 @@ func firstLine(raw string) string {
 		return raw[:idx]
 	}
 	return raw
+}
+
+func lastNonEmptyLine(raw string) string {
+	lines := strings.Split(raw, "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		line := strings.TrimSpace(lines[i])
+		if line != "" {
+			return line
+		}
+	}
+	return ""
+}
+
+func escapeSQLString(input string) string {
+	return strings.ReplaceAll(input, "'", "''")
 }
 
 func gitHead() string {
