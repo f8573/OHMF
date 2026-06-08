@@ -254,4 +254,13 @@ python "${REPO_ROOT}/benchmarks/scripts/aggregate_multisource_results.py" \
   --kafka-timeout-seconds "${KAFKA_TIMEOUT_SECONDS}" \
   --kafka-poll-seconds "${KAFKA_POLL_SECONDS}"
 
+log "Capturing settled post-reconciliation state"
+capture_snapshot "settled"
+capture_hpa "settled"
+capture_kafka_lag "settled"
+capture_processor_diagnostics "settled"
+capture_gateway_diagnostics "settled"
+capture_topic_diagnostics "settled"
+capture_database_diagnostics "settled"
+
 ok "Multisource throughput artifacts written to ${RESULT_DIR}"

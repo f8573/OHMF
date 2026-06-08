@@ -21,6 +21,9 @@ func TestObservabilityHandlers(t *testing.T) {
 	obs.recordDLQPublish()
 	obs.recordDuplicate()
 	obs.setConsumerLag(7)
+	obs.recordStage("kafka_consume", "succeeded", "")
+	obs.recordStage("postgres_write", "attempted", "")
+	obs.recordStage("postgres_write", "succeeded", "")
 
 	server := httptest.NewServer(obs.handler())
 	defer server.Close()
@@ -60,6 +63,8 @@ func TestObservabilityHandlers(t *testing.T) {
 		"ohmf_messages_processor_duplicates_total 1",
 		"ohmf_messages_processor_last_success_timestamp_seconds",
 		"ohmf_messages_processor_consumer_lag_messages 7",
+		"ohmf_messages_processor_stage_events_total{outcome=\"succeeded\",stage=\"kafka_consume\",target=\"\"} 1",
+		"ohmf_messages_processor_stage_events_total{outcome=\"attempted\",stage=\"postgres_write\",target=\"\"} 1",
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("expected metrics output to contain %q", want)

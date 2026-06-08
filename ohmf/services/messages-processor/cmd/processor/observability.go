@@ -30,6 +30,7 @@ type processorObservability struct {
 	errorTotal      prometheus.Counter
 	dlqPublished    prometheus.Counter
 	duplicateTotal  prometheus.Counter
+	stageEvents     *prometheus.CounterVec
 	processingDelay prometheus.Histogram
 	lastSuccess     prometheus.Gauge
 	consumerLag     prometheus.Gauge
@@ -40,10 +41,10 @@ func newProcessorObservability(service, addr string, brokers []string, checks []
 	namespace := fmt.Sprintf("ohmf_%s_processor", service)
 	registry := prometheus.NewRegistry()
 	obs := &processorObservability{
-		service: service,
-		addr:    addr,
-		brokers: brokers,
-		checks:  checks,
+		service:  service,
+		addr:     addr,
+		brokers:  brokers,
+		checks:   checks,
 		registry: registry,
 		processedTotal: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: namespace + "_processed_total",
@@ -61,6 +62,10 @@ func newProcessorObservability(service, addr string, brokers []string, checks []
 			Name: namespace + "_duplicates_total",
 			Help: "Total number of duplicate or idempotent events skipped.",
 		}),
+		stageEvents: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: namespace + "_stage_events_total",
+			Help: "Per-stage processor event counters by stage, outcome, and target.",
+		}, []string{"stage", "outcome", "target"}),
 		processingDelay: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:    namespace + "_processing_duration_seconds",
 			Help:    "End-to-end processing time for a consumed event.",
@@ -86,6 +91,7 @@ func newProcessorObservability(service, addr string, brokers []string, checks []
 		obs.errorTotal,
 		obs.dlqPublished,
 		obs.duplicateTotal,
+		obs.stageEvents,
 		obs.processingDelay,
 		obs.lastSuccess,
 		obs.consumerLag,
@@ -177,6 +183,10 @@ func (o *processorObservability) recordDLQPublish() {
 
 func (o *processorObservability) recordDuplicate() {
 	o.duplicateTotal.Inc()
+}
+
+func (o *processorObservability) recordStage(stage, outcome, target string) {
+	o.stageEvents.WithLabelValues(stage, outcome, target).Inc()
 }
 
 func kafkaReady(ctx context.Context, brokers []string) error {

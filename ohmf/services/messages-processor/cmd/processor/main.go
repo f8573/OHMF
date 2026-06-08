@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -122,6 +123,8 @@ const (
 	sideEffectSMSDispatchSent    = "sms_dispatch_published"
 	sideEffectRecipientFanout    = "recipient_fanout_published"
 )
+
+var loadgenClientGeneratedIDPattern = regexp.MustCompile(`^(.*)-u\d{3}-\d{6}(?:-dup)?$`)
 
 type processorDB interface {
 	BeginTx(context.Context, pgx.TxOptions) (pgx.Tx, error)
@@ -314,7 +317,9 @@ func main() {
 
 func (p *processor) handleFetchedMessage(ctx context.Context, msg kafka.Message) {
 	startedAt := time.Now()
+	p.obs.recordStage("kafka_consume", "succeeded", "")
 	if err := p.processMessage(ctx, msg); err != nil {
+		p.obs.recordStage("handler_return", "error", "")
 		p.obs.recordError(time.Since(startedAt))
 		log.Printf("process failed: %v", err)
 		if isRetryableProcessError(err) {
@@ -327,21 +332,28 @@ func (p *processor) handleFetchedMessage(ctx context.Context, msg kafka.Message)
 		}
 		p.obs.recordDLQPublish()
 	} else {
+		p.obs.recordStage("handler_return", "success", "")
 		p.obs.recordSuccess(time.Since(startedAt))
 	}
 	if err := p.reader.CommitMessages(ctx, msg); err != nil {
+		p.obs.recordStage("kafka_offset_commit", "failed", "")
 		log.Printf("commit failed: %v", err)
+		return
 	}
+	p.obs.recordStage("kafka_offset_commit", "succeeded", "")
 }
 
 func (p *processor) processMessage(ctx context.Context, msg kafka.Message) error {
 	var evt ingressEvent
 	if err := json.Unmarshal(msg.Value, &evt); err != nil {
+		p.obs.recordStage("decode", "failed", "")
 		return fmt.Errorf("decode ingress: %w", err)
 	}
 	if evt.ConversationID == "" || evt.SenderUserID == "" || evt.IdempotencyKey == "" || evt.Endpoint == "" {
+		p.obs.recordStage("decode", "failed", "")
 		return fmt.Errorf("invalid ingress event")
 	}
+	p.obs.recordStage("decode", "succeeded", "")
 
 	tx, err := p.pg.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
@@ -378,6 +390,7 @@ func (p *processor) processMessage(ctx context.Context, msg kafka.Message) error
 	)
 	if err == nil && existingStatus == 201 {
 		p.obs.recordDuplicate()
+		p.obs.recordStage("dedupe", "skipped", "")
 		var existing storedResponsePayload
 		if uErr := json.Unmarshal(existingPayload, &existing); uErr == nil && existing.MessageID != "" {
 			messageID = existing.MessageID
@@ -400,21 +413,34 @@ func (p *processor) processMessage(ctx context.Context, msg kafka.Message) error
 		}
 
 		if p.cfg.ShadowPostgresWrite {
+			p.obs.recordStage("postgres_write", "attempted", "")
 			contentJSON, _ := json.Marshal(evt.Content)
-			_, err = tx.Exec(ctx, `
+			tag, execErr := tx.Exec(ctx, `
 				INSERT INTO messages (id, conversation_id, sender_user_id, content_type, content, client_generated_id, transport, server_order, created_at)
 				VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5::jsonb, $6, $7, $8, now())
 				ON CONFLICT (id) DO NOTHING
 			`, messageID, evt.ConversationID, evt.SenderUserID, evt.ContentType, string(contentJSON), evt.ClientGeneratedID, mapTransport(evt.TransportIntent), serverOrder)
-			if err != nil {
+			if execErr != nil {
+				p.recordStageFailure("postgres_write", "", evt, false, execErr)
+				return execErr
+			}
+			if tag.RowsAffected() != 1 {
+				err = fmt.Errorf("postgres message insert affected %d rows for new message", tag.RowsAffected())
+				p.recordStageFailure("postgres_write", "", evt, false, err)
 				return err
 			}
-			_, err = tx.Exec(ctx, `
+			tag, execErr = tx.Exec(ctx, `
 				UPDATE conversations
 				SET last_message_id = $2::uuid, updated_at = now()
 				WHERE id = $1::uuid
 			`, evt.ConversationID, messageID)
-			if err != nil {
+			if execErr != nil {
+				p.recordStageFailure("postgres_write", "", evt, false, execErr)
+				return execErr
+			}
+			if tag.RowsAffected() != 1 {
+				err = fmt.Errorf("conversation last_message update affected %d rows", tag.RowsAffected())
+				p.recordStageFailure("postgres_write", "", evt, false, err)
 				return err
 			}
 		}
@@ -471,12 +497,21 @@ func (p *processor) processMessage(ctx context.Context, msg kafka.Message) error
 	}
 
 	if err := tx.Commit(ctx); err != nil {
+		if newMessage && p.cfg.ShadowPostgresWrite {
+			p.recordStageFailure("postgres_write", "", evt, false, err)
+		}
 		return retryableError("postgres commit failed: %w", err)
 	}
+	if newMessage && p.cfg.ShadowPostgresWrite {
+		p.obs.recordStage("postgres_write", "succeeded", "")
+	}
 
+	p.obs.recordStage("cassandra_write", "attempted", "")
 	if err := p.cassandra.WriteMessage(ctx, evt, messageID, serverOrder, persistedAt); err != nil {
+		p.recordStageFailure("cassandra_write", "", evt, true, err)
 		return retryableError("cassandra write failed after postgres commit: %w", err)
 	}
+	p.obs.recordStage("cassandra_write", "succeeded", "")
 
 	ackBody, _ := json.Marshal(ackPayload{
 		EventID:           evt.EventID,
@@ -488,12 +523,18 @@ func (p *processor) processMessage(ctx context.Context, msg kafka.Message) error
 		PersistedAtMS:     persistedAt.UnixMilli(),
 		ClientGeneratedID: evt.ClientGeneratedID,
 	})
+	p.obs.recordStage("redis_ack", "attempted", "set")
 	if err := p.redis.Set(ctx, ackKeyPrefix+evt.EventID, string(ackBody), 24*time.Hour); err != nil {
+		p.recordStageFailure("redis_ack", "set", evt, true, err)
 		return retryableError("redis ack failed after persistence: %w", err)
 	}
+	p.obs.recordStage("redis_ack", "succeeded", "set")
+	p.obs.recordStage("redis_ack", "attempted", "notify")
 	if err := p.redis.Publish(ctx, ackSignalPrefix+evt.EventID, string(ackBody)); err != nil {
+		p.recordStageFailure("redis_ack", "notify", evt, true, err)
 		return retryableError("redis ack notify failed after persistence: %w", err)
 	}
+	p.obs.recordStage("redis_ack", "succeeded", "notify")
 
 	persisted := persistedEvent{
 		EventID:         evt.EventID,
@@ -509,40 +550,58 @@ func (p *processor) processMessage(ctx context.Context, msg kafka.Message) error
 	}
 	body, _ := json.Marshal(persisted)
 	if !sideEffects.PersistedPublished {
+		p.obs.recordStage("downstream_publish", "attempted", "persisted")
 		if err := p.persistedW.WriteMessages(ctx, kafka.Message{
 			Key:   []byte(evt.ConversationID),
 			Value: body,
 			Time:  time.Now().UTC(),
 		}); err != nil {
+			p.recordStageFailure("downstream_publish", "persisted", evt, true, err)
 			return retryableError("persisted topic publish failed after persistence: %w", err)
 		}
+		p.obs.recordStage("downstream_publish", "succeeded", "persisted")
+		p.obs.recordStage("side_effect_mark", "attempted", sideEffectPersistedPublished)
 		if err := p.markSideEffect(ctx, evt, sideEffectPersistedPublished); err != nil {
+			p.recordStageFailure("side_effect_mark", sideEffectPersistedPublished, evt, true, err)
 			return retryableError("mark persisted topic side effect failed: %w", err)
 		}
+		p.obs.recordStage("side_effect_mark", "succeeded", sideEffectPersistedPublished)
 	}
 	if !sideEffects.MicroservicePublished {
+		p.obs.recordStage("downstream_publish", "attempted", "microservice")
 		if err := p.microserviceW.WriteMessages(ctx, kafka.Message{
 			Key:   []byte(evt.ConversationID),
 			Value: body,
 			Time:  time.Now().UTC(),
 		}); err != nil {
+			p.recordStageFailure("downstream_publish", "microservice", evt, true, err)
 			return retryableError("microservice topic publish failed after persistence: %w", err)
 		}
+		p.obs.recordStage("downstream_publish", "succeeded", "microservice")
+		p.obs.recordStage("side_effect_mark", "attempted", sideEffectMicroserviceSent)
 		if err := p.markSideEffect(ctx, evt, sideEffectMicroserviceSent); err != nil {
+			p.recordStageFailure("side_effect_mark", sideEffectMicroserviceSent, evt, true, err)
 			return retryableError("mark microservice topic side effect failed: %w", err)
 		}
+		p.obs.recordStage("side_effect_mark", "succeeded", sideEffectMicroserviceSent)
 	}
 	if mapTransport(evt.TransportIntent) == "SMS" && !sideEffects.SMSDispatchPublished {
+		p.obs.recordStage("downstream_publish", "attempted", "sms_dispatch")
 		if err := p.smsW.WriteMessages(ctx, kafka.Message{
 			Key:   []byte(evt.ConversationID),
 			Value: body,
 			Time:  time.Now().UTC(),
 		}); err != nil {
+			p.recordStageFailure("downstream_publish", "sms_dispatch", evt, true, err)
 			return retryableError("sms dispatch publish failed after persistence: %w", err)
 		}
+		p.obs.recordStage("downstream_publish", "succeeded", "sms_dispatch")
+		p.obs.recordStage("side_effect_mark", "attempted", sideEffectSMSDispatchSent)
 		if err := p.markSideEffect(ctx, evt, sideEffectSMSDispatchSent); err != nil {
+			p.recordStageFailure("side_effect_mark", sideEffectSMSDispatchSent, evt, true, err)
 			return retryableError("mark sms dispatch side effect failed: %w", err)
 		}
+		p.obs.recordStage("side_effect_mark", "succeeded", sideEffectSMSDispatchSent)
 	}
 	if !sideEffects.RecipientFanoutSent {
 		for _, recipientID := range recipients {
@@ -551,9 +610,12 @@ func (p *processor) processMessage(ctx context.Context, msg kafka.Message) error
 			}
 			_ = p.redis.Publish(ctx, "message:user:"+recipientID, payload)
 		}
+		p.obs.recordStage("side_effect_mark", "attempted", sideEffectRecipientFanout)
 		if err := p.markSideEffect(ctx, evt, sideEffectRecipientFanout); err != nil {
+			p.recordStageFailure("side_effect_mark", sideEffectRecipientFanout, evt, true, err)
 			return retryableError("mark recipient fanout side effect failed: %w", err)
 		}
+		p.obs.recordStage("side_effect_mark", "succeeded", sideEffectRecipientFanout)
 	}
 	return nil
 }
@@ -586,6 +648,41 @@ func (p *processor) markSideEffect(ctx context.Context, evt ingressEvent, effect
 		WHERE actor_user_id = $1::uuid AND endpoint = $2 AND key = $3
 	`, evt.SenderUserID, evt.Endpoint, evt.IdempotencyKey, []string{"side_effects", effect})
 	return err
+}
+
+func (p *processor) recordStageFailure(stage, target string, evt ingressEvent, partialPersistence bool, err error) {
+	p.obs.recordStage(stage, "failed", target)
+	log.Printf(
+		"stage failure stage=%s target=%s partial_persistence=%t event_id=%s message_id=%s conversation_id=%s sender_user_id=%s idempotency_key=%s client_generated_id=%s run_scope=%s err=%v",
+		stage,
+		target,
+		partialPersistence,
+		evt.EventID,
+		evt.MessageID,
+		evt.ConversationID,
+		evt.SenderUserID,
+		evt.IdempotencyKey,
+		evt.ClientGeneratedID,
+		diagnosticRunScope(evt),
+		err,
+	)
+}
+
+func diagnosticRunScope(evt ingressEvent) string {
+	if match := loadgenClientGeneratedIDPattern.FindStringSubmatch(strings.TrimSpace(evt.ClientGeneratedID)); len(match) == 2 {
+		return match[1]
+	}
+	if text, ok := evt.Content["text"].(string); ok {
+		if start := strings.IndexByte(text, '['); start >= 0 {
+			if end := strings.IndexByte(text[start+1:], ']'); end >= 0 {
+				fields := strings.Fields(text[start+1 : start+1+end])
+				if len(fields) >= 1 {
+					return fields[0]
+				}
+			}
+		}
+	}
+	return ""
 }
 
 func loadRecipients(ctx context.Context, tx pgx.Tx, conversationID, senderID string) ([]string, error) {
