@@ -1,6 +1,6 @@
 # Validation Matrix
 
-Status: Stage A complete. Stage B1 now has three bounded results: per-user limit evidence, per-IP limit evidence, and a clean multisource backend-failure result. Stages B2-D remain not yet run.
+Status: Stage A complete. Stage B1 now has per-user limiter evidence, per-IP limiter evidence, a clean multisource ingress-failure result at 120 msg/sec, and a diagnostic full-pipeline ladder that passed 45 msg/sec and failed 60 msg/sec. Stages B2-D remain not yet run.
 
 | Test | Status | Artifact | Notes |
 | --- | --- | --- | --- |
@@ -9,6 +9,7 @@ Status: Stage A complete. Stage B1 now has three bounded results: per-user limit
 | Sustained 120 msg/sec x 120 sec, single sender | failed as rate-limiter validation | [2026-06-08-sustained-120msgsec](C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-08-sustained-120msgsec/summary.md) | Clean target run recorded `accepted=419/14400`, `pg_delta=419`, `cass_delta=419`, `http_429=13981`; accepted subset reconciled cleanly and validated per-user gateway send limiting |
 | Sustained 120 msg/sec aggregate x 12 min, 60 users | failed as IP-limited aggregate run | [2026-06-08-sustained-120msgsec-aggregate](C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-08-sustained-120msgsec-aggregate/summary.md) | `10 users x 1 msg/sec` passed `600/600`; higher-rate phases failed only as `http_429_ip`; total accepted `10199`, `pg_delta=10199`, `cass_delta=10199`, `missing=0`, `duplicates=0` |
 | Sustained 120 msg/sec aggregate x 10 min, 12 source IPs | failed as backend pipeline run | [2026-06-08-sustained-120msgsec-multisource](C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-08-sustained-120msgsec-multisource/summary.md) | Clean-baseline multisource run used `12` loadgen pods at `10 msg/sec` each and removed the gateway IP bottleneck: `accepted=82792/82800`, only `8` `http_500` sends, but `pg_delta=29301`, `cass_delta=30267`, `missing=53491`, and Kafka lag remained `47820` after `183s` |
+| Pipeline diagnostic ladder (`30/45/60 msg/sec`, 12 source IPs) | bounded diagnostic result | [2026-06-08-pipeline-diagnostic-ladder](C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-08-pipeline-diagnostic-ladder/summary.md) | Clean rerun with bounded recovery passed `30 msg/sec` (`4500/4500`) and `45 msg/sec` (`6750/6750`) with full reconciliation; `60 msg/sec` accepted `9000/9000` and drained Kafka lag to `0` in `31.873s`, but only reconciled `pg_delta=7553`, `cass_delta=7991` |
 | Burst ladder | not yet run | not yet run | Publish highest repeatable passing only |
 | Backlog recovery | not yet run | not yet run | Reconcile by run_id / conversation |
 | Gateway failure | not yet run | not yet run | Hard failures itemized |

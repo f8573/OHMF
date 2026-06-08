@@ -1,0 +1,87 @@
+{
+  "scenario": "pipeline-diagnostic-ladder",
+  "run_date": "2026-06-08",
+  "status": "bounded_failure",
+  "highest_fully_reconciled_rate": 45,
+  "first_failed_rate": 60,
+  "rungs": [
+    {
+      "rate": 30,
+      "status": "passed",
+      "requested": 4500,
+      "accepted": 4500,
+      "failed": 0,
+      "postgres_delta": 4500,
+      "cassandra_delta": 4500,
+      "missing": 0,
+      "duplicates": 0,
+      "lag_at_end": 0,
+      "lag_settled_to_zero": true,
+      "lag_zero_seconds": 2.069686,
+      "source_ips": 12,
+      "per_pod_target": "mixed 2-3 msg/sec per pod",
+      "result_dir": "benchmarks\\results\\2026-06-08-pipeline-diagnostic-ladder\\30msgsec",
+      "summary_md": "benchmarks\\results\\2026-06-08-pipeline-diagnostic-ladder\\30msgsec\\summary.md",
+      "processor_peak": {
+        "cpu": "111m",
+        "memory": "11Mi"
+      },
+      "gateway_peak": {
+        "cpu": "150m",
+        "memory": "105Mi"
+      }
+    },
+    {
+      "rate": 45,
+      "status": "passed",
+      "requested": 6750,
+      "accepted": 6750,
+      "failed": 0,
+      "postgres_delta": 6750,
+      "cassandra_delta": 6750,
+      "missing": 0,
+      "duplicates": 0,
+      "lag_at_end": 0,
+      "lag_settled_to_zero": true,
+      "lag_zero_seconds": 1.848948,
+      "source_ips": 12,
+      "per_pod_target": "mixed 3-4 msg/sec per pod",
+      "result_dir": "benchmarks\\results\\2026-06-08-pipeline-diagnostic-ladder\\45msgsec",
+      "summary_md": "benchmarks\\results\\2026-06-08-pipeline-diagnostic-ladder\\45msgsec\\summary.md",
+      "processor_peak": {
+        "cpu": "114m",
+        "memory": "11Mi"
+      },
+      "gateway_peak": {
+        "cpu": "145m",
+        "memory": "103Mi"
+      }
+    },
+    {
+      "rate": 60,
+      "status": "failed",
+      "requested": 9000,
+      "accepted": 9000,
+      "failed": 0,
+      "postgres_delta": 7553,
+      "cassandra_delta": 7991,
+      "missing": 1447,
+      "duplicates": 0,
+      "lag_at_end": 0,
+      "lag_settled_to_zero": true,
+      "lag_zero_seconds": 31.872974,
+      "source_ips": 12,
+      "per_pod_target": "5 msg/sec per pod",
+      "result_dir": "benchmarks\\results\\2026-06-08-pipeline-diagnostic-ladder\\60msgsec",
+      "summary_md": "benchmarks\\results\\2026-06-08-pipeline-diagnostic-ladder\\60msgsec\\summary.md",
+      "processor_peak": {
+        "cpu": "113m",
+        "memory": "12Mi"
+      },
+      "gateway_peak": {
+        "cpu": "165m",
+        "memory": "114Mi"
+      }
+    }
+  ]
+}

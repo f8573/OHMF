@@ -9,19 +9,26 @@ source "${REPO_ROOT}/scripts/lib/common.sh"
 NS="${NS:-ohmf}"
 LOADGEN_PODS="${LOADGEN_PODS:-12}"
 USERS_PER_SHARD="${USERS_PER_SHARD:-10}"
+SHARD_USER_COUNTS="${SHARD_USER_COUNTS:-}"
 WARMUP_USERS="${WARMUP_USERS:-5}"
 PER_USER_RATE="${PER_USER_RATE:-1}"
 PER_POD_RATE="${PER_POD_RATE:-10}"
+PER_POD_RATE_LABEL="${PER_POD_RATE_LABEL:-${PER_POD_RATE} msg/sec per active shard}"
 WARMUP_DURATION_SECONDS="${WARMUP_DURATION_SECONDS:-60}"
 MAIN_DURATION_SECONDS="${MAIN_DURATION_SECONDS:-600}"
 AGGREGATE_TARGET_RATE="${AGGREGATE_TARGET_RATE:-120}"
 KAFKA_TIMEOUT_SECONDS="${KAFKA_TIMEOUT_SECONDS:-180}"
 KAFKA_POLL_SECONDS="${KAFKA_POLL_SECONDS:-2}"
-JOB_NAME="loadgen-multisource-120"
 RUN_DATE="$(date -u +%F)"
 RUN_STAMP="$(date -u +%Y%m%dt%H%M%sz)"
+SCENARIO_NAME="${SCENARIO_NAME:-sustained-120msgsec-multisource}"
+JOB_NAME="${JOB_NAME:-loadgen-${SCENARIO_NAME}}"
 RUN_ID_PREFIX="${RUN_ID_PREFIX:-${RUN_STAMP}-multisource}"
-RESULT_DIR="${REPO_ROOT}/benchmarks/results/${RUN_DATE}-sustained-120msgsec-multisource"
+RESULT_DIR="${RESULT_DIR:-${REPO_ROOT}/benchmarks/results/${RUN_DATE}-${SCENARIO_NAME}}"
+DEPLOY_RESULT_MD="${DEPLOY_RESULT_MD:-deploy/k8s/results/${RUN_DATE}-${SCENARIO_NAME}.md}"
+DEPLOY_TITLE="${DEPLOY_TITLE:-Local k3s throughput result - ${AGGREGATE_TARGET_RATE} msg/sec multisource - ${RUN_DATE}}"
+BENCHMARK_LABEL="${BENCHMARK_LABEL:-${SCENARIO_NAME}}"
+MESSAGE_TEXT="${MESSAGE_TEXT:-m4 sustained multisource local k3s validation}"
 OBS_DIR="${RESULT_DIR}/observations"
 SHARDS_DIR="${RESULT_DIR}/shards"
 K3D_CONTEXT="$(kubectl config current-context)"
@@ -57,6 +64,33 @@ capture_kafka_lag() {
   kubectl -n "${NS}" exec deploy/kafka -- sh -lc \
     "/usr/bin/kafka-consumer-groups --bootstrap-server localhost:9092 --describe --group messages-processor-v1" \
     > "${OBS_DIR}/kafka-lag-${stamp}.txt"
+}
+
+capture_processor_diagnostics() {
+  local stamp="$1"
+  kubectl -n "${NS}" logs deploy/messages-processor --tail=2000 > "${OBS_DIR}/messages-processor-logs-${stamp}.txt" || true
+  kubectl -n "${NS}" exec deploy/messages-processor -- wget -qO- http://localhost:18088/metrics > "${OBS_DIR}/messages-processor-metrics-${stamp}.txt" || true
+  kubectl -n "${NS}" exec deploy/messages-processor -- wget -qO- http://localhost:18088/readyz > "${OBS_DIR}/messages-processor-readyz-${stamp}.txt" || true
+  kubectl -n "${NS}" get deploy messages-processor -o yaml > "${OBS_DIR}/messages-processor-deployment-${stamp}.yaml" || true
+}
+
+capture_gateway_diagnostics() {
+  local stamp="$1"
+  kubectl -n "${NS}" logs deploy/gateway --tail=2000 > "${OBS_DIR}/gateway-logs-${stamp}.txt" || true
+}
+
+capture_topic_diagnostics() {
+  local stamp="$1"
+  kubectl -n "${NS}" exec deploy/kafka -- sh -lc \
+    "/usr/bin/kafka-topics --bootstrap-server localhost:9092 --describe --topic msg.ingress.v1" \
+    > "${OBS_DIR}/kafka-topic-msg.ingress.v1-${stamp}.txt" || true
+}
+
+capture_database_diagnostics() {
+  local stamp="$1"
+  kubectl -n "${NS}" exec deploy/postgres -- psql -U ohmf -d ohmf -At -c "select count(*) from messages;" > "${OBS_DIR}/postgres-messages-count-${stamp}.txt" || true
+  kubectl -n "${NS}" exec deploy/postgres -- psql -U ohmf -d ohmf -At -c "select state, count(*) from pg_stat_activity group by state order by state;" > "${OBS_DIR}/postgres-activity-${stamp}.txt" || true
+  kubectl -n "${NS}" exec deploy/cassandra -- sh -lc "/opt/cassandra/bin/cqlsh -e \"CONSISTENCY ONE; SELECT COUNT(*) FROM ohmf_messages.messages_by_conversation;\"" > "${OBS_DIR}/cassandra-count-${stamp}.txt" || true
 }
 
 cleanup_job() {
@@ -103,6 +137,10 @@ kubectl get nodes -o wide > "${OBS_DIR}/nodes.txt"
 capture_snapshot "before"
 capture_hpa "before"
 capture_kafka_lag "before"
+capture_processor_diagnostics "before"
+capture_gateway_diagnostics "before"
+capture_topic_diagnostics "before"
+capture_database_diagnostics "before"
 
 log "Building Linux loadgen image"
 docker build -t ohmf-loadgen:dev -f "${REPO_ROOT}/benchmarks/loadgen.Dockerfile" "${REPO_ROOT}"
@@ -126,7 +164,7 @@ spec:
     metadata:
       labels:
         app: ohmf-loadgen
-        benchmark: sustained-120msgsec-multisource
+        benchmark: ${BENCHMARK_LABEL}
     spec:
       restartPolicy: Never
       containers:
@@ -150,6 +188,8 @@ spec:
               value: "${RUN_ID_PREFIX}"
             - name: USERS_PER_SHARD
               value: "${USERS_PER_SHARD}"
+            - name: SHARD_USER_COUNTS
+              value: "${SHARD_USER_COUNTS}"
             - name: WARMUP_USERS
               value: "${WARMUP_USERS}"
             - name: PER_USER_RATE
@@ -159,7 +199,7 @@ spec:
             - name: MAIN_DURATION_SECONDS
               value: "${MAIN_DURATION_SECONDS}"
             - name: MESSAGE_TEXT
-              value: "m4 sustained multisource local k3s validation"
+              value: "${MESSAGE_TEXT}"
 EOF
 
 log "Sampling cluster state during the run"
@@ -175,6 +215,10 @@ log "Capturing post-run cluster state"
 capture_snapshot "after"
 capture_hpa "after"
 capture_kafka_lag "after"
+capture_processor_diagnostics "after"
+capture_gateway_diagnostics "after"
+capture_topic_diagnostics "after"
+capture_database_diagnostics "after"
 kubectl -n "${NS}" get pods -l job-name="${JOB_NAME}" -o wide > "${OBS_DIR}/loadgen-pods.txt"
 kubectl -n "${NS}" get pods -l job-name="${JOB_NAME}" -o json > "${OBS_DIR}/loadgen-pods.json"
 
@@ -195,6 +239,10 @@ python "${REPO_ROOT}/benchmarks/scripts/aggregate_multisource_results.py" \
   --per-pod-rate "${PER_POD_RATE}" \
   --main-duration-seconds "${MAIN_DURATION_SECONDS}" \
   --aggregate-target-rate "${AGGREGATE_TARGET_RATE}" \
+  --scenario-name "${SCENARIO_NAME}" \
+  --deploy-result-md "${DEPLOY_RESULT_MD}" \
+  --deploy-title "${DEPLOY_TITLE}" \
+  --per-pod-rate-label "${PER_POD_RATE_LABEL}" \
   --overlay "deploy/k8s/overlays/local-k3s-full" \
   --cluster-name "${K3D_CLUSTER}" \
   --cluster-context "${K3D_CONTEXT}" \

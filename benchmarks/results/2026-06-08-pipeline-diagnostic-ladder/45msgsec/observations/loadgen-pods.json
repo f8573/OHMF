@@ -1,0 +1,3441 @@
+{
+    "apiVersion": "v1",
+    "items": [
+        {
+            "apiVersion": "v1",
+            "kind": "Pod",
+            "metadata": {
+                "annotations": {
+                    "batch.kubernetes.io/job-completion-index": "0"
+                },
+                "creationTimestamp": "2026-06-08T19:47:15Z",
+                "generateName": "loadgen-pipeline-diagnostic-45msgsec-multisource-0-",
+                "generation": 1,
+                "labels": {
+                    "app": "ohmf-loadgen",
+                    "batch.kubernetes.io/controller-uid": "d34de831-da60-4681-887e-3979f1e50976",
+                    "batch.kubernetes.io/job-completion-index": "0",
+                    "batch.kubernetes.io/job-name": "loadgen-pipeline-diagnostic-45msgsec-multisource",
+                    "benchmark": "pipeline-diagnostic-45msgsec-multisource",
+                    "controller-uid": "d34de831-da60-4681-887e-3979f1e50976",
+                    "job-name": "loadgen-pipeline-diagnostic-45msgsec-multisource"
+                },
+                "name": "loadgen-pipeline-diagnostic-45msgsec-multisource-0-zdm6z",
+                "namespace": "ohmf",
+                "ownerReferences": [
+                    {
+                        "apiVersion": "batch/v1",
+                        "blockOwnerDeletion": true,
+                        "controller": true,
+                        "kind": "Job",
+                        "name": "loadgen-pipeline-diagnostic-45msgsec-multisource",
+                        "uid": "d34de831-da60-4681-887e-3979f1e50976"
+                    }
+                ],
+                "resourceVersion": "9342",
+                "uid": "3a793577-293c-4375-bcfd-8d91c2b4021c"
+            },
+            "spec": {
+                "containers": [
+                    {
+                        "env": [
+                            {
+                                "name": "JOB_COMPLETION_INDEX",
+                                "valueFrom": {
+                                    "fieldRef": {
+                                        "apiVersion": "v1",
+                                        "fieldPath": "metadata.annotations['batch.kubernetes.io/job-completion-index']"
+                                    }
+                                }
+                            },
+                            {
+                                "name": "NAMESPACE",
+                                "value": "ohmf"
+                            },
+                            {
+                                "name": "BASE_URL",
+                                "value": "http://gateway.ohmf.svc.cluster.local:8081"
+                            },
+                            {
+                                "name": "POSTGRES_DSN",
+                                "value": "postgres://ohmf:ohmf@postgres:5432/ohmf?sslmode=disable"
+                            },
+                            {
+                                "name": "JWT_SECRET",
+                                "value": "dev-only-change-me"
+                            },
+                            {
+                                "name": "RUN_ID_PREFIX",
+                                "value": "20260608t19461780948010z-multisource"
+                            },
+                            {
+                                "name": "USERS_PER_SHARD",
+                                "value": "10"
+                            },
+                            {
+                                "name": "SHARD_USER_COUNTS",
+                                "value": "4,4,4,4,4,4,4,4,4,3,3,3"
+                            },
+                            {
+                                "name": "WARMUP_USERS",
+                                "value": "5"
+                            },
+                            {
+                                "name": "PER_USER_RATE",
+                                "value": "1"
+                            },
+                            {
+                                "name": "WARMUP_DURATION_SECONDS",
+                                "value": "15"
+                            },
+                            {
+                                "name": "MAIN_DURATION_SECONDS",
+                                "value": "120"
+                            },
+                            {
+                                "name": "MESSAGE_TEXT",
+                                "value": "m4 sustained multisource local k3s validation"
+                            }
+                        ],
+                        "image": "ohmf-loadgen:dev",
+                        "imagePullPolicy": "IfNotPresent",
+                        "name": "loadgen",
+                        "resources": {},
+                        "terminationMessagePath": "/dev/termination-log",
+                        "terminationMessagePolicy": "File",
+                        "volumeMounts": [
+                            {
+                                "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+                                "name": "kube-api-access-lsf6n",
+                                "readOnly": true
+                            }
+                        ]
+                    }
+                ],
+                "dnsPolicy": "ClusterFirst",
+                "enableServiceLinks": true,
+                "hostname": "loadgen-pipeline-diagnostic-45msgsec-multisource-0",
+                "nodeName": "k3d-ohmf-b1-server-0",
+                "preemptionPolicy": "PreemptLowerPriority",
+                "priority": 0,
+                "restartPolicy": "Never",
+                "schedulerName": "default-scheduler",
+                "securityContext": {},
+                "serviceAccount": "default",
+                "serviceAccountName": "default",
+                "terminationGracePeriodSeconds": 30,
+                "tolerations": [
+                    {
+                        "effect": "NoExecute",
+                        "key": "node.kubernetes.io/not-ready",
+                        "operator": "Exists",
+                        "tolerationSeconds": 300
+                    },
+                    {
+                        "effect": "NoExecute",
+                        "key": "node.kubernetes.io/unreachable",
+                        "operator": "Exists",
+                        "tolerationSeconds": 300
+                    }
+                ],
+                "volumes": [
+                    {
+                        "name": "kube-api-access-lsf6n",
+                        "projected": {
+                            "defaultMode": 420,
+                            "sources": [
+                                {
+                                    "serviceAccountToken": {
+                                        "expirationSeconds": 3607,
+                                        "path": "token"
+                                    }
+                                },
+                                {
+                                    "configMap": {
+                                        "items": [
+                                            {
+                                                "key": "ca.crt",
+                                                "path": "ca.crt"
+                                            }
+                                        ],
+                                        "name": "kube-root-ca.crt"
+                                    }
+                                },
+                                {
+                                    "downwardAPI": {
+                                        "items": [
+                                            {
+                                                "fieldRef": {
+                                                    "apiVersion": "v1",
+                                                    "fieldPath": "metadata.namespace"
+                                                },
+                                                "path": "namespace"
+                                            }
+                                        ]
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                ]
+            },
+            "status": {
+                "conditions": [
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-06-08T19:52:21Z",
+                        "observedGeneration": 1,
+                        "status": "False",
+                        "type": "PodReadyToStartContainers"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-06-08T19:47:15Z",
+                        "observedGeneration": 1,
+                        "reason": "PodCompleted",
+                        "status": "True",
+                        "type": "Initialized"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-06-08T19:52:19Z",
+                        "observedGeneration": 1,
+                        "reason": "PodCompleted",
+                        "status": "False",
+                        "type": "Ready"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-06-08T19:52:19Z",
+                        "observedGeneration": 1,
+                        "reason": "PodCompleted",
+                        "status": "False",
+                        "type": "ContainersReady"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-06-08T19:47:15Z",
+                        "observedGeneration": 1,
+                        "status": "True",
+                        "type": "PodScheduled"
+                    }
+                ],
+                "containerStatuses": [
+                    {
+                        "containerID": "containerd://de93adb1e1ca5c1526c4539eba8f033b60a02c8b5a9a52d6bf18cdceb4dfafc0",
+                        "image": "docker.io/library/ohmf-loadgen:dev",
+                        "imageID": "sha256:29e5f6bea428f68507c53b5a30a11b8300926fc097dd7847988b52a5092b155f",
+                        "lastState": {},
+                        "name": "loadgen",
+                        "ready": false,
+                        "resources": {},
+                        "restartCount": 0,
+                        "started": false,
+                        "state": {
+                            "terminated": {
+                                "containerID": "containerd://de93adb1e1ca5c1526c4539eba8f033b60a02c8b5a9a52d6bf18cdceb4dfafc0",
+                                "exitCode": 0,
+                                "finishedAt": "2026-06-08T19:52:19Z",
+                                "reason": "Completed",
+                                "startedAt": "2026-06-08T19:47:17Z"
+                            }
+                        },
+                        "user": {
+                            "linux": {
+                                "gid": 0,
+                                "supplementalGroups": [
+                                    0,
+                                    1,
+                                    2,
+                                    3,
+                                    4,
+                                    6,
+                                    10,
+                                    11,
+                                    20,
+                                    26,
+                                    27
+                                ],
+                                "uid": 0
+                            }
+                        },
+                        "volumeMounts": [
+                            {
+                                "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+                                "name": "kube-api-access-lsf6n",
+                                "readOnly": true,
+                                "recursiveReadOnly": "Disabled"
+                            }
+                        ]
+                    }
+                ],
+                "hostIP": "172.26.0.3",
+                "hostIPs": [
+                    {
+                        "ip": "172.26.0.3"
+                    }
+                ],
+                "observedGeneration": 1,
+                "phase": "Succeeded",
+                "podIP": "10.42.0.106",
+                "podIPs": [
+                    {
+                        "ip": "10.42.0.106"
+                    }
+                ],
+                "qosClass": "BestEffort",
+                "startTime": "2026-06-08T19:47:15Z"
+            }
+        },
+        {
+            "apiVersion": "v1",
+            "kind": "Pod",
+            "metadata": {
+                "annotations": {
+                    "batch.kubernetes.io/job-completion-index": "1"
+                },
+                "creationTimestamp": "2026-06-08T19:47:15Z",
+                "generateName": "loadgen-pipeline-diagnostic-45msgsec-multisource-1-",
+                "generation": 1,
+                "labels": {
+                    "app": "ohmf-loadgen",
+                    "batch.kubernetes.io/controller-uid": "d34de831-da60-4681-887e-3979f1e50976",
+                    "batch.kubernetes.io/job-completion-index": "1",
+                    "batch.kubernetes.io/job-name": "loadgen-pipeline-diagnostic-45msgsec-multisource",
+                    "benchmark": "pipeline-diagnostic-45msgsec-multisource",
+                    "controller-uid": "d34de831-da60-4681-887e-3979f1e50976",
+                    "job-name": "loadgen-pipeline-diagnostic-45msgsec-multisource"
+                },
+                "name": "loadgen-pipeline-diagnostic-45msgsec-multisource-1-8qvbn",
+                "namespace": "ohmf",
+                "ownerReferences": [
+                    {
+                        "apiVersion": "batch/v1",
+                        "blockOwnerDeletion": true,
+                        "controller": true,
+                        "kind": "Job",
+                        "name": "loadgen-pipeline-diagnostic-45msgsec-multisource",
+                        "uid": "d34de831-da60-4681-887e-3979f1e50976"
+                    }
+                ],
+                "resourceVersion": "9360",
+                "uid": "f3787230-6962-4a91-ad9a-e461b0c96155"
+            },
+            "spec": {
+                "containers": [
+                    {
+                        "env": [
+                            {
+                                "name": "JOB_COMPLETION_INDEX",
+                                "valueFrom": {
+                                    "fieldRef": {
+                                        "apiVersion": "v1",
+                                        "fieldPath": "metadata.annotations['batch.kubernetes.io/job-completion-index']"
+                                    }
+                                }
+                            },
+                            {
+                                "name": "NAMESPACE",
+                                "value": "ohmf"
+                            },
+                            {
+                                "name": "BASE_URL",
+                                "value": "http://gateway.ohmf.svc.cluster.local:8081"
+                            },
+                            {
+                                "name": "POSTGRES_DSN",
+                                "value": "postgres://ohmf:ohmf@postgres:5432/ohmf?sslmode=disable"
+                            },
+                            {
+                                "name": "JWT_SECRET",
+                                "value": "dev-only-change-me"
+                            },
+                            {
+                                "name": "RUN_ID_PREFIX",
+                                "value": "20260608t19461780948010z-multisource"
+                            },
+                            {
+                                "name": "USERS_PER_SHARD",
+                                "value": "10"
+                            },
+                            {
+                                "name": "SHARD_USER_COUNTS",
+                                "value": "4,4,4,4,4,4,4,4,4,3,3,3"
+                            },
+                            {
+                                "name": "WARMUP_USERS",
+                                "value": "5"
+                            },
+                            {
+                                "name": "PER_USER_RATE",
+                                "value": "1"
+                            },
+                            {
+                                "name": "WARMUP_DURATION_SECONDS",
+                                "value": "15"
+                            },
+                            {
+                                "name": "MAIN_DURATION_SECONDS",
+                                "value": "120"
+                            },
+                            {
+                                "name": "MESSAGE_TEXT",
+                                "value": "m4 sustained multisource local k3s validation"
+                            }
+                        ],
+                        "image": "ohmf-loadgen:dev",
+                        "imagePullPolicy": "IfNotPresent",
+                        "name": "loadgen",
+                        "resources": {},
+                        "terminationMessagePath": "/dev/termination-log",
+                        "terminationMessagePolicy": "File",
+                        "volumeMounts": [
+                            {
+                                "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+                                "name": "kube-api-access-62hsm",
+                                "readOnly": true
+                            }
+                        ]
+                    }
+                ],
+                "dnsPolicy": "ClusterFirst",
+                "enableServiceLinks": true,
+                "hostname": "loadgen-pipeline-diagnostic-45msgsec-multisource-1",
+                "nodeName": "k3d-ohmf-b1-server-0",
+                "preemptionPolicy": "PreemptLowerPriority",
+                "priority": 0,
+                "restartPolicy": "Never",
+                "schedulerName": "default-scheduler",
+                "securityContext": {},
+                "serviceAccount": "default",
+                "serviceAccountName": "default",
+                "terminationGracePeriodSeconds": 30,
+                "tolerations": [
+                    {
+                        "effect": "NoExecute",
+                        "key": "node.kubernetes.io/not-ready",
+                        "operator": "Exists",
+                        "tolerationSeconds": 300
+                    },
+                    {
+                        "effect": "NoExecute",
+                        "key": "node.kubernetes.io/unreachable",
+                        "operator": "Exists",
+                        "tolerationSeconds": 300
+                    }
+                ],
+                "volumes": [
+                    {
+                        "name": "kube-api-access-62hsm",
+                        "projected": {
+                            "defaultMode": 420,
+                            "sources": [
+                                {
+                                    "serviceAccountToken": {
+                                        "expirationSeconds": 3607,
+                                        "path": "token"
+                                    }
+                                },
+                                {
+                                    "configMap": {
+                                        "items": [
+                                            {
+                                                "key": "ca.crt",
+                                                "path": "ca.crt"
+                                            }
+                                        ],
+                                        "name": "kube-root-ca.crt"
+                                    }
+                                },
+                                {
+                                    "downwardAPI": {
+                                        "items": [
+                                            {
+                                                "fieldRef": {
+                                                    "apiVersion": "v1",
+                                                    "fieldPath": "metadata.namespace"
+                                                },
+                                                "path": "namespace"
+                                            }
+                                        ]
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                ]
+            },
+            "status": {
+                "conditions": [
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-06-08T19:52:24Z",
+                        "observedGeneration": 1,
+                        "status": "False",
+                        "type": "PodReadyToStartContainers"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-06-08T19:47:15Z",
+                        "observedGeneration": 1,
+                        "reason": "PodCompleted",
+                        "status": "True",
+                        "type": "Initialized"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-06-08T19:52:22Z",
+                        "observedGeneration": 1,
+                        "reason": "PodCompleted",
+                        "status": "False",
+                        "type": "Ready"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-06-08T19:52:22Z",
+                        "observedGeneration": 1,
+                        "reason": "PodCompleted",
+                        "status": "False",
+                        "type": "ContainersReady"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-06-08T19:47:15Z",
+                        "observedGeneration": 1,
+                        "status": "True",
+                        "type": "PodScheduled"
+                    }
+                ],
+                "containerStatuses": [
+                    {
+                        "containerID": "containerd://9e5b4436bf0224cde5f5d7a9e3d4a90884ea4e65aedd0624bf2b25ac96fe4bf4",
+                        "image": "docker.io/library/ohmf-loadgen:dev",
+                        "imageID": "sha256:29e5f6bea428f68507c53b5a30a11b8300926fc097dd7847988b52a5092b155f",
+                        "lastState": {},
+                        "name": "loadgen",
+                        "ready": false,
+                        "resources": {},
+                        "restartCount": 0,
+                        "started": false,
+                        "state": {
+                            "terminated": {
+                                "containerID": "containerd://9e5b4436bf0224cde5f5d7a9e3d4a90884ea4e65aedd0624bf2b25ac96fe4bf4",
+                                "exitCode": 0,
+                                "finishedAt": "2026-06-08T19:52:22Z",
+                                "reason": "Completed",
+                                "startedAt": "2026-06-08T19:47:17Z"
+                            }
+                        },
+                        "user": {
+                            "linux": {
+                                "gid": 0,
+                                "supplementalGroups": [
+                                    0,
+                                    1,
+                                    2,
+                                    3,
+                                    4,
+                                    6,
+                                    10,
+                                    11,
+                                    20,
+                                    26,
+                                    27
+                                ],
+                                "uid": 0
+                            }
+                        },
+                        "volumeMounts": [
+                            {
+                                "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+                                "name": "kube-api-access-62hsm",
+                                "readOnly": true,
+                                "recursiveReadOnly": "Disabled"
+                            }
+                        ]
+                    }
+                ],
+                "hostIP": "172.26.0.3",
+                "hostIPs": [
+                    {
+                        "ip": "172.26.0.3"
+                    }
+                ],
+                "observedGeneration": 1,
+                "phase": "Succeeded",
+                "podIP": "10.42.0.107",
+                "podIPs": [
+                    {
+                        "ip": "10.42.0.107"
+                    }
+                ],
+                "qosClass": "BestEffort",
+                "startTime": "2026-06-08T19:47:15Z"
+            }
+        },
+        {
+            "apiVersion": "v1",
+            "kind": "Pod",
+            "metadata": {
+                "annotations": {
+                    "batch.kubernetes.io/job-completion-index": "10"
+                },
+                "creationTimestamp": "2026-06-08T19:47:15Z",
+                "generateName": "loadgen-pipeline-diagnostic-45msgsec-multisource-10-",
+                "generation": 1,
+                "labels": {
+                    "app": "ohmf-loadgen",
+                    "batch.kubernetes.io/controller-uid": "d34de831-da60-4681-887e-3979f1e50976",
+                    "batch.kubernetes.io/job-completion-index": "10",
+                    "batch.kubernetes.io/job-name": "loadgen-pipeline-diagnostic-45msgsec-multisource",
+                    "benchmark": "pipeline-diagnostic-45msgsec-multisource",
+                    "controller-uid": "d34de831-da60-4681-887e-3979f1e50976",
+                    "job-name": "loadgen-pipeline-diagnostic-45msgsec-multisource"
+                },
+                "name": "loadgen-pipeline-diagnostic-45msgsec-multisource-10-vmjtn",
+                "namespace": "ohmf",
+                "ownerReferences": [
+                    {
+                        "apiVersion": "batch/v1",
+                        "blockOwnerDeletion": true,
+                        "controller": true,
+                        "kind": "Job",
+                        "name": "loadgen-pipeline-diagnostic-45msgsec-multisource",
+                        "uid": "d34de831-da60-4681-887e-3979f1e50976"
+                    }
+                ],
+                "resourceVersion": "9314",
+                "uid": "b1b2fec1-37f9-4d26-afce-97fc7cbcedbf"
+            },
+            "spec": {
+                "containers": [
+                    {
+                        "env": [
+                            {
+                                "name": "JOB_COMPLETION_INDEX",
+                                "valueFrom": {
+                                    "fieldRef": {
+                                        "apiVersion": "v1",
+                                        "fieldPath": "metadata.annotations['batch.kubernetes.io/job-completion-index']"
+                                    }
+                                }
+                            },
+                            {
+                                "name": "NAMESPACE",
+                                "value": "ohmf"
+                            },
+                            {
+                                "name": "BASE_URL",
+                                "value": "http://gateway.ohmf.svc.cluster.local:8081"
+                            },
+                            {
+                                "name": "POSTGRES_DSN",
+                                "value": "postgres://ohmf:ohmf@postgres:5432/ohmf?sslmode=disable"
+                            },
+                            {
+                                "name": "JWT_SECRET",
+                                "value": "dev-only-change-me"
+                            },
+                            {
+                                "name": "RUN_ID_PREFIX",
+                                "value": "20260608t19461780948010z-multisource"
+                            },
+                            {
+                                "name": "USERS_PER_SHARD",
+                                "value": "10"
+                            },
+                            {
+                                "name": "SHARD_USER_COUNTS",
+                                "value": "4,4,4,4,4,4,4,4,4,3,3,3"
+                            },
+                            {
+                                "name": "WARMUP_USERS",
+                                "value": "5"
+                            },
+                            {
+                                "name": "PER_USER_RATE",
+                                "value": "1"
+                            },
+                            {
+                                "name": "WARMUP_DURATION_SECONDS",
+                                "value": "15"
+                            },
+                            {
+                                "name": "MAIN_DURATION_SECONDS",
+                                "value": "120"
+                            },
+                            {
+                                "name": "MESSAGE_TEXT",
+                                "value": "m4 sustained multisource local k3s validation"
+                            }
+                        ],
+                        "image": "ohmf-loadgen:dev",
+                        "imagePullPolicy": "IfNotPresent",
+                        "name": "loadgen",
+                        "resources": {},
+                        "terminationMessagePath": "/dev/termination-log",
+                        "terminationMessagePolicy": "File",
+                        "volumeMounts": [
+                            {
+                                "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+                                "name": "kube-api-access-tdldf",
+                                "readOnly": true
+                            }
+                        ]
+                    }
+                ],
+                "dnsPolicy": "ClusterFirst",
+                "enableServiceLinks": true,
+                "hostname": "loadgen-pipeline-diagnostic-45msgsec-multisource-10",
+                "nodeName": "k3d-ohmf-b1-server-0",
+                "preemptionPolicy": "PreemptLowerPriority",
+                "priority": 0,
+                "restartPolicy": "Never",
+                "schedulerName": "default-scheduler",
+                "securityContext": {},
+                "serviceAccount": "default",
+                "serviceAccountName": "default",
+                "terminationGracePeriodSeconds": 30,
+                "tolerations": [
+                    {
+                        "effect": "NoExecute",
+                        "key": "node.kubernetes.io/not-ready",
+                        "operator": "Exists",
+                        "tolerationSeconds": 300
+                    },
+                    {
+                        "effect": "NoExecute",
+                        "key": "node.kubernetes.io/unreachable",
+                        "operator": "Exists",
+                        "tolerationSeconds": 300
+                    }
+                ],
+                "volumes": [
+                    {
+                        "name": "kube-api-access-tdldf",
+                        "projected": {
+                            "defaultMode": 420,
+                            "sources": [
+                                {
+                                    "serviceAccountToken": {
+                                        "expirationSeconds": 3607,
+                                        "path": "token"
+                                    }
+                                },
+                                {
+                                    "configMap": {
+                                        "items": [
+                                            {
+                                                "key": "ca.crt",
+                                                "path": "ca.crt"
+                                            }
+                                        ],
+                                        "name": "kube-root-ca.crt"
+                                    }
+                                },
+                                {
+                                    "downwardAPI": {
+                                        "items": [
+                                            {
+                                                "fieldRef": {
+                                                    "apiVersion": "v1",
+                                                    "fieldPath": "metadata.namespace"
+                                                },
+                                                "path": "namespace"
+                                            }
+                                        ]
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                ]
+            },
+            "status": {
+                "conditions": [
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-06-08T19:51:08Z",
+                        "observedGeneration": 1,
+                        "status": "False",
+                        "type": "PodReadyToStartContainers"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-06-08T19:47:15Z",
+                        "observedGeneration": 1,
+                        "reason": "PodCompleted",
+                        "status": "True",
+                        "type": "Initialized"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-06-08T19:51:07Z",
+                        "observedGeneration": 1,
+                        "reason": "PodCompleted",
+                        "status": "False",
+                        "type": "Ready"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-06-08T19:51:07Z",
+                        "observedGeneration": 1,
+                        "reason": "PodCompleted",
+                        "status": "False",
+                        "type": "ContainersReady"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-06-08T19:47:15Z",
+                        "observedGeneration": 1,
+                        "status": "True",
+                        "type": "PodScheduled"
+                    }
+                ],
+                "containerStatuses": [
+                    {
+                        "containerID": "containerd://b18590e3db71bd6991f58e647ab6da1b1057bdf9004b0c11e1967e17d6b369e5",
+                        "image": "docker.io/library/ohmf-loadgen:dev",
+                        "imageID": "sha256:29e5f6bea428f68507c53b5a30a11b8300926fc097dd7847988b52a5092b155f",
+                        "lastState": {},
+                        "name": "loadgen",
+                        "ready": false,
+                        "resources": {},
+                        "restartCount": 0,
+                        "started": false,
+                        "state": {
+                            "terminated": {
+                                "containerID": "containerd://b18590e3db71bd6991f58e647ab6da1b1057bdf9004b0c11e1967e17d6b369e5",
+                                "exitCode": 0,
+                                "finishedAt": "2026-06-08T19:51:06Z",
+                                "reason": "Completed",
+                                "startedAt": "2026-06-08T19:47:17Z"
+                            }
+                        },
+                        "user": {
+                            "linux": {
+                                "gid": 0,
+                                "supplementalGroups": [
+                                    0,
+                                    1,
+                                    2,
+                                    3,
+                                    4,
+                                    6,
+                                    10,
+                                    11,
+                                    20,
+                                    26,
+                                    27
+                                ],
+                                "uid": 0
+                            }
+                        },
+                        "volumeMounts": [
+                            {
+                                "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+                                "name": "kube-api-access-tdldf",
+                                "readOnly": true,
+                                "recursiveReadOnly": "Disabled"
+                            }
+                        ]
+                    }
+                ],
+                "hostIP": "172.26.0.3",
+                "hostIPs": [
+                    {
+                        "ip": "172.26.0.3"
+                    }
+                ],
+                "observedGeneration": 1,
+                "phase": "Succeeded",
+                "podIP": "10.42.0.114",
+                "podIPs": [
+                    {
+                        "ip": "10.42.0.114"
+                    }
+                ],
+                "qosClass": "BestEffort",
+                "startTime": "2026-06-08T19:47:15Z"
+            }
+        },
+        {
+            "apiVersion": "v1",
+            "kind": "Pod",
+            "metadata": {
+                "annotations": {
+                    "batch.kubernetes.io/job-completion-index": "11"
+                },
+                "creationTimestamp": "2026-06-08T19:47:15Z",
+                "generateName": "loadgen-pipeline-diagnostic-45msgsec-multisource-11-",
+                "generation": 1,
+                "labels": {
+                    "app": "ohmf-loadgen",
+                    "batch.kubernetes.io/controller-uid": "d34de831-da60-4681-887e-3979f1e50976",
+                    "batch.kubernetes.io/job-completion-index": "11",
+                    "batch.kubernetes.io/job-name": "loadgen-pipeline-diagnostic-45msgsec-multisource",
+                    "benchmark": "pipeline-diagnostic-45msgsec-multisource",
+                    "controller-uid": "d34de831-da60-4681-887e-3979f1e50976",
+                    "job-name": "loadgen-pipeline-diagnostic-45msgsec-multisource"
+                },
+                "name": "loadgen-pipeline-diagnostic-45msgsec-multisource-11-b7lmc",
+                "namespace": "ohmf",
+                "ownerReferences": [
+                    {
+                        "apiVersion": "batch/v1",
+                        "blockOwnerDeletion": true,
+                        "controller": true,
+                        "kind": "Job",
+                        "name": "loadgen-pipeline-diagnostic-45msgsec-multisource",
+                        "uid": "d34de831-da60-4681-887e-3979f1e50976"
+                    }
+                ],
+                "resourceVersion": "9315",
+                "uid": "bb54102f-de8c-4a63-8f3c-5486c16d0ab4"
+            },
+            "spec": {
+                "containers": [
+                    {
+                        "env": [
+                            {
+                                "name": "JOB_COMPLETION_INDEX",
+                                "valueFrom": {
+                                    "fieldRef": {
+                                        "apiVersion": "v1",
+                                        "fieldPath": "metadata.annotations['batch.kubernetes.io/job-completion-index']"
+                                    }
+                                }
+                            },
+                            {
+                                "name": "NAMESPACE",
+                                "value": "ohmf"
+                            },
+                            {
+                                "name": "BASE_URL",
+                                "value": "http://gateway.ohmf.svc.cluster.local:8081"
+                            },
+                            {
+                                "name": "POSTGRES_DSN",
+                                "value": "postgres://ohmf:ohmf@postgres:5432/ohmf?sslmode=disable"
+                            },
+                            {
+                                "name": "JWT_SECRET",
+                                "value": "dev-only-change-me"
+                            },
+                            {
+                                "name": "RUN_ID_PREFIX",
+                                "value": "20260608t19461780948010z-multisource"
+                            },
+                            {
+                                "name": "USERS_PER_SHARD",
+                                "value": "10"
+                            },
+                            {
+                                "name": "SHARD_USER_COUNTS",
+                                "value": "4,4,4,4,4,4,4,4,4,3,3,3"
+                            },
+                            {
+                                "name": "WARMUP_USERS",
+                                "value": "5"
+                            },
+                            {
+                                "name": "PER_USER_RATE",
+                                "value": "1"
+                            },
+                            {
+                                "name": "WARMUP_DURATION_SECONDS",
+                                "value": "15"
+                            },
+                            {
+                                "name": "MAIN_DURATION_SECONDS",
+                                "value": "120"
+                            },
+                            {
+                                "name": "MESSAGE_TEXT",
+                                "value": "m4 sustained multisource local k3s validation"
+                            }
+                        ],
+                        "image": "ohmf-loadgen:dev",
+                        "imagePullPolicy": "IfNotPresent",
+                        "name": "loadgen",
+                        "resources": {},
+                        "terminationMessagePath": "/dev/termination-log",
+                        "terminationMessagePolicy": "File",
+                        "volumeMounts": [
+                            {
+                                "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+                                "name": "kube-api-access-7cl8k",
+                                "readOnly": true
+                            }
+                        ]
+                    }
+                ],
+                "dnsPolicy": "ClusterFirst",
+                "enableServiceLinks": true,
+                "hostname": "loadgen-pipeline-diagnostic-45msgsec-multisource-11",
+                "nodeName": "k3d-ohmf-b1-server-0",
+                "preemptionPolicy": "PreemptLowerPriority",
+                "priority": 0,
+                "restartPolicy": "Never",
+                "schedulerName": "default-scheduler",
+                "securityContext": {},
+                "serviceAccount": "default",
+                "serviceAccountName": "default",
+                "terminationGracePeriodSeconds": 30,
+                "tolerations": [
+                    {
+                        "effect": "NoExecute",
+                        "key": "node.kubernetes.io/not-ready",
+                        "operator": "Exists",
+                        "tolerationSeconds": 300
+                    },
+                    {
+                        "effect": "NoExecute",
+                        "key": "node.kubernetes.io/unreachable",
+                        "operator": "Exists",
+                        "tolerationSeconds": 300
+                    }
+                ],
+                "volumes": [
+                    {
+                        "name": "kube-api-access-7cl8k",
+                        "projected": {
+                            "defaultMode": 420,
+                            "sources": [
+                                {
+                                    "serviceAccountToken": {
+                                        "expirationSeconds": 3607,
+                                        "path": "token"
+                                    }
+                                },
+                                {
+                                    "configMap": {
+                                        "items": [
+                                            {
+                                                "key": "ca.crt",
+                                                "path": "ca.crt"
+                                            }
+                                        ],
+                                        "name": "kube-root-ca.crt"
+                                    }
+                                },
+                                {
+                                    "downwardAPI": {
+                                        "items": [
+                                            {
+                                                "fieldRef": {
+                                                    "apiVersion": "v1",
+                                                    "fieldPath": "metadata.namespace"
+                                                },
+                                                "path": "namespace"
+                                            }
+                                        ]
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                ]
+            },
+            "status": {
+                "conditions": [
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-06-08T19:51:08Z",
+                        "observedGeneration": 1,
+                        "status": "False",
+                        "type": "PodReadyToStartContainers"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-06-08T19:47:15Z",
+                        "observedGeneration": 1,
+                        "reason": "PodCompleted",
+                        "status": "True",
+                        "type": "Initialized"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-06-08T19:51:07Z",
+                        "observedGeneration": 1,
+                        "reason": "PodCompleted",
+                        "status": "False",
+                        "type": "Ready"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-06-08T19:51:07Z",
+                        "observedGeneration": 1,
+                        "reason": "PodCompleted",
+                        "status": "False",
+                        "type": "ContainersReady"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-06-08T19:47:15Z",
+                        "observedGeneration": 1,
+                        "status": "True",
+                        "type": "PodScheduled"
+                    }
+                ],
+                "containerStatuses": [
+                    {
+                        "containerID": "containerd://a1dab0118b94a2cca1347b156047f4c65aa76eec4d31f21fa33d305872790a16",
+                        "image": "docker.io/library/ohmf-loadgen:dev",
+                        "imageID": "sha256:29e5f6bea428f68507c53b5a30a11b8300926fc097dd7847988b52a5092b155f",
+                        "lastState": {},
+                        "name": "loadgen",
+                        "ready": false,
+                        "resources": {},
+                        "restartCount": 0,
+                        "started": false,
+                        "state": {
+                            "terminated": {
+                                "containerID": "containerd://a1dab0118b94a2cca1347b156047f4c65aa76eec4d31f21fa33d305872790a16",
+                                "exitCode": 0,
+                                "finishedAt": "2026-06-08T19:51:07Z",
+                                "reason": "Completed",
+                                "startedAt": "2026-06-08T19:47:17Z"
+                            }
+                        },
+                        "user": {
+                            "linux": {
+                                "gid": 0,
+                                "supplementalGroups": [
+                                    0,
+                                    1,
+                                    2,
+                                    3,
+                                    4,
+                                    6,
+                                    10,
+                                    11,
+                                    20,
+                                    26,
+                                    27
+                                ],
+                                "uid": 0
+                            }
+                        },
+                        "volumeMounts": [
+                            {
+                                "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+                                "name": "kube-api-access-7cl8k",
+                                "readOnly": true,
+                                "recursiveReadOnly": "Disabled"
+                            }
+                        ]
+                    }
+                ],
+                "hostIP": "172.26.0.3",
+                "hostIPs": [
+                    {
+                        "ip": "172.26.0.3"
+                    }
+                ],
+                "observedGeneration": 1,
+                "phase": "Succeeded",
+                "podIP": "10.42.0.115",
+                "podIPs": [
+                    {
+                        "ip": "10.42.0.115"
+                    }
+                ],
+                "qosClass": "BestEffort",
+                "startTime": "2026-06-08T19:47:15Z"
+            }
+        },
+        {
+            "apiVersion": "v1",
+            "kind": "Pod",
+            "metadata": {
+                "annotations": {
+                    "batch.kubernetes.io/job-completion-index": "2"
+                },
+                "creationTimestamp": "2026-06-08T19:47:15Z",
+                "generateName": "loadgen-pipeline-diagnostic-45msgsec-multisource-2-",
+                "generation": 1,
+                "labels": {
+                    "app": "ohmf-loadgen",
+                    "batch.kubernetes.io/controller-uid": "d34de831-da60-4681-887e-3979f1e50976",
+                    "batch.kubernetes.io/job-completion-index": "2",
+                    "batch.kubernetes.io/job-name": "loadgen-pipeline-diagnostic-45msgsec-multisource",
+                    "benchmark": "pipeline-diagnostic-45msgsec-multisource",
+                    "controller-uid": "d34de831-da60-4681-887e-3979f1e50976",
+                    "job-name": "loadgen-pipeline-diagnostic-45msgsec-multisource"
+                },
+                "name": "loadgen-pipeline-diagnostic-45msgsec-multisource-2-lb5tw",
+                "namespace": "ohmf",
+                "ownerReferences": [
+                    {
+                        "apiVersion": "batch/v1",
+                        "blockOwnerDeletion": true,
+                        "controller": true,
+                        "kind": "Job",
+                        "name": "loadgen-pipeline-diagnostic-45msgsec-multisource",
+                        "uid": "d34de831-da60-4681-887e-3979f1e50976"
+                    }
+                ],
+                "resourceVersion": "9358",
+                "uid": "b285567b-00e2-4b0b-81a0-c383c4a7e784"
+            },
+            "spec": {
+                "containers": [
+                    {
+                        "env": [
+                            {
+                                "name": "JOB_COMPLETION_INDEX",
+                                "valueFrom": {
+                                    "fieldRef": {
+                                        "apiVersion": "v1",
+                                        "fieldPath": "metadata.annotations['batch.kubernetes.io/job-completion-index']"
+                                    }
+                                }
+                            },
+                            {
+                                "name": "NAMESPACE",
+                                "value": "ohmf"
+                            },
+                            {
+                                "name": "BASE_URL",
+                                "value": "http://gateway.ohmf.svc.cluster.local:8081"
+                            },
+                            {
+                                "name": "POSTGRES_DSN",
+                                "value": "postgres://ohmf:ohmf@postgres:5432/ohmf?sslmode=disable"
+                            },
+                            {
+                                "name": "JWT_SECRET",
+                                "value": "dev-only-change-me"
+                            },
+                            {
+                                "name": "RUN_ID_PREFIX",
+                                "value": "20260608t19461780948010z-multisource"
+                            },
+                            {
+                                "name": "USERS_PER_SHARD",
+                                "value": "10"
+                            },
+                            {
+                                "name": "SHARD_USER_COUNTS",
+                                "value": "4,4,4,4,4,4,4,4,4,3,3,3"
+                            },
+                            {
+                                "name": "WARMUP_USERS",
+                                "value": "5"
+                            },
+                            {
+                                "name": "PER_USER_RATE",
+                                "value": "1"
+                            },
+                            {
+                                "name": "WARMUP_DURATION_SECONDS",
+                                "value": "15"
+                            },
+                            {
+                                "name": "MAIN_DURATION_SECONDS",
+                                "value": "120"
+                            },
+                            {
+                                "name": "MESSAGE_TEXT",
+                                "value": "m4 sustained multisource local k3s validation"
+                            }
+                        ],
+                        "image": "ohmf-loadgen:dev",
+                        "imagePullPolicy": "IfNotPresent",
+                        "name": "loadgen",
+                        "resources": {},
+                        "terminationMessagePath": "/dev/termination-log",
+                        "terminationMessagePolicy": "File",
+                        "volumeMounts": [
+                            {
+                                "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+                                "name": "kube-api-access-hxjzn",
+                                "readOnly": true
+                            }
+                        ]
+                    }
+                ],
+                "dnsPolicy": "ClusterFirst",
+                "enableServiceLinks": true,
+                "hostname": "loadgen-pipeline-diagnostic-45msgsec-multisource-2",
+                "nodeName": "k3d-ohmf-b1-server-0",
+                "preemptionPolicy": "PreemptLowerPriority",
+                "priority": 0,
+                "restartPolicy": "Never",
+                "schedulerName": "default-scheduler",
+                "securityContext": {},
+                "serviceAccount": "default",
+                "serviceAccountName": "default",
+                "terminationGracePeriodSeconds": 30,
+                "tolerations": [
+                    {
+                        "effect": "NoExecute",
+                        "key": "node.kubernetes.io/not-ready",
+                        "operator": "Exists",
+                        "tolerationSeconds": 300
+                    },
+                    {
+                        "effect": "NoExecute",
+                        "key": "node.kubernetes.io/unreachable",
+                        "operator": "Exists",
+                        "tolerationSeconds": 300
+                    }
+                ],
+                "volumes": [
+                    {
+                        "name": "kube-api-access-hxjzn",
+                        "projected": {
+                            "defaultMode": 420,
+                            "sources": [
+                                {
+                                    "serviceAccountToken": {
+                                        "expirationSeconds": 3607,
+                                        "path": "token"
+                                    }
+                                },
+                                {
+                                    "configMap": {
+                                        "items": [
+                                            {
+                                                "key": "ca.crt",
+                                                "path": "ca.crt"
+                                            }
+                                        ],
+                                        "name": "kube-root-ca.crt"
+                                    }
+                                },
+                                {
+                                    "downwardAPI": {
+                                        "items": [
+                                            {
+                                                "fieldRef": {
+                                                    "apiVersion": "v1",
+                                                    "fieldPath": "metadata.namespace"
+                                                },
+                                                "path": "namespace"
+                                            }
+                                        ]
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                ]
+            },
+            "status": {
+                "conditions": [
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-06-08T19:52:24Z",
+                        "observedGeneration": 1,
+                        "status": "False",
+                        "type": "PodReadyToStartContainers"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-06-08T19:47:15Z",
+                        "observedGeneration": 1,
+                        "reason": "PodCompleted",
+                        "status": "True",
+                        "type": "Initialized"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-06-08T19:52:22Z",
+                        "observedGeneration": 1,
+                        "reason": "PodCompleted",
+                        "status": "False",
+                        "type": "Ready"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-06-08T19:52:22Z",
+                        "observedGeneration": 1,
+                        "reason": "PodCompleted",
+                        "status": "False",
+                        "type": "ContainersReady"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-06-08T19:47:15Z",
+                        "observedGeneration": 1,
+                        "status": "True",
+                        "type": "PodScheduled"
+                    }
+                ],
+                "containerStatuses": [
+                    {
+                        "containerID": "containerd://259e4eb9d1546a58b897ce8c1ffdd6cac2797f17c475a834cd4c70ee77182092",
+                        "image": "docker.io/library/ohmf-loadgen:dev",
+                        "imageID": "sha256:29e5f6bea428f68507c53b5a30a11b8300926fc097dd7847988b52a5092b155f",
+                        "lastState": {},
+                        "name": "loadgen",
+                        "ready": false,
+                        "resources": {},
+                        "restartCount": 0,
+                        "started": false,
+                        "state": {
+                            "terminated": {
+                                "containerID": "containerd://259e4eb9d1546a58b897ce8c1ffdd6cac2797f17c475a834cd4c70ee77182092",
+                                "exitCode": 0,
+                                "finishedAt": "2026-06-08T19:52:22Z",
+                                "reason": "Completed",
+                                "startedAt": "2026-06-08T19:47:17Z"
+                            }
+                        },
+                        "user": {
+                            "linux": {
+                                "gid": 0,
+                                "supplementalGroups": [
+                                    0,
+                                    1,
+                                    2,
+                                    3,
+                                    4,
+                                    6,
+                                    10,
+                                    11,
+                                    20,
+                                    26,
+                                    27
+                                ],
+                                "uid": 0
+                            }
+                        },
+                        "volumeMounts": [
+                            {
+                                "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+                                "name": "kube-api-access-hxjzn",
+                                "readOnly": true,
+                                "recursiveReadOnly": "Disabled"
+                            }
+                        ]
+                    }
+                ],
+                "hostIP": "172.26.0.3",
+                "hostIPs": [
+                    {
+                        "ip": "172.26.0.3"
+                    }
+                ],
+                "observedGeneration": 1,
+                "phase": "Succeeded",
+                "podIP": "10.42.0.109",
+                "podIPs": [
+                    {
+                        "ip": "10.42.0.109"
+                    }
+                ],
+                "qosClass": "BestEffort",
+                "startTime": "2026-06-08T19:47:15Z"
+            }
+        },
+        {
+            "apiVersion": "v1",
+            "kind": "Pod",
+            "metadata": {
+                "annotations": {
+                    "batch.kubernetes.io/job-completion-index": "3"
+                },
+                "creationTimestamp": "2026-06-08T19:47:15Z",
+                "generateName": "loadgen-pipeline-diagnostic-45msgsec-multisource-3-",
+                "generation": 1,
+                "labels": {
+                    "app": "ohmf-loadgen",
+                    "batch.kubernetes.io/controller-uid": "d34de831-da60-4681-887e-3979f1e50976",
+                    "batch.kubernetes.io/job-completion-index": "3",
+                    "batch.kubernetes.io/job-name": "loadgen-pipeline-diagnostic-45msgsec-multisource",
+                    "benchmark": "pipeline-diagnostic-45msgsec-multisource",
+                    "controller-uid": "d34de831-da60-4681-887e-3979f1e50976",
+                    "job-name": "loadgen-pipeline-diagnostic-45msgsec-multisource"
+                },
+                "name": "loadgen-pipeline-diagnostic-45msgsec-multisource-3-jfs4q",
+                "namespace": "ohmf",
+                "ownerReferences": [
+                    {
+                        "apiVersion": "batch/v1",
+                        "blockOwnerDeletion": true,
+                        "controller": true,
+                        "kind": "Job",
+                        "name": "loadgen-pipeline-diagnostic-45msgsec-multisource",
+                        "uid": "d34de831-da60-4681-887e-3979f1e50976"
+                    }
+                ],
+                "resourceVersion": "9369",
+                "uid": "37576989-d362-44ad-a9e6-36fdec854e10"
+            },
+            "spec": {
+                "containers": [
+                    {
+                        "env": [
+                            {
+                                "name": "JOB_COMPLETION_INDEX",
+                                "valueFrom": {
+                                    "fieldRef": {
+                                        "apiVersion": "v1",
+                                        "fieldPath": "metadata.annotations['batch.kubernetes.io/job-completion-index']"
+                                    }
+                                }
+                            },
+                            {
+                                "name": "NAMESPACE",
+                                "value": "ohmf"
+                            },
+                            {
+                                "name": "BASE_URL",
+                                "value": "http://gateway.ohmf.svc.cluster.local:8081"
+                            },
+                            {
+                                "name": "POSTGRES_DSN",
+                                "value": "postgres://ohmf:ohmf@postgres:5432/ohmf?sslmode=disable"
+                            },
+                            {
+                                "name": "JWT_SECRET",
+                                "value": "dev-only-change-me"
+                            },
+                            {
+                                "name": "RUN_ID_PREFIX",
+                                "value": "20260608t19461780948010z-multisource"
+                            },
+                            {
+                                "name": "USERS_PER_SHARD",
+                                "value": "10"
+                            },
+                            {
+                                "name": "SHARD_USER_COUNTS",
+                                "value": "4,4,4,4,4,4,4,4,4,3,3,3"
+                            },
+                            {
+                                "name": "WARMUP_USERS",
+                                "value": "5"
+                            },
+                            {
+                                "name": "PER_USER_RATE",
+                                "value": "1"
+                            },
+                            {
+                                "name": "WARMUP_DURATION_SECONDS",
+                                "value": "15"
+                            },
+                            {
+                                "name": "MAIN_DURATION_SECONDS",
+                                "value": "120"
+                            },
+                            {
+                                "name": "MESSAGE_TEXT",
+                                "value": "m4 sustained multisource local k3s validation"
+                            }
+                        ],
+                        "image": "ohmf-loadgen:dev",
+                        "imagePullPolicy": "IfNotPresent",
+                        "name": "loadgen",
+                        "resources": {},
+                        "terminationMessagePath": "/dev/termination-log",
+                        "terminationMessagePolicy": "File",
+                        "volumeMounts": [
+                            {
+                                "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+                                "name": "kube-api-access-p8bg9",
+                                "readOnly": true
+                            }
+                        ]
+                    }
+                ],
+                "dnsPolicy": "ClusterFirst",
+                "enableServiceLinks": true,
+                "hostname": "loadgen-pipeline-diagnostic-45msgsec-multisource-3",
+                "nodeName": "k3d-ohmf-b1-server-0",
+                "preemptionPolicy": "PreemptLowerPriority",
+                "priority": 0,
+                "restartPolicy": "Never",
+                "schedulerName": "default-scheduler",
+                "securityContext": {},
+                "serviceAccount": "default",
+                "serviceAccountName": "default",
+                "terminationGracePeriodSeconds": 30,
+                "tolerations": [
+                    {
+                        "effect": "NoExecute",
+                        "key": "node.kubernetes.io/not-ready",
+                        "operator": "Exists",
+                        "tolerationSeconds": 300
+                    },
+                    {
+                        "effect": "NoExecute",
+                        "key": "node.kubernetes.io/unreachable",
+                        "operator": "Exists",
+                        "tolerationSeconds": 300
+                    }
+                ],
+                "volumes": [
+                    {
+                        "name": "kube-api-access-p8bg9",
+                        "projected": {
+                            "defaultMode": 420,
+                            "sources": [
+                                {
+                                    "serviceAccountToken": {
+                                        "expirationSeconds": 3607,
+                                        "path": "token"
+                                    }
+                                },
+                                {
+                                    "configMap": {
+                                        "items": [
+                                            {
+                                                "key": "ca.crt",
+                                                "path": "ca.crt"
+                                            }
+                                        ],
+                                        "name": "kube-root-ca.crt"
+                                    }
+                                },
+                                {
+                                    "downwardAPI": {
+                                        "items": [
+                                            {
+                                                "fieldRef": {
+                                                    "apiVersion": "v1",
+                                                    "fieldPath": "metadata.namespace"
+                                                },
+                                                "path": "namespace"
+                                            }
+                                        ]
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                ]
+            },
+            "status": {
+                "conditions": [
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-06-08T19:52:25Z",
+                        "observedGeneration": 1,
+                        "status": "False",
+                        "type": "PodReadyToStartContainers"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-06-08T19:47:15Z",
+                        "observedGeneration": 1,
+                        "reason": "PodCompleted",
+                        "status": "True",
+                        "type": "Initialized"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-06-08T19:52:23Z",
+                        "observedGeneration": 1,
+                        "reason": "PodCompleted",
+                        "status": "False",
+                        "type": "Ready"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-06-08T19:52:23Z",
+                        "observedGeneration": 1,
+                        "reason": "PodCompleted",
+                        "status": "False",
+                        "type": "ContainersReady"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-06-08T19:47:15Z",
+                        "observedGeneration": 1,
+                        "status": "True",
+                        "type": "PodScheduled"
+                    }
+                ],
+                "containerStatuses": [
+                    {
+                        "containerID": "containerd://591a553e551457cdb16ab6e28b4d5263d5449ca71ed88edd6957995fbd102e72",
+                        "image": "docker.io/library/ohmf-loadgen:dev",
+                        "imageID": "sha256:29e5f6bea428f68507c53b5a30a11b8300926fc097dd7847988b52a5092b155f",
+                        "lastState": {},
+                        "name": "loadgen",
+                        "ready": false,
+                        "resources": {},
+                        "restartCount": 0,
+                        "started": false,
+                        "state": {
+                            "terminated": {
+                                "containerID": "containerd://591a553e551457cdb16ab6e28b4d5263d5449ca71ed88edd6957995fbd102e72",
+                                "exitCode": 0,
+                                "finishedAt": "2026-06-08T19:52:22Z",
+                                "reason": "Completed",
+                                "startedAt": "2026-06-08T19:47:17Z"
+                            }
+                        },
+                        "user": {
+                            "linux": {
+                                "gid": 0,
+                                "supplementalGroups": [
+                                    0,
+                                    1,
+                                    2,
+                                    3,
+                                    4,
+                                    6,
+                                    10,
+                                    11,
+                                    20,
+                                    26,
+                                    27
+                                ],
+                                "uid": 0
+                            }
+                        },
+                        "volumeMounts": [
+                            {
+                                "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+                                "name": "kube-api-access-p8bg9",
+                                "readOnly": true,
+                                "recursiveReadOnly": "Disabled"
+                            }
+                        ]
+                    }
+                ],
+                "hostIP": "172.26.0.3",
+                "hostIPs": [
+                    {
+                        "ip": "172.26.0.3"
+                    }
+                ],
+                "observedGeneration": 1,
+                "phase": "Succeeded",
+                "podIP": "10.42.0.110",
+                "podIPs": [
+                    {
+                        "ip": "10.42.0.110"
+                    }
+                ],
+                "qosClass": "BestEffort",
+                "startTime": "2026-06-08T19:47:15Z"
+            }
+        },
+        {
+            "apiVersion": "v1",
+            "kind": "Pod",
+            "metadata": {
+                "annotations": {
+                    "batch.kubernetes.io/job-completion-index": "4"
+                },
+                "creationTimestamp": "2026-06-08T19:47:15Z",
+                "generateName": "loadgen-pipeline-diagnostic-45msgsec-multisource-4-",
+                "generation": 1,
+                "labels": {
+                    "app": "ohmf-loadgen",
+                    "batch.kubernetes.io/controller-uid": "d34de831-da60-4681-887e-3979f1e50976",
+                    "batch.kubernetes.io/job-completion-index": "4",
+                    "batch.kubernetes.io/job-name": "loadgen-pipeline-diagnostic-45msgsec-multisource",
+                    "benchmark": "pipeline-diagnostic-45msgsec-multisource",
+                    "controller-uid": "d34de831-da60-4681-887e-3979f1e50976",
+                    "job-name": "loadgen-pipeline-diagnostic-45msgsec-multisource"
+                },
+                "name": "loadgen-pipeline-diagnostic-45msgsec-multisource-4-j4cwq",
+                "namespace": "ohmf",
+                "ownerReferences": [
+                    {
+                        "apiVersion": "batch/v1",
+                        "blockOwnerDeletion": true,
+                        "controller": true,
+                        "kind": "Job",
+                        "name": "loadgen-pipeline-diagnostic-45msgsec-multisource",
+                        "uid": "d34de831-da60-4681-887e-3979f1e50976"
+                    }
+                ],
+                "resourceVersion": "9348",
+                "uid": "fdd2f144-8381-43d7-9694-c448cc5d5dcd"
+            },
+            "spec": {
+                "containers": [
+                    {
+                        "env": [
+                            {
+                                "name": "JOB_COMPLETION_INDEX",
+                                "valueFrom": {
+                                    "fieldRef": {
+                                        "apiVersion": "v1",
+                                        "fieldPath": "metadata.annotations['batch.kubernetes.io/job-completion-index']"
+                                    }
+                                }
+                            },
+                            {
+                                "name": "NAMESPACE",
+                                "value": "ohmf"
+                            },
+                            {
+                                "name": "BASE_URL",
+                                "value": "http://gateway.ohmf.svc.cluster.local:8081"
+                            },
+                            {
+                                "name": "POSTGRES_DSN",
+                                "value": "postgres://ohmf:ohmf@postgres:5432/ohmf?sslmode=disable"
+                            },
+                            {
+                                "name": "JWT_SECRET",
+                                "value": "dev-only-change-me"
+                            },
+                            {
+                                "name": "RUN_ID_PREFIX",
+                                "value": "20260608t19461780948010z-multisource"
+                            },
+                            {
+                                "name": "USERS_PER_SHARD",
+                                "value": "10"
+                            },
+                            {
+                                "name": "SHARD_USER_COUNTS",
+                                "value": "4,4,4,4,4,4,4,4,4,3,3,3"
+                            },
+                            {
+                                "name": "WARMUP_USERS",
+                                "value": "5"
+                            },
+                            {
+                                "name": "PER_USER_RATE",
+                                "value": "1"
+                            },
+                            {
+                                "name": "WARMUP_DURATION_SECONDS",
+                                "value": "15"
+                            },
+                            {
+                                "name": "MAIN_DURATION_SECONDS",
+                                "value": "120"
+                            },
+                            {
+                                "name": "MESSAGE_TEXT",
+                                "value": "m4 sustained multisource local k3s validation"
+                            }
+                        ],
+                        "image": "ohmf-loadgen:dev",
+                        "imagePullPolicy": "IfNotPresent",
+                        "name": "loadgen",
+                        "resources": {},
+                        "terminationMessagePath": "/dev/termination-log",
+                        "terminationMessagePolicy": "File",
+                        "volumeMounts": [
+                            {
+                                "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+                                "name": "kube-api-access-dtkct",
+                                "readOnly": true
+                            }
+                        ]
+                    }
+                ],
+                "dnsPolicy": "ClusterFirst",
+                "enableServiceLinks": true,
+                "hostname": "loadgen-pipeline-diagnostic-45msgsec-multisource-4",
+                "nodeName": "k3d-ohmf-b1-server-0",
+                "preemptionPolicy": "PreemptLowerPriority",
+                "priority": 0,
+                "restartPolicy": "Never",
+                "schedulerName": "default-scheduler",
+                "securityContext": {},
+                "serviceAccount": "default",
+                "serviceAccountName": "default",
+                "terminationGracePeriodSeconds": 30,
+                "tolerations": [
+                    {
+                        "effect": "NoExecute",
+                        "key": "node.kubernetes.io/not-ready",
+                        "operator": "Exists",
+                        "tolerationSeconds": 300
+                    },
+                    {
+                        "effect": "NoExecute",
+                        "key": "node.kubernetes.io/unreachable",
+                        "operator": "Exists",
+                        "tolerationSeconds": 300
+                    }
+                ],
+                "volumes": [
+                    {
+                        "name": "kube-api-access-dtkct",
+                        "projected": {
+                            "defaultMode": 420,
+                            "sources": [
+                                {
+                                    "serviceAccountToken": {
+                                        "expirationSeconds": 3607,
+                                        "path": "token"
+                                    }
+                                },
+                                {
+                                    "configMap": {
+                                        "items": [
+                                            {
+                                                "key": "ca.crt",
+                                                "path": "ca.crt"
+                                            }
+                                        ],
+                                        "name": "kube-root-ca.crt"
+                                    }
+                                },
+                                {
+                                    "downwardAPI": {
+                                        "items": [
+                                            {
+                                                "fieldRef": {
+                                                    "apiVersion": "v1",
+                                                    "fieldPath": "metadata.namespace"
+                                                },
+                                                "path": "namespace"
+                                            }
+                                        ]
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                ]
+            },
+            "status": {
+                "conditions": [
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-06-08T19:52:22Z",
+                        "observedGeneration": 1,
+                        "status": "False",
+                        "type": "PodReadyToStartContainers"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-06-08T19:47:15Z",
+                        "observedGeneration": 1,
+                        "reason": "PodCompleted",
+                        "status": "True",
+                        "type": "Initialized"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-06-08T19:52:20Z",
+                        "observedGeneration": 1,
+                        "reason": "PodCompleted",
+                        "status": "False",
+                        "type": "Ready"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-06-08T19:52:20Z",
+                        "observedGeneration": 1,
+                        "reason": "PodCompleted",
+                        "status": "False",
+                        "type": "ContainersReady"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-06-08T19:47:15Z",
+                        "observedGeneration": 1,
+                        "status": "True",
+                        "type": "PodScheduled"
+                    }
+                ],
+                "containerStatuses": [
+                    {
+                        "containerID": "containerd://b2fd800d20e0e16eccb8b83c37fdc0dd88de769ad37585f4dfdf66ffc991340b",
+                        "image": "docker.io/library/ohmf-loadgen:dev",
+                        "imageID": "sha256:29e5f6bea428f68507c53b5a30a11b8300926fc097dd7847988b52a5092b155f",
+                        "lastState": {},
+                        "name": "loadgen",
+                        "ready": false,
+                        "resources": {},
+                        "restartCount": 0,
+                        "started": false,
+                        "state": {
+                            "terminated": {
+                                "containerID": "containerd://b2fd800d20e0e16eccb8b83c37fdc0dd88de769ad37585f4dfdf66ffc991340b",
+                                "exitCode": 0,
+                                "finishedAt": "2026-06-08T19:52:20Z",
+                                "reason": "Completed",
+                                "startedAt": "2026-06-08T19:47:17Z"
+                            }
+                        },
+                        "user": {
+                            "linux": {
+                                "gid": 0,
+                                "supplementalGroups": [
+                                    0,
+                                    1,
+                                    2,
+                                    3,
+                                    4,
+                                    6,
+                                    10,
+                                    11,
+                                    20,
+                                    26,
+                                    27
+                                ],
+                                "uid": 0
+                            }
+                        },
+                        "volumeMounts": [
+                            {
+                                "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+                                "name": "kube-api-access-dtkct",
+                                "readOnly": true,
+                                "recursiveReadOnly": "Disabled"
+                            }
+                        ]
+                    }
+                ],
+                "hostIP": "172.26.0.3",
+                "hostIPs": [
+                    {
+                        "ip": "172.26.0.3"
+                    }
+                ],
+                "observedGeneration": 1,
+                "phase": "Succeeded",
+                "podIP": "10.42.0.108",
+                "podIPs": [
+                    {
+                        "ip": "10.42.0.108"
+                    }
+                ],
+                "qosClass": "BestEffort",
+                "startTime": "2026-06-08T19:47:15Z"
+            }
+        },
+        {
+            "apiVersion": "v1",
+            "kind": "Pod",
+            "metadata": {
+                "annotations": {
+                    "batch.kubernetes.io/job-completion-index": "5"
+                },
+                "creationTimestamp": "2026-06-08T19:47:15Z",
+                "generateName": "loadgen-pipeline-diagnostic-45msgsec-multisource-5-",
+                "generation": 1,
+                "labels": {
+                    "app": "ohmf-loadgen",
+                    "batch.kubernetes.io/controller-uid": "d34de831-da60-4681-887e-3979f1e50976",
+                    "batch.kubernetes.io/job-completion-index": "5",
+                    "batch.kubernetes.io/job-name": "loadgen-pipeline-diagnostic-45msgsec-multisource",
+                    "benchmark": "pipeline-diagnostic-45msgsec-multisource",
+                    "controller-uid": "d34de831-da60-4681-887e-3979f1e50976",
+                    "job-name": "loadgen-pipeline-diagnostic-45msgsec-multisource"
+                },
+                "name": "loadgen-pipeline-diagnostic-45msgsec-multisource-5-dndwb",
+                "namespace": "ohmf",
+                "ownerReferences": [
+                    {
+                        "apiVersion": "batch/v1",
+                        "blockOwnerDeletion": true,
+                        "controller": true,
+                        "kind": "Job",
+                        "name": "loadgen-pipeline-diagnostic-45msgsec-multisource",
+                        "uid": "d34de831-da60-4681-887e-3979f1e50976"
+                    }
+                ],
+                "resourceVersion": "9367",
+                "uid": "31947b35-389c-4f3d-b49b-5f6018b9a9e5"
+            },
+            "spec": {
+                "containers": [
+                    {
+                        "env": [
+                            {
+                                "name": "JOB_COMPLETION_INDEX",
+                                "valueFrom": {
+                                    "fieldRef": {
+                                        "apiVersion": "v1",
+                                        "fieldPath": "metadata.annotations['batch.kubernetes.io/job-completion-index']"
+                                    }
+                                }
+                            },
+                            {
+                                "name": "NAMESPACE",
+                                "value": "ohmf"
+                            },
+                            {
+                                "name": "BASE_URL",
+                                "value": "http://gateway.ohmf.svc.cluster.local:8081"
+                            },
+                            {
+                                "name": "POSTGRES_DSN",
+                                "value": "postgres://ohmf:ohmf@postgres:5432/ohmf?sslmode=disable"
+                            },
+                            {
+                                "name": "JWT_SECRET",
+                                "value": "dev-only-change-me"
+                            },
+                            {
+                                "name": "RUN_ID_PREFIX",
+                                "value": "20260608t19461780948010z-multisource"
+                            },
+                            {
+                                "name": "USERS_PER_SHARD",
+                                "value": "10"
+                            },
+                            {
+                                "name": "SHARD_USER_COUNTS",
+                                "value": "4,4,4,4,4,4,4,4,4,3,3,3"
+                            },
+                            {
+                                "name": "WARMUP_USERS",
+                                "value": "5"
+                            },
+                            {
+                                "name": "PER_USER_RATE",
+                                "value": "1"
+                            },
+                            {
+                                "name": "WARMUP_DURATION_SECONDS",
+                                "value": "15"
+                            },
+                            {
+                                "name": "MAIN_DURATION_SECONDS",
+                                "value": "120"
+                            },
+                            {
+                                "name": "MESSAGE_TEXT",
+                                "value": "m4 sustained multisource local k3s validation"
+                            }
+                        ],
+                        "image": "ohmf-loadgen:dev",
+                        "imagePullPolicy": "IfNotPresent",
+                        "name": "loadgen",
+                        "resources": {},
+                        "terminationMessagePath": "/dev/termination-log",
+                        "terminationMessagePolicy": "File",
+                        "volumeMounts": [
+                            {
+                                "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+                                "name": "kube-api-access-54hbv",
+                                "readOnly": true
+                            }
+                        ]
+                    }
+                ],
+                "dnsPolicy": "ClusterFirst",
+                "enableServiceLinks": true,
+                "hostname": "loadgen-pipeline-diagnostic-45msgsec-multisource-5",
+                "nodeName": "k3d-ohmf-b1-server-0",
+                "preemptionPolicy": "PreemptLowerPriority",
+                "priority": 0,
+                "restartPolicy": "Never",
+                "schedulerName": "default-scheduler",
+                "securityContext": {},
+                "serviceAccount": "default",
+                "serviceAccountName": "default",
+                "terminationGracePeriodSeconds": 30,
+                "tolerations": [
+                    {
+                        "effect": "NoExecute",
+                        "key": "node.kubernetes.io/not-ready",
+                        "operator": "Exists",
+                        "tolerationSeconds": 300
+                    },
+                    {
+                        "effect": "NoExecute",
+                        "key": "node.kubernetes.io/unreachable",
+                        "operator": "Exists",
+                        "tolerationSeconds": 300
+                    }
+                ],
+                "volumes": [
+                    {
+                        "name": "kube-api-access-54hbv",
+                        "projected": {
+                            "defaultMode": 420,
+                            "sources": [
+                                {
+                                    "serviceAccountToken": {
+                                        "expirationSeconds": 3607,
+                                        "path": "token"
+                                    }
+                                },
+                                {
+                                    "configMap": {
+                                        "items": [
+                                            {
+                                                "key": "ca.crt",
+                                                "path": "ca.crt"
+                                            }
+                                        ],
+                                        "name": "kube-root-ca.crt"
+                                    }
+                                },
+                                {
+                                    "downwardAPI": {
+                                        "items": [
+                                            {
+                                                "fieldRef": {
+                                                    "apiVersion": "v1",
+                                                    "fieldPath": "metadata.namespace"
+                                                },
+                                                "path": "namespace"
+                                            }
+                                        ]
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                ]
+            },
+            "status": {
+                "conditions": [
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-06-08T19:52:25Z",
+                        "observedGeneration": 1,
+                        "status": "False",
+                        "type": "PodReadyToStartContainers"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-06-08T19:47:15Z",
+                        "observedGeneration": 1,
+                        "reason": "PodCompleted",
+                        "status": "True",
+                        "type": "Initialized"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-06-08T19:52:23Z",
+                        "observedGeneration": 1,
+                        "reason": "PodCompleted",
+                        "status": "False",
+                        "type": "Ready"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-06-08T19:52:23Z",
+                        "observedGeneration": 1,
+                        "reason": "PodCompleted",
+                        "status": "False",
+                        "type": "ContainersReady"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-06-08T19:47:15Z",
+                        "observedGeneration": 1,
+                        "status": "True",
+                        "type": "PodScheduled"
+                    }
+                ],
+                "containerStatuses": [
+                    {
+                        "containerID": "containerd://b7ee56522b26f9942562c38a882e87f7e709aa991762be99fbb2a3f6781fc967",
+                        "image": "docker.io/library/ohmf-loadgen:dev",
+                        "imageID": "sha256:29e5f6bea428f68507c53b5a30a11b8300926fc097dd7847988b52a5092b155f",
+                        "lastState": {},
+                        "name": "loadgen",
+                        "ready": false,
+                        "resources": {},
+                        "restartCount": 0,
+                        "started": false,
+                        "state": {
+                            "terminated": {
+                                "containerID": "containerd://b7ee56522b26f9942562c38a882e87f7e709aa991762be99fbb2a3f6781fc967",
+                                "exitCode": 0,
+                                "finishedAt": "2026-06-08T19:52:23Z",
+                                "reason": "Completed",
+                                "startedAt": "2026-06-08T19:47:17Z"
+                            }
+                        },
+                        "user": {
+                            "linux": {
+                                "gid": 0,
+                                "supplementalGroups": [
+                                    0,
+                                    1,
+                                    2,
+                                    3,
+                                    4,
+                                    6,
+                                    10,
+                                    11,
+                                    20,
+                                    26,
+                                    27
+                                ],
+                                "uid": 0
+                            }
+                        },
+                        "volumeMounts": [
+                            {
+                                "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+                                "name": "kube-api-access-54hbv",
+                                "readOnly": true,
+                                "recursiveReadOnly": "Disabled"
+                            }
+                        ]
+                    }
+                ],
+                "hostIP": "172.26.0.3",
+                "hostIPs": [
+                    {
+                        "ip": "172.26.0.3"
+                    }
+                ],
+                "observedGeneration": 1,
+                "phase": "Succeeded",
+                "podIP": "10.42.0.112",
+                "podIPs": [
+                    {
+                        "ip": "10.42.0.112"
+                    }
+                ],
+                "qosClass": "BestEffort",
+                "startTime": "2026-06-08T19:47:15Z"
+            }
+        },
+        {
+            "apiVersion": "v1",
+            "kind": "Pod",
+            "metadata": {
+                "annotations": {
+                    "batch.kubernetes.io/job-completion-index": "6"
+                },
+                "creationTimestamp": "2026-06-08T19:47:15Z",
+                "generateName": "loadgen-pipeline-diagnostic-45msgsec-multisource-6-",
+                "generation": 1,
+                "labels": {
+                    "app": "ohmf-loadgen",
+                    "batch.kubernetes.io/controller-uid": "d34de831-da60-4681-887e-3979f1e50976",
+                    "batch.kubernetes.io/job-completion-index": "6",
+                    "batch.kubernetes.io/job-name": "loadgen-pipeline-diagnostic-45msgsec-multisource",
+                    "benchmark": "pipeline-diagnostic-45msgsec-multisource",
+                    "controller-uid": "d34de831-da60-4681-887e-3979f1e50976",
+                    "job-name": "loadgen-pipeline-diagnostic-45msgsec-multisource"
+                },
+                "name": "loadgen-pipeline-diagnostic-45msgsec-multisource-6-s488g",
+                "namespace": "ohmf",
+                "ownerReferences": [
+                    {
+                        "apiVersion": "batch/v1",
+                        "blockOwnerDeletion": true,
+                        "controller": true,
+                        "kind": "Job",
+                        "name": "loadgen-pipeline-diagnostic-45msgsec-multisource",
+                        "uid": "d34de831-da60-4681-887e-3979f1e50976"
+                    }
+                ],
+                "resourceVersion": "9359",
+                "uid": "ef890cf6-48e3-4905-85ed-85f0114fe3dc"
+            },
+            "spec": {
+                "containers": [
+                    {
+                        "env": [
+                            {
+                                "name": "JOB_COMPLETION_INDEX",
+                                "valueFrom": {
+                                    "fieldRef": {
+                                        "apiVersion": "v1",
+                                        "fieldPath": "metadata.annotations['batch.kubernetes.io/job-completion-index']"
+                                    }
+                                }
+                            },
+                            {
+                                "name": "NAMESPACE",
+                                "value": "ohmf"
+                            },
+                            {
+                                "name": "BASE_URL",
+                                "value": "http://gateway.ohmf.svc.cluster.local:8081"
+                            },
+                            {
+                                "name": "POSTGRES_DSN",
+                                "value": "postgres://ohmf:ohmf@postgres:5432/ohmf?sslmode=disable"
+                            },
+                            {
+                                "name": "JWT_SECRET",
+                                "value": "dev-only-change-me"
+                            },
+                            {
+                                "name": "RUN_ID_PREFIX",
+                                "value": "20260608t19461780948010z-multisource"
+                            },
+                            {
+                                "name": "USERS_PER_SHARD",
+                                "value": "10"
+                            },
+                            {
+                                "name": "SHARD_USER_COUNTS",
+                                "value": "4,4,4,4,4,4,4,4,4,3,3,3"
+                            },
+                            {
+                                "name": "WARMUP_USERS",
+                                "value": "5"
+                            },
+                            {
+                                "name": "PER_USER_RATE",
+                                "value": "1"
+                            },
+                            {
+                                "name": "WARMUP_DURATION_SECONDS",
+                                "value": "15"
+                            },
+                            {
+                                "name": "MAIN_DURATION_SECONDS",
+                                "value": "120"
+                            },
+                            {
+                                "name": "MESSAGE_TEXT",
+                                "value": "m4 sustained multisource local k3s validation"
+                            }
+                        ],
+                        "image": "ohmf-loadgen:dev",
+                        "imagePullPolicy": "IfNotPresent",
+                        "name": "loadgen",
+                        "resources": {},
+                        "terminationMessagePath": "/dev/termination-log",
+                        "terminationMessagePolicy": "File",
+                        "volumeMounts": [
+                            {
+                                "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+                                "name": "kube-api-access-hcm4p",
+                                "readOnly": true
+                            }
+                        ]
+                    }
+                ],
+                "dnsPolicy": "ClusterFirst",
+                "enableServiceLinks": true,
+                "hostname": "loadgen-pipeline-diagnostic-45msgsec-multisource-6",
+                "nodeName": "k3d-ohmf-b1-server-0",
+                "preemptionPolicy": "PreemptLowerPriority",
+                "priority": 0,
+                "restartPolicy": "Never",
+                "schedulerName": "default-scheduler",
+                "securityContext": {},
+                "serviceAccount": "default",
+                "serviceAccountName": "default",
+                "terminationGracePeriodSeconds": 30,
+                "tolerations": [
+                    {
+                        "effect": "NoExecute",
+                        "key": "node.kubernetes.io/not-ready",
+                        "operator": "Exists",
+                        "tolerationSeconds": 300
+                    },
+                    {
+                        "effect": "NoExecute",
+                        "key": "node.kubernetes.io/unreachable",
+                        "operator": "Exists",
+                        "tolerationSeconds": 300
+                    }
+                ],
+                "volumes": [
+                    {
+                        "name": "kube-api-access-hcm4p",
+                        "projected": {
+                            "defaultMode": 420,
+                            "sources": [
+                                {
+                                    "serviceAccountToken": {
+                                        "expirationSeconds": 3607,
+                                        "path": "token"
+                                    }
+                                },
+                                {
+                                    "configMap": {
+                                        "items": [
+                                            {
+                                                "key": "ca.crt",
+                                                "path": "ca.crt"
+                                            }
+                                        ],
+                                        "name": "kube-root-ca.crt"
+                                    }
+                                },
+                                {
+                                    "downwardAPI": {
+                                        "items": [
+                                            {
+                                                "fieldRef": {
+                                                    "apiVersion": "v1",
+                                                    "fieldPath": "metadata.namespace"
+                                                },
+                                                "path": "namespace"
+                                            }
+                                        ]
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                ]
+            },
+            "status": {
+                "conditions": [
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-06-08T19:52:24Z",
+                        "observedGeneration": 1,
+                        "status": "False",
+                        "type": "PodReadyToStartContainers"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-06-08T19:47:15Z",
+                        "observedGeneration": 1,
+                        "reason": "PodCompleted",
+                        "status": "True",
+                        "type": "Initialized"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-06-08T19:52:22Z",
+                        "observedGeneration": 1,
+                        "reason": "PodCompleted",
+                        "status": "False",
+                        "type": "Ready"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-06-08T19:52:22Z",
+                        "observedGeneration": 1,
+                        "reason": "PodCompleted",
+                        "status": "False",
+                        "type": "ContainersReady"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-06-08T19:47:15Z",
+                        "observedGeneration": 1,
+                        "status": "True",
+                        "type": "PodScheduled"
+                    }
+                ],
+                "containerStatuses": [
+                    {
+                        "containerID": "containerd://b6e39e8dd3bfc1ddd6c9355d3a1a00dda0fe6b3b064aeb7bdcefa6371f546383",
+                        "image": "docker.io/library/ohmf-loadgen:dev",
+                        "imageID": "sha256:29e5f6bea428f68507c53b5a30a11b8300926fc097dd7847988b52a5092b155f",
+                        "lastState": {},
+                        "name": "loadgen",
+                        "ready": false,
+                        "resources": {},
+                        "restartCount": 0,
+                        "started": false,
+                        "state": {
+                            "terminated": {
+                                "containerID": "containerd://b6e39e8dd3bfc1ddd6c9355d3a1a00dda0fe6b3b064aeb7bdcefa6371f546383",
+                                "exitCode": 0,
+                                "finishedAt": "2026-06-08T19:52:22Z",
+                                "reason": "Completed",
+                                "startedAt": "2026-06-08T19:47:17Z"
+                            }
+                        },
+                        "user": {
+                            "linux": {
+                                "gid": 0,
+                                "supplementalGroups": [
+                                    0,
+                                    1,
+                                    2,
+                                    3,
+                                    4,
+                                    6,
+                                    10,
+                                    11,
+                                    20,
+                                    26,
+                                    27
+                                ],
+                                "uid": 0
+                            }
+                        },
+                        "volumeMounts": [
+                            {
+                                "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+                                "name": "kube-api-access-hcm4p",
+                                "readOnly": true,
+                                "recursiveReadOnly": "Disabled"
+                            }
+                        ]
+                    }
+                ],
+                "hostIP": "172.26.0.3",
+                "hostIPs": [
+                    {
+                        "ip": "172.26.0.3"
+                    }
+                ],
+                "observedGeneration": 1,
+                "phase": "Succeeded",
+                "podIP": "10.42.0.111",
+                "podIPs": [
+                    {
+                        "ip": "10.42.0.111"
+                    }
+                ],
+                "qosClass": "BestEffort",
+                "startTime": "2026-06-08T19:47:15Z"
+            }
+        },
+        {
+            "apiVersion": "v1",
+            "kind": "Pod",
+            "metadata": {
+                "annotations": {
+                    "batch.kubernetes.io/job-completion-index": "7"
+                },
+                "creationTimestamp": "2026-06-08T19:47:15Z",
+                "generateName": "loadgen-pipeline-diagnostic-45msgsec-multisource-7-",
+                "generation": 1,
+                "labels": {
+                    "app": "ohmf-loadgen",
+                    "batch.kubernetes.io/controller-uid": "d34de831-da60-4681-887e-3979f1e50976",
+                    "batch.kubernetes.io/job-completion-index": "7",
+                    "batch.kubernetes.io/job-name": "loadgen-pipeline-diagnostic-45msgsec-multisource",
+                    "benchmark": "pipeline-diagnostic-45msgsec-multisource",
+                    "controller-uid": "d34de831-da60-4681-887e-3979f1e50976",
+                    "job-name": "loadgen-pipeline-diagnostic-45msgsec-multisource"
+                },
+                "name": "loadgen-pipeline-diagnostic-45msgsec-multisource-7-sqq99",
+                "namespace": "ohmf",
+                "ownerReferences": [
+                    {
+                        "apiVersion": "batch/v1",
+                        "blockOwnerDeletion": true,
+                        "controller": true,
+                        "kind": "Job",
+                        "name": "loadgen-pipeline-diagnostic-45msgsec-multisource",
+                        "uid": "d34de831-da60-4681-887e-3979f1e50976"
+                    }
+                ],
+                "resourceVersion": "9368",
+                "uid": "5121bc0c-dd32-4cfe-a717-38cb4b24bbc9"
+            },
+            "spec": {
+                "containers": [
+                    {
+                        "env": [
+                            {
+                                "name": "JOB_COMPLETION_INDEX",
+                                "valueFrom": {
+                                    "fieldRef": {
+                                        "apiVersion": "v1",
+                                        "fieldPath": "metadata.annotations['batch.kubernetes.io/job-completion-index']"
+                                    }
+                                }
+                            },
+                            {
+                                "name": "NAMESPACE",
+                                "value": "ohmf"
+                            },
+                            {
+                                "name": "BASE_URL",
+                                "value": "http://gateway.ohmf.svc.cluster.local:8081"
+                            },
+                            {
+                                "name": "POSTGRES_DSN",
+                                "value": "postgres://ohmf:ohmf@postgres:5432/ohmf?sslmode=disable"
+                            },
+                            {
+                                "name": "JWT_SECRET",
+                                "value": "dev-only-change-me"
+                            },
+                            {
+                                "name": "RUN_ID_PREFIX",
+                                "value": "20260608t19461780948010z-multisource"
+                            },
+                            {
+                                "name": "USERS_PER_SHARD",
+                                "value": "10"
+                            },
+                            {
+                                "name": "SHARD_USER_COUNTS",
+                                "value": "4,4,4,4,4,4,4,4,4,3,3,3"
+                            },
+                            {
+                                "name": "WARMUP_USERS",
+                                "value": "5"
+                            },
+                            {
+                                "name": "PER_USER_RATE",
+                                "value": "1"
+                            },
+                            {
+                                "name": "WARMUP_DURATION_SECONDS",
+                                "value": "15"
+                            },
+                            {
+                                "name": "MAIN_DURATION_SECONDS",
+                                "value": "120"
+                            },
+                            {
+                                "name": "MESSAGE_TEXT",
+                                "value": "m4 sustained multisource local k3s validation"
+                            }
+                        ],
+                        "image": "ohmf-loadgen:dev",
+                        "imagePullPolicy": "IfNotPresent",
+                        "name": "loadgen",
+                        "resources": {},
+                        "terminationMessagePath": "/dev/termination-log",
+                        "terminationMessagePolicy": "File",
+                        "volumeMounts": [
+                            {
+                                "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+                                "name": "kube-api-access-kddhk",
+                                "readOnly": true
+                            }
+                        ]
+                    }
+                ],
+                "dnsPolicy": "ClusterFirst",
+                "enableServiceLinks": true,
+                "hostname": "loadgen-pipeline-diagnostic-45msgsec-multisource-7",
+                "nodeName": "k3d-ohmf-b1-server-0",
+                "preemptionPolicy": "PreemptLowerPriority",
+                "priority": 0,
+                "restartPolicy": "Never",
+                "schedulerName": "default-scheduler",
+                "securityContext": {},
+                "serviceAccount": "default",
+                "serviceAccountName": "default",
+                "terminationGracePeriodSeconds": 30,
+                "tolerations": [
+                    {
+                        "effect": "NoExecute",
+                        "key": "node.kubernetes.io/not-ready",
+                        "operator": "Exists",
+                        "tolerationSeconds": 300
+                    },
+                    {
+                        "effect": "NoExecute",
+                        "key": "node.kubernetes.io/unreachable",
+                        "operator": "Exists",
+                        "tolerationSeconds": 300
+                    }
+                ],
+                "volumes": [
+                    {
+                        "name": "kube-api-access-kddhk",
+                        "projected": {
+                            "defaultMode": 420,
+                            "sources": [
+                                {
+                                    "serviceAccountToken": {
+                                        "expirationSeconds": 3607,
+                                        "path": "token"
+                                    }
+                                },
+                                {
+                                    "configMap": {
+                                        "items": [
+                                            {
+                                                "key": "ca.crt",
+                                                "path": "ca.crt"
+                                            }
+                                        ],
+                                        "name": "kube-root-ca.crt"
+                                    }
+                                },
+                                {
+                                    "downwardAPI": {
+                                        "items": [
+                                            {
+                                                "fieldRef": {
+                                                    "apiVersion": "v1",
+                                                    "fieldPath": "metadata.namespace"
+                                                },
+                                                "path": "namespace"
+                                            }
+                                        ]
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                ]
+            },
+            "status": {
+                "conditions": [
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-06-08T19:52:25Z",
+                        "observedGeneration": 1,
+                        "status": "False",
+                        "type": "PodReadyToStartContainers"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-06-08T19:47:15Z",
+                        "observedGeneration": 1,
+                        "reason": "PodCompleted",
+                        "status": "True",
+                        "type": "Initialized"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-06-08T19:52:23Z",
+                        "observedGeneration": 1,
+                        "reason": "PodCompleted",
+                        "status": "False",
+                        "type": "Ready"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-06-08T19:52:23Z",
+                        "observedGeneration": 1,
+                        "reason": "PodCompleted",
+                        "status": "False",
+                        "type": "ContainersReady"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-06-08T19:47:15Z",
+                        "observedGeneration": 1,
+                        "status": "True",
+                        "type": "PodScheduled"
+                    }
+                ],
+                "containerStatuses": [
+                    {
+                        "containerID": "containerd://5ed46f9e908801289fb9416afaf47967b34f940ff0bb28ca3a13dbebfb0091b7",
+                        "image": "docker.io/library/ohmf-loadgen:dev",
+                        "imageID": "sha256:29e5f6bea428f68507c53b5a30a11b8300926fc097dd7847988b52a5092b155f",
+                        "lastState": {},
+                        "name": "loadgen",
+                        "ready": false,
+                        "resources": {},
+                        "restartCount": 0,
+                        "started": false,
+                        "state": {
+                            "terminated": {
+                                "containerID": "containerd://5ed46f9e908801289fb9416afaf47967b34f940ff0bb28ca3a13dbebfb0091b7",
+                                "exitCode": 0,
+                                "finishedAt": "2026-06-08T19:52:22Z",
+                                "reason": "Completed",
+                                "startedAt": "2026-06-08T19:47:17Z"
+                            }
+                        },
+                        "user": {
+                            "linux": {
+                                "gid": 0,
+                                "supplementalGroups": [
+                                    0,
+                                    1,
+                                    2,
+                                    3,
+                                    4,
+                                    6,
+                                    10,
+                                    11,
+                                    20,
+                                    26,
+                                    27
+                                ],
+                                "uid": 0
+                            }
+                        },
+                        "volumeMounts": [
+                            {
+                                "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+                                "name": "kube-api-access-kddhk",
+                                "readOnly": true,
+                                "recursiveReadOnly": "Disabled"
+                            }
+                        ]
+                    }
+                ],
+                "hostIP": "172.26.0.3",
+                "hostIPs": [
+                    {
+                        "ip": "172.26.0.3"
+                    }
+                ],
+                "observedGeneration": 1,
+                "phase": "Succeeded",
+                "podIP": "10.42.0.117",
+                "podIPs": [
+                    {
+                        "ip": "10.42.0.117"
+                    }
+                ],
+                "qosClass": "BestEffort",
+                "startTime": "2026-06-08T19:47:15Z"
+            }
+        },
+        {
+            "apiVersion": "v1",
+            "kind": "Pod",
+            "metadata": {
+                "annotations": {
+                    "batch.kubernetes.io/job-completion-index": "8"
+                },
+                "creationTimestamp": "2026-06-08T19:47:15Z",
+                "generateName": "loadgen-pipeline-diagnostic-45msgsec-multisource-8-",
+                "generation": 1,
+                "labels": {
+                    "app": "ohmf-loadgen",
+                    "batch.kubernetes.io/controller-uid": "d34de831-da60-4681-887e-3979f1e50976",
+                    "batch.kubernetes.io/job-completion-index": "8",
+                    "batch.kubernetes.io/job-name": "loadgen-pipeline-diagnostic-45msgsec-multisource",
+                    "benchmark": "pipeline-diagnostic-45msgsec-multisource",
+                    "controller-uid": "d34de831-da60-4681-887e-3979f1e50976",
+                    "job-name": "loadgen-pipeline-diagnostic-45msgsec-multisource"
+                },
+                "name": "loadgen-pipeline-diagnostic-45msgsec-multisource-8-554bh",
+                "namespace": "ohmf",
+                "ownerReferences": [
+                    {
+                        "apiVersion": "batch/v1",
+                        "blockOwnerDeletion": true,
+                        "controller": true,
+                        "kind": "Job",
+                        "name": "loadgen-pipeline-diagnostic-45msgsec-multisource",
+                        "uid": "d34de831-da60-4681-887e-3979f1e50976"
+                    }
+                ],
+                "resourceVersion": "9366",
+                "uid": "2b0fe033-48f9-4bb7-aae6-ee1ab2d0808c"
+            },
+            "spec": {
+                "containers": [
+                    {
+                        "env": [
+                            {
+                                "name": "JOB_COMPLETION_INDEX",
+                                "valueFrom": {
+                                    "fieldRef": {
+                                        "apiVersion": "v1",
+                                        "fieldPath": "metadata.annotations['batch.kubernetes.io/job-completion-index']"
+                                    }
+                                }
+                            },
+                            {
+                                "name": "NAMESPACE",
+                                "value": "ohmf"
+                            },
+                            {
+                                "name": "BASE_URL",
+                                "value": "http://gateway.ohmf.svc.cluster.local:8081"
+                            },
+                            {
+                                "name": "POSTGRES_DSN",
+                                "value": "postgres://ohmf:ohmf@postgres:5432/ohmf?sslmode=disable"
+                            },
+                            {
+                                "name": "JWT_SECRET",
+                                "value": "dev-only-change-me"
+                            },
+                            {
+                                "name": "RUN_ID_PREFIX",
+                                "value": "20260608t19461780948010z-multisource"
+                            },
+                            {
+                                "name": "USERS_PER_SHARD",
+                                "value": "10"
+                            },
+                            {
+                                "name": "SHARD_USER_COUNTS",
+                                "value": "4,4,4,4,4,4,4,4,4,3,3,3"
+                            },
+                            {
+                                "name": "WARMUP_USERS",
+                                "value": "5"
+                            },
+                            {
+                                "name": "PER_USER_RATE",
+                                "value": "1"
+                            },
+                            {
+                                "name": "WARMUP_DURATION_SECONDS",
+                                "value": "15"
+                            },
+                            {
+                                "name": "MAIN_DURATION_SECONDS",
+                                "value": "120"
+                            },
+                            {
+                                "name": "MESSAGE_TEXT",
+                                "value": "m4 sustained multisource local k3s validation"
+                            }
+                        ],
+                        "image": "ohmf-loadgen:dev",
+                        "imagePullPolicy": "IfNotPresent",
+                        "name": "loadgen",
+                        "resources": {},
+                        "terminationMessagePath": "/dev/termination-log",
+                        "terminationMessagePolicy": "File",
+                        "volumeMounts": [
+                            {
+                                "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+                                "name": "kube-api-access-8frh9",
+                                "readOnly": true
+                            }
+                        ]
+                    }
+                ],
+                "dnsPolicy": "ClusterFirst",
+                "enableServiceLinks": true,
+                "hostname": "loadgen-pipeline-diagnostic-45msgsec-multisource-8",
+                "nodeName": "k3d-ohmf-b1-server-0",
+                "preemptionPolicy": "PreemptLowerPriority",
+                "priority": 0,
+                "restartPolicy": "Never",
+                "schedulerName": "default-scheduler",
+                "securityContext": {},
+                "serviceAccount": "default",
+                "serviceAccountName": "default",
+                "terminationGracePeriodSeconds": 30,
+                "tolerations": [
+                    {
+                        "effect": "NoExecute",
+                        "key": "node.kubernetes.io/not-ready",
+                        "operator": "Exists",
+                        "tolerationSeconds": 300
+                    },
+                    {
+                        "effect": "NoExecute",
+                        "key": "node.kubernetes.io/unreachable",
+                        "operator": "Exists",
+                        "tolerationSeconds": 300
+                    }
+                ],
+                "volumes": [
+                    {
+                        "name": "kube-api-access-8frh9",
+                        "projected": {
+                            "defaultMode": 420,
+                            "sources": [
+                                {
+                                    "serviceAccountToken": {
+                                        "expirationSeconds": 3607,
+                                        "path": "token"
+                                    }
+                                },
+                                {
+                                    "configMap": {
+                                        "items": [
+                                            {
+                                                "key": "ca.crt",
+                                                "path": "ca.crt"
+                                            }
+                                        ],
+                                        "name": "kube-root-ca.crt"
+                                    }
+                                },
+                                {
+                                    "downwardAPI": {
+                                        "items": [
+                                            {
+                                                "fieldRef": {
+                                                    "apiVersion": "v1",
+                                                    "fieldPath": "metadata.namespace"
+                                                },
+                                                "path": "namespace"
+                                            }
+                                        ]
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                ]
+            },
+            "status": {
+                "conditions": [
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-06-08T19:52:25Z",
+                        "observedGeneration": 1,
+                        "status": "False",
+                        "type": "PodReadyToStartContainers"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-06-08T19:47:15Z",
+                        "observedGeneration": 1,
+                        "reason": "PodCompleted",
+                        "status": "True",
+                        "type": "Initialized"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-06-08T19:52:23Z",
+                        "observedGeneration": 1,
+                        "reason": "PodCompleted",
+                        "status": "False",
+                        "type": "Ready"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-06-08T19:52:23Z",
+                        "observedGeneration": 1,
+                        "reason": "PodCompleted",
+                        "status": "False",
+                        "type": "ContainersReady"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-06-08T19:47:15Z",
+                        "observedGeneration": 1,
+                        "status": "True",
+                        "type": "PodScheduled"
+                    }
+                ],
+                "containerStatuses": [
+                    {
+                        "containerID": "containerd://ba7414e0197792d2a50bb7bfd3e196608387a01a594e05f30a315670dcd18941",
+                        "image": "docker.io/library/ohmf-loadgen:dev",
+                        "imageID": "sha256:29e5f6bea428f68507c53b5a30a11b8300926fc097dd7847988b52a5092b155f",
+                        "lastState": {},
+                        "name": "loadgen",
+                        "ready": false,
+                        "resources": {},
+                        "restartCount": 0,
+                        "started": false,
+                        "state": {
+                            "terminated": {
+                                "containerID": "containerd://ba7414e0197792d2a50bb7bfd3e196608387a01a594e05f30a315670dcd18941",
+                                "exitCode": 0,
+                                "finishedAt": "2026-06-08T19:52:22Z",
+                                "reason": "Completed",
+                                "startedAt": "2026-06-08T19:47:17Z"
+                            }
+                        },
+                        "user": {
+                            "linux": {
+                                "gid": 0,
+                                "supplementalGroups": [
+                                    0,
+                                    1,
+                                    2,
+                                    3,
+                                    4,
+                                    6,
+                                    10,
+                                    11,
+                                    20,
+                                    26,
+                                    27
+                                ],
+                                "uid": 0
+                            }
+                        },
+                        "volumeMounts": [
+                            {
+                                "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+                                "name": "kube-api-access-8frh9",
+                                "readOnly": true,
+                                "recursiveReadOnly": "Disabled"
+                            }
+                        ]
+                    }
+                ],
+                "hostIP": "172.26.0.3",
+                "hostIPs": [
+                    {
+                        "ip": "172.26.0.3"
+                    }
+                ],
+                "observedGeneration": 1,
+                "phase": "Succeeded",
+                "podIP": "10.42.0.116",
+                "podIPs": [
+                    {
+                        "ip": "10.42.0.116"
+                    }
+                ],
+                "qosClass": "BestEffort",
+                "startTime": "2026-06-08T19:47:15Z"
+            }
+        },
+        {
+            "apiVersion": "v1",
+            "kind": "Pod",
+            "metadata": {
+                "annotations": {
+                    "batch.kubernetes.io/job-completion-index": "9"
+                },
+                "creationTimestamp": "2026-06-08T19:47:15Z",
+                "generateName": "loadgen-pipeline-diagnostic-45msgsec-multisource-9-",
+                "generation": 1,
+                "labels": {
+                    "app": "ohmf-loadgen",
+                    "batch.kubernetes.io/controller-uid": "d34de831-da60-4681-887e-3979f1e50976",
+                    "batch.kubernetes.io/job-completion-index": "9",
+                    "batch.kubernetes.io/job-name": "loadgen-pipeline-diagnostic-45msgsec-multisource",
+                    "benchmark": "pipeline-diagnostic-45msgsec-multisource",
+                    "controller-uid": "d34de831-da60-4681-887e-3979f1e50976",
+                    "job-name": "loadgen-pipeline-diagnostic-45msgsec-multisource"
+                },
+                "name": "loadgen-pipeline-diagnostic-45msgsec-multisource-9-28hcl",
+                "namespace": "ohmf",
+                "ownerReferences": [
+                    {
+                        "apiVersion": "batch/v1",
+                        "blockOwnerDeletion": true,
+                        "controller": true,
+                        "kind": "Job",
+                        "name": "loadgen-pipeline-diagnostic-45msgsec-multisource",
+                        "uid": "d34de831-da60-4681-887e-3979f1e50976"
+                    }
+                ],
+                "resourceVersion": "9313",
+                "uid": "9fffd354-90f0-4c89-a81a-fb80e557859d"
+            },
+            "spec": {
+                "containers": [
+                    {
+                        "env": [
+                            {
+                                "name": "JOB_COMPLETION_INDEX",
+                                "valueFrom": {
+                                    "fieldRef": {
+                                        "apiVersion": "v1",
+                                        "fieldPath": "metadata.annotations['batch.kubernetes.io/job-completion-index']"
+                                    }
+                                }
+                            },
+                            {
+                                "name": "NAMESPACE",
+                                "value": "ohmf"
+                            },
+                            {
+                                "name": "BASE_URL",
+                                "value": "http://gateway.ohmf.svc.cluster.local:8081"
+                            },
+                            {
+                                "name": "POSTGRES_DSN",
+                                "value": "postgres://ohmf:ohmf@postgres:5432/ohmf?sslmode=disable"
+                            },
+                            {
+                                "name": "JWT_SECRET",
+                                "value": "dev-only-change-me"
+                            },
+                            {
+                                "name": "RUN_ID_PREFIX",
+                                "value": "20260608t19461780948010z-multisource"
+                            },
+                            {
+                                "name": "USERS_PER_SHARD",
+                                "value": "10"
+                            },
+                            {
+                                "name": "SHARD_USER_COUNTS",
+                                "value": "4,4,4,4,4,4,4,4,4,3,3,3"
+                            },
+                            {
+                                "name": "WARMUP_USERS",
+                                "value": "5"
+                            },
+                            {
+                                "name": "PER_USER_RATE",
+                                "value": "1"
+                            },
+                            {
+                                "name": "WARMUP_DURATION_SECONDS",
+                                "value": "15"
+                            },
+                            {
+                                "name": "MAIN_DURATION_SECONDS",
+                                "value": "120"
+                            },
+                            {
+                                "name": "MESSAGE_TEXT",
+                                "value": "m4 sustained multisource local k3s validation"
+                            }
+                        ],
+                        "image": "ohmf-loadgen:dev",
+                        "imagePullPolicy": "IfNotPresent",
+                        "name": "loadgen",
+                        "resources": {},
+                        "terminationMessagePath": "/dev/termination-log",
+                        "terminationMessagePolicy": "File",
+                        "volumeMounts": [
+                            {
+                                "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+                                "name": "kube-api-access-mgnnl",
+                                "readOnly": true
+                            }
+                        ]
+                    }
+                ],
+                "dnsPolicy": "ClusterFirst",
+                "enableServiceLinks": true,
+                "hostname": "loadgen-pipeline-diagnostic-45msgsec-multisource-9",
+                "nodeName": "k3d-ohmf-b1-server-0",
+                "preemptionPolicy": "PreemptLowerPriority",
+                "priority": 0,
+                "restartPolicy": "Never",
+                "schedulerName": "default-scheduler",
+                "securityContext": {},
+                "serviceAccount": "default",
+                "serviceAccountName": "default",
+                "terminationGracePeriodSeconds": 30,
+                "tolerations": [
+                    {
+                        "effect": "NoExecute",
+                        "key": "node.kubernetes.io/not-ready",
+                        "operator": "Exists",
+                        "tolerationSeconds": 300
+                    },
+                    {
+                        "effect": "NoExecute",
+                        "key": "node.kubernetes.io/unreachable",
+                        "operator": "Exists",
+                        "tolerationSeconds": 300
+                    }
+                ],
+                "volumes": [
+                    {
+                        "name": "kube-api-access-mgnnl",
+                        "projected": {
+                            "defaultMode": 420,
+                            "sources": [
+                                {
+                                    "serviceAccountToken": {
+                                        "expirationSeconds": 3607,
+                                        "path": "token"
+                                    }
+                                },
+                                {
+                                    "configMap": {
+                                        "items": [
+                                            {
+                                                "key": "ca.crt",
+                                                "path": "ca.crt"
+                                            }
+                                        ],
+                                        "name": "kube-root-ca.crt"
+                                    }
+                                },
+                                {
+                                    "downwardAPI": {
+                                        "items": [
+                                            {
+                                                "fieldRef": {
+                                                    "apiVersion": "v1",
+                                                    "fieldPath": "metadata.namespace"
+                                                },
+                                                "path": "namespace"
+                                            }
+                                        ]
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                ]
+            },
+            "status": {
+                "conditions": [
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-06-08T19:51:08Z",
+                        "observedGeneration": 1,
+                        "status": "False",
+                        "type": "PodReadyToStartContainers"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-06-08T19:47:15Z",
+                        "observedGeneration": 1,
+                        "reason": "PodCompleted",
+                        "status": "True",
+                        "type": "Initialized"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-06-08T19:51:07Z",
+                        "observedGeneration": 1,
+                        "reason": "PodCompleted",
+                        "status": "False",
+                        "type": "Ready"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-06-08T19:51:07Z",
+                        "observedGeneration": 1,
+                        "reason": "PodCompleted",
+                        "status": "False",
+                        "type": "ContainersReady"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-06-08T19:47:15Z",
+                        "observedGeneration": 1,
+                        "status": "True",
+                        "type": "PodScheduled"
+                    }
+                ],
+                "containerStatuses": [
+                    {
+                        "containerID": "containerd://5aed1e24329a5778c165ce302cc8b6804ab5b29f169b5f320a9b9e8dded09851",
+                        "image": "docker.io/library/ohmf-loadgen:dev",
+                        "imageID": "sha256:29e5f6bea428f68507c53b5a30a11b8300926fc097dd7847988b52a5092b155f",
+                        "lastState": {},
+                        "name": "loadgen",
+                        "ready": false,
+                        "resources": {},
+                        "restartCount": 0,
+                        "started": false,
+                        "state": {
+                            "terminated": {
+                                "containerID": "containerd://5aed1e24329a5778c165ce302cc8b6804ab5b29f169b5f320a9b9e8dded09851",
+                                "exitCode": 0,
+                                "finishedAt": "2026-06-08T19:51:07Z",
+                                "reason": "Completed",
+                                "startedAt": "2026-06-08T19:47:17Z"
+                            }
+                        },
+                        "user": {
+                            "linux": {
+                                "gid": 0,
+                                "supplementalGroups": [
+                                    0,
+                                    1,
+                                    2,
+                                    3,
+                                    4,
+                                    6,
+                                    10,
+                                    11,
+                                    20,
+                                    26,
+                                    27
+                                ],
+                                "uid": 0
+                            }
+                        },
+                        "volumeMounts": [
+                            {
+                                "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+                                "name": "kube-api-access-mgnnl",
+                                "readOnly": true,
+                                "recursiveReadOnly": "Disabled"
+                            }
+                        ]
+                    }
+                ],
+                "hostIP": "172.26.0.3",
+                "hostIPs": [
+                    {
+                        "ip": "172.26.0.3"
+                    }
+                ],
+                "observedGeneration": 1,
+                "phase": "Succeeded",
+                "podIP": "10.42.0.113",
+                "podIPs": [
+                    {
+                        "ip": "10.42.0.113"
+                    }
+                ],
+                "qosClass": "BestEffort",
+                "startTime": "2026-06-08T19:47:15Z"
+            }
+        }
+    ],
+    "kind": "List",
+    "metadata": {
+        "resourceVersion": ""
+    }
+}

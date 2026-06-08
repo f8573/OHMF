@@ -1,0 +1,294 @@
+{
+  "scenario": "pipeline-diagnostic-60msgsec-multisource",
+  "stage": "B1",
+  "status": "failed",
+  "scope": "local single-node Kubernetes only",
+  "result_dir": "C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-08-pipeline-diagnostic-ladder/60msgsec",
+  "run": {
+    "run_id_prefix": "20260608t19541780948441z-multisource",
+    "run_date": "2026-06-08",
+    "system_under_test_commit": "c01d81e3a8d64ea122ab12a7f9cbf5f475d4ecf3",
+    "artifact_generation_head": "c01d81e3a8d64ea122ab12a7f9cbf5f475d4ecf3",
+    "overlay": "deploy/k8s/overlays/local-k3s-full",
+    "cluster_name": "ohmf-b1",
+    "cluster_context": "k3d-ohmf-b1",
+    "driver_location": "in-cluster multisource",
+    "principal_provisioning_mode": "seed_db",
+    "loadgen_pods": 12,
+    "source_ip_count": 12,
+    "source_ips": [
+      "10.42.0.118",
+      "10.42.0.119",
+      "10.42.0.120",
+      "10.42.0.121",
+      "10.42.0.122",
+      "10.42.0.123",
+      "10.42.0.124",
+      "10.42.0.125",
+      "10.42.0.126",
+      "10.42.0.127",
+      "10.42.0.128",
+      "10.42.0.129"
+    ],
+    "per_pod_rate": 1,
+    "per_pod_rate_label": "5 msg/sec per pod",
+    "aggregate_target_rate": 60,
+    "main_duration_seconds": 120
+  },
+  "phases": [
+    {
+      "name": "main-5x1x120",
+      "user_count": 60,
+      "per_user_rate": 1,
+      "aggregate_target_rate": 60,
+      "duration_seconds": 120,
+      "requested": 7200,
+      "accepted": 7200,
+      "failed_sends_by_reason": {}
+    },
+    {
+      "name": "warmup-5x1x15",
+      "user_count": 120,
+      "per_user_rate": 1,
+      "aggregate_target_rate": 120,
+      "duration_seconds": 15,
+      "requested": 1800,
+      "accepted": 1800,
+      "failed_sends_by_reason": {}
+    }
+  ],
+  "counts": {
+    "requested": 9000,
+    "sent_attempts": 9000,
+    "accepted": 9000,
+    "accepted_responses": 9000,
+    "failed": 0,
+    "failed_sends_by_reason": {},
+    "duplicates": 0,
+    "missing": 1447,
+    "postgres_delta": 7553,
+    "cassandra_delta": 7991
+  },
+  "latency": {
+    "label": "client-observed HTTP accept latency",
+    "calculation": "exact from merged shard accept samples",
+    "sample_count": 9000,
+    "p50_ms": 2020.5105,
+    "p95_ms": 2027.9075,
+    "p99_ms": 2051.60186
+  },
+  "kafka": {
+    "consumer_group": "messages-processor-v1",
+    "lag_settled_to_zero": true,
+    "lag_zero_seconds": 31.872974,
+    "lag_at_end": 0,
+    "limitation": "Kafka lag reconciliation is consumer-group scoped, not run scoped."
+  },
+  "pods": {
+    "restarts_before": {
+      "apps-695b467944": 0,
+      "cassandra-669556d58f": 0,
+      "gateway-7c9fbf9d9f": 0,
+      "kafka-9fd8b548c": 0,
+      "kafka-init": 0,
+      "loadgen-multisource-120-0": 0,
+      "loadgen-multisource-120-1": 0,
+      "loadgen-multisource-120-10": 0,
+      "loadgen-multisource-120-11": 0,
+      "loadgen-multisource-120-2": 0,
+      "loadgen-multisource-120-3": 0,
+      "loadgen-multisource-120-4": 0,
+      "loadgen-multisource-120-5": 0,
+      "loadgen-multisource-120-6": 0,
+      "loadgen-multisource-120-7": 0,
+      "loadgen-multisource-120-8": 0,
+      "loadgen-multisource-120-9": 0,
+      "loadgen-pipeline-diagnostic-30msgsec-multisource-0": 0,
+      "loadgen-pipeline-diagnostic-30msgsec-multisource-1": 0,
+      "loadgen-pipeline-diagnostic-30msgsec-multisource-10": 0,
+      "loadgen-pipeline-diagnostic-30msgsec-multisource-11": 0,
+      "loadgen-pipeline-diagnostic-30msgsec-multisource-2": 0,
+      "loadgen-pipeline-diagnostic-30msgsec-multisource-3": 0,
+      "loadgen-pipeline-diagnostic-30msgsec-multisource-4": 0,
+      "loadgen-pipeline-diagnostic-30msgsec-multisource-5": 0,
+      "loadgen-pipeline-diagnostic-30msgsec-multisource-6": 0,
+      "loadgen-pipeline-diagnostic-30msgsec-multisource-7": 0,
+      "loadgen-pipeline-diagnostic-30msgsec-multisource-8": 0,
+      "loadgen-pipeline-diagnostic-30msgsec-multisource-9": 0,
+      "loadgen-pipeline-diagnostic-45msgsec-multisource-0": 0,
+      "loadgen-pipeline-diagnostic-45msgsec-multisource-1": 0,
+      "loadgen-pipeline-diagnostic-45msgsec-multisource-10": 0,
+      "loadgen-pipeline-diagnostic-45msgsec-multisource-11": 0,
+      "loadgen-pipeline-diagnostic-45msgsec-multisource-2": 0,
+      "loadgen-pipeline-diagnostic-45msgsec-multisource-3": 0,
+      "loadgen-pipeline-diagnostic-45msgsec-multisource-4": 0,
+      "loadgen-pipeline-diagnostic-45msgsec-multisource-5": 0,
+      "loadgen-pipeline-diagnostic-45msgsec-multisource-6": 0,
+      "loadgen-pipeline-diagnostic-45msgsec-multisource-7": 0,
+      "loadgen-pipeline-diagnostic-45msgsec-multisource-8": 0,
+      "loadgen-pipeline-diagnostic-45msgsec-multisource-9": 0,
+      "messages-processor-7c6855b667": 0,
+      "postgres-6f4c6cfddc": 0,
+      "redis-5649fbd7f": 0
+    },
+    "restarts_after": {
+      "apps-695b467944": 0,
+      "cassandra-669556d58f": 0,
+      "gateway-7c9fbf9d9f": 0,
+      "kafka-9fd8b548c": 0,
+      "kafka-init": 0,
+      "loadgen-multisource-120-0": 0,
+      "loadgen-multisource-120-1": 0,
+      "loadgen-multisource-120-10": 0,
+      "loadgen-multisource-120-11": 0,
+      "loadgen-multisource-120-2": 0,
+      "loadgen-multisource-120-3": 0,
+      "loadgen-multisource-120-4": 0,
+      "loadgen-multisource-120-5": 0,
+      "loadgen-multisource-120-6": 0,
+      "loadgen-multisource-120-7": 0,
+      "loadgen-multisource-120-8": 0,
+      "loadgen-multisource-120-9": 0,
+      "loadgen-pipeline-diagnostic-30msgsec-multisource-0": 0,
+      "loadgen-pipeline-diagnostic-30msgsec-multisource-1": 0,
+      "loadgen-pipeline-diagnostic-30msgsec-multisource-10": 0,
+      "loadgen-pipeline-diagnostic-30msgsec-multisource-11": 0,
+      "loadgen-pipeline-diagnostic-30msgsec-multisource-2": 0,
+      "loadgen-pipeline-diagnostic-30msgsec-multisource-3": 0,
+      "loadgen-pipeline-diagnostic-30msgsec-multisource-4": 0,
+      "loadgen-pipeline-diagnostic-30msgsec-multisource-5": 0,
+      "loadgen-pipeline-diagnostic-30msgsec-multisource-6": 0,
+      "loadgen-pipeline-diagnostic-30msgsec-multisource-7": 0,
+      "loadgen-pipeline-diagnostic-30msgsec-multisource-8": 0,
+      "loadgen-pipeline-diagnostic-30msgsec-multisource-9": 0,
+      "loadgen-pipeline-diagnostic-45msgsec-multisource-0": 0,
+      "loadgen-pipeline-diagnostic-45msgsec-multisource-1": 0,
+      "loadgen-pipeline-diagnostic-45msgsec-multisource-10": 0,
+      "loadgen-pipeline-diagnostic-45msgsec-multisource-11": 0,
+      "loadgen-pipeline-diagnostic-45msgsec-multisource-2": 0,
+      "loadgen-pipeline-diagnostic-45msgsec-multisource-3": 0,
+      "loadgen-pipeline-diagnostic-45msgsec-multisource-4": 0,
+      "loadgen-pipeline-diagnostic-45msgsec-multisource-5": 0,
+      "loadgen-pipeline-diagnostic-45msgsec-multisource-6": 0,
+      "loadgen-pipeline-diagnostic-45msgsec-multisource-7": 0,
+      "loadgen-pipeline-diagnostic-45msgsec-multisource-8": 0,
+      "loadgen-pipeline-diagnostic-45msgsec-multisource-9": 0,
+      "loadgen-pipeline-diagnostic-60msgsec-multisource-0": 0,
+      "loadgen-pipeline-diagnostic-60msgsec-multisource-1": 0,
+      "loadgen-pipeline-diagnostic-60msgsec-multisource-10": 0,
+      "loadgen-pipeline-diagnostic-60msgsec-multisource-11": 0,
+      "loadgen-pipeline-diagnostic-60msgsec-multisource-2": 0,
+      "loadgen-pipeline-diagnostic-60msgsec-multisource-3": 0,
+      "loadgen-pipeline-diagnostic-60msgsec-multisource-4": 0,
+      "loadgen-pipeline-diagnostic-60msgsec-multisource-5": 0,
+      "loadgen-pipeline-diagnostic-60msgsec-multisource-6": 0,
+      "loadgen-pipeline-diagnostic-60msgsec-multisource-7": 0,
+      "loadgen-pipeline-diagnostic-60msgsec-multisource-8": 0,
+      "loadgen-pipeline-diagnostic-60msgsec-multisource-9": 0,
+      "messages-processor-7c6855b667": 0,
+      "postgres-6f4c6cfddc": 0,
+      "redis-5649fbd7f": 0
+    },
+    "hpa_present": false,
+    "hpa_state_raw": ""
+  },
+  "resource_observations": {
+    "peak_sampled_during_run": {
+      "apps-695b467944": {
+        "cpu": "1m",
+        "memory": "3Mi"
+      },
+      "cassandra-669556d58f": {
+        "cpu": "454m",
+        "memory": "1408Mi"
+      },
+      "gateway-7c9fbf9d9f": {
+        "cpu": "165m",
+        "memory": "114Mi"
+      },
+      "kafka-9fd8b548c": {
+        "cpu": "364m",
+        "memory": "694Mi"
+      },
+      "loadgen-pipeline-diagnostic-60msgsec-multisource-0": {
+        "cpu": "2m",
+        "memory": "7Mi"
+      },
+      "loadgen-pipeline-diagnostic-60msgsec-multisource-1": {
+        "cpu": "2m",
+        "memory": "7Mi"
+      },
+      "loadgen-pipeline-diagnostic-60msgsec-multisource-10": {
+        "cpu": "2m",
+        "memory": "7Mi"
+      },
+      "loadgen-pipeline-diagnostic-60msgsec-multisource-11": {
+        "cpu": "2m",
+        "memory": "7Mi"
+      },
+      "loadgen-pipeline-diagnostic-60msgsec-multisource-2": {
+        "cpu": "2m",
+        "memory": "7Mi"
+      },
+      "loadgen-pipeline-diagnostic-60msgsec-multisource-3": {
+        "cpu": "2m",
+        "memory": "7Mi"
+      },
+      "loadgen-pipeline-diagnostic-60msgsec-multisource-4": {
+        "cpu": "2m",
+        "memory": "7Mi"
+      },
+      "loadgen-pipeline-diagnostic-60msgsec-multisource-5": {
+        "cpu": "2m",
+        "memory": "7Mi"
+      },
+      "loadgen-pipeline-diagnostic-60msgsec-multisource-6": {
+        "cpu": "2m",
+        "memory": "7Mi"
+      },
+      "loadgen-pipeline-diagnostic-60msgsec-multisource-7": {
+        "cpu": "2m",
+        "memory": "8Mi"
+      },
+      "loadgen-pipeline-diagnostic-60msgsec-multisource-8": {
+        "cpu": "2m",
+        "memory": "7Mi"
+      },
+      "loadgen-pipeline-diagnostic-60msgsec-multisource-9": {
+        "cpu": "2m",
+        "memory": "7Mi"
+      },
+      "messages-processor-7c6855b667": {
+        "cpu": "113m",
+        "memory": "12Mi"
+      },
+      "postgres-6f4c6cfddc": {
+        "cpu": "218m",
+        "memory": "336Mi"
+      },
+      "redis-5649fbd7f": {
+        "cpu": "46m",
+        "memory": "57Mi"
+      }
+    }
+  },
+  "reconciliation": {
+    "mode": "run-scoped by fresh test conversation IDs aggregated across shards",
+    "conversation_count": 60
+  },
+  "supported_claim": "The multisource local Kubernetes run did not establish a passing 60 msg/sec aggregate claim. It remains useful only as bounded evidence for the accepted subset: 9000/9000 accepted, Postgres delta 7553, Cassandra delta 7991, Kafka lag settled_to_zero=True.",
+  "unsupported_claims": [
+    "OHMF can sustain 60 accepted messages/sec aggregate in this local configuration",
+    "Any p95 or p99 delivery latency claim",
+    "3,100 concurrent clients",
+    "Production readiness",
+    "HA or failover",
+    "Any cloud or production benchmark interpretation"
+  ],
+  "artifacts": {
+    "human_summary_md": "C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-08-pipeline-diagnostic-ladder/60msgsec/summary.md",
+    "deploy_result_md": "deploy/k8s/results/2026-06-08-pipeline-diagnostic-60msgsec-multisource.md",
+    "observations_dir": "C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-08-pipeline-diagnostic-ladder/60msgsec/observations",
+    "shards_dir": "C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-08-pipeline-diagnostic-ladder/60msgsec/shards"
+  }
+}

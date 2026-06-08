@@ -240,6 +240,7 @@ def build_supported_claim(status, aggregate_rate, source_ip_count, requested, ac
 
 
 def render_summary_markdown(summary):
+    per_pod_rate_label = summary["run"].get("per_pod_rate_label", f"{summary['run']['per_pod_rate']} msg/sec")
     lines = [
         f"# {summary['scenario']}",
         "",
@@ -248,7 +249,7 @@ def render_summary_markdown(summary):
         f"- Status: `{summary['status']}`",
         f"- Loadgen pods: `{summary['run']['loadgen_pods']}`",
         f"- Unique source IPs: `{summary['run']['source_ip_count']}`",
-        f"- Per-pod rate: `{summary['run']['per_pod_rate']} msg/sec`",
+        f"- Per-pod target: `{per_pod_rate_label}`",
         f"- Aggregate target rate: `{summary['run']['aggregate_target_rate']} msg/sec`",
         f"- Main-phase duration: `{summary['run']['main_duration_seconds']}s`",
         "",
@@ -294,16 +295,17 @@ def render_summary_markdown(summary):
     return "\n".join(lines)
 
 
-def render_deploy_markdown(summary, benchmark_summary_path):
+def render_deploy_markdown(summary, benchmark_summary_path, title):
+    per_pod_rate_label = summary["run"].get("per_pod_rate_label", f"{summary['run']['per_pod_rate']} msg/sec")
     lines = [
-        f"# Local k3s throughput result - 120 msg/sec multisource - {summary['run']['run_date']}",
+        f"# {title}",
         "",
         "## Outcome",
         "",
         f"Stage B1 multisource **{summary['status']}**.",
         "",
         f"- Loadgen pods / source IPs observed: `{summary['run']['loadgen_pods']}` / `{summary['run']['source_ip_count']}`",
-        f"- Per-pod rate: `{summary['run']['per_pod_rate']} msg/sec`",
+        f"- Per-pod target: `{per_pod_rate_label}`",
         f"- Aggregate target: `{summary['run']['aggregate_target_rate']} msg/sec`",
         f"- Main-phase duration: `{summary['run']['main_duration_seconds']}s`",
         f"- Requested / sent / accepted: `{summary['counts']['requested']}` / `{summary['counts']['sent_attempts']}` / `{summary['counts']['accepted']}`",
@@ -337,6 +339,7 @@ def main():
     parser.add_argument("--job-name", required=True)
     parser.add_argument("--loadgen-pods", required=True, type=int)
     parser.add_argument("--per-pod-rate", required=True, type=int)
+    parser.add_argument("--per-pod-rate-label")
     parser.add_argument("--main-duration-seconds", required=True, type=int)
     parser.add_argument("--aggregate-target-rate", required=True, type=int)
     parser.add_argument("--overlay", required=True)
@@ -347,6 +350,9 @@ def main():
     parser.add_argument("--run-id-prefix", required=True)
     parser.add_argument("--run-date", required=True)
     parser.add_argument("--principal-provisioning-mode", required=True)
+    parser.add_argument("--scenario-name", default="sustained-120msgsec-multisource")
+    parser.add_argument("--deploy-result-md")
+    parser.add_argument("--deploy-title")
     parser.add_argument("--kafka-consumer-group", default="messages-processor-v1")
     parser.add_argument("--kafka-topic", default="msg.ingress.v1")
     parser.add_argument("--cassandra-keyspace", default="ohmf_messages")
@@ -449,6 +455,10 @@ def main():
         lag_info,
     )
 
+    deploy_md_path = Path(args.deploy_result_md) if args.deploy_result_md else Path("deploy") / "k8s" / "results" / f"{args.run_date}-throughput-120msgsec-multisource.md"
+    deploy_title = args.deploy_title or f"Local k3s throughput result - {args.aggregate_target_rate} msg/sec multisource - {args.run_date}"
+    per_pod_rate_label = args.per_pod_rate_label or f"{args.per_pod_rate} msg/sec"
+
     unsupported_claims = [
         "Any p95 or p99 delivery latency claim",
         "3,100 concurrent clients",
@@ -460,7 +470,7 @@ def main():
         unsupported_claims.insert(0, f"OHMF can sustain {args.aggregate_target_rate} accepted messages/sec aggregate in this local configuration")
 
     summary = {
-        "scenario": "sustained-120msgsec-multisource",
+        "scenario": args.scenario_name,
         "stage": "B1",
         "status": status,
         "scope": "local single-node Kubernetes only",
@@ -479,6 +489,7 @@ def main():
             "source_ip_count": len(source_ips),
             "source_ips": source_ips,
             "per_pod_rate": args.per_pod_rate,
+            "per_pod_rate_label": per_pod_rate_label,
             "aggregate_target_rate": args.aggregate_target_rate,
             "main_duration_seconds": args.main_duration_seconds,
         },
@@ -520,7 +531,7 @@ def main():
         "unsupported_claims": unsupported_claims,
         "artifacts": {
             "human_summary_md": str(result_dir / "summary.md"),
-            "deploy_result_md": str(Path("deploy") / "k8s" / "results" / f"{args.run_date}-throughput-120msgsec-multisource.md"),
+            "deploy_result_md": str(deploy_md_path),
             "observations_dir": str(observations_dir),
             "shards_dir": str(shards_dir),
         },
@@ -528,11 +539,10 @@ def main():
 
     summary_path = result_dir / "summary.json"
     summary_md_path = result_dir / "summary.md"
-    deploy_md_path = Path("deploy") / "k8s" / "results" / f"{args.run_date}-throughput-120msgsec-multisource.md"
 
     summary_path.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
     summary_md_path.write_text(render_summary_markdown(summary), encoding="utf-8")
-    deploy_md_path.write_text(render_deploy_markdown(summary, summary_md_path), encoding="utf-8")
+    deploy_md_path.write_text(render_deploy_markdown(summary, summary_md_path, deploy_title), encoding="utf-8")
 
 
 if __name__ == "__main__":
