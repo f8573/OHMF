@@ -13,6 +13,8 @@ main_duration="${MAIN_DURATION_SECONDS:-600}"
 run_id_prefix="${RUN_ID_PREFIX:-multisource}"
 message_text="${MESSAGE_TEXT:-m4 sustained multisource local k3s validation}"
 base_url="${BASE_URL:-http://gateway.${namespace}.svc.cluster.local:8081}"
+postgres_dsn="${POSTGRES_DSN:-postgres://ohmf:ohmf@postgres:5432/ohmf?sslmode=disable}"
+jwt_secret="${JWT_SECRET:-dev-only-change-me}"
 scenario="sustained-120msgsec-multisource-shard-${shard_pad}"
 run_id="${run_id_prefix}-s${shard_pad}"
 user_index_offset=$((shard_index * users_per_shard))
@@ -33,13 +35,15 @@ cat > "${output_dir}/config.json" <<EOF
   "per_user_rate": ${per_user_rate},
   "aggregate_target_rate": ${aggregate_main_rate},
   "conversations_per_user": 1,
-  "principal_provisioning_mode": "auth_api",
+  "principal_provisioning_mode": "seed_db",
+  "jwt_secret": "${jwt_secret}",
   "message_text": "${message_text}",
   "auth_otp_code": "123456",
   "namespace": "${namespace}",
   "postgres_resource": "deploy/postgres",
   "postgres_user": "ohmf",
   "postgres_db": "ohmf",
+  "postgres_dsn": "${postgres_dsn}",
   "cassandra_resource": "deploy/cassandra",
   "cassandra_keyspace": "ohmf_messages",
   "kafka_resource": "deploy/kafka",

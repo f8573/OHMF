@@ -33,6 +33,7 @@ require_stage_a_tools
 require_cmd docker
 ensure_cluster
 
+cleanup_job
 rm -rf "${RESULT_DIR}"
 mkdir -p "${OBS_DIR}" "${SHARDS_DIR}"
 
@@ -108,8 +109,6 @@ docker build -t ohmf-loadgen:dev -f "${REPO_ROOT}/benchmarks/loadgen.Dockerfile"
 log "Importing loadgen image into k3d cluster ${K3D_CLUSTER}"
 import_image
 
-cleanup_job
-
 log "Applying indexed multisource loadgen job"
 cat <<EOF | kubectl apply -f -
 apiVersion: batch/v1
@@ -142,6 +141,10 @@ spec:
               value: "${NS}"
             - name: BASE_URL
               value: "http://gateway.${NS}.svc.cluster.local:8081"
+            - name: POSTGRES_DSN
+              value: "postgres://ohmf:ohmf@postgres:5432/ohmf?sslmode=disable"
+            - name: JWT_SECRET
+              value: "dev-only-change-me"
             - name: RUN_ID_PREFIX
               value: "${RUN_ID_PREFIX}"
             - name: USERS_PER_SHARD
@@ -198,6 +201,7 @@ python "${REPO_ROOT}/benchmarks/scripts/aggregate_multisource_results.py" \
   --artifact-head "${ARTIFACT_HEAD}" \
   --run-id-prefix "${RUN_ID_PREFIX}" \
   --run-date "${RUN_DATE}" \
+  --principal-provisioning-mode "seed_db" \
   --kafka-timeout-seconds "${KAFKA_TIMEOUT_SECONDS}" \
   --kafka-poll-seconds "${KAFKA_POLL_SECONDS}"
 

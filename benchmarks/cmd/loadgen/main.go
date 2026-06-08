@@ -26,6 +26,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type scenarioConfig struct {
@@ -50,6 +52,7 @@ type scenarioConfig struct {
 	PostgresResource       string            `json:"postgres_resource"`
 	PostgresUser           string            `json:"postgres_user"`
 	PostgresDB             string            `json:"postgres_db"`
+	PostgresDSN            string            `json:"postgres_dsn,omitempty"`
 	CassandraResource      string            `json:"cassandra_resource"`
 	CassandraKeyspace      string            `json:"cassandra_keyspace"`
 	KafkaResource          string            `json:"kafka_resource"`
@@ -979,14 +982,26 @@ func verifyUser(ctx context.Context, client *http.Client, cfg scenarioConfig, ph
 
 func seedUserAndMintToken(ctx context.Context, cfg scenarioConfig, phone, deviceName string) (string, string, string, error) {
 	query := fmt.Sprintf("WITH upsert_user AS (INSERT INTO users (primary_phone_e164, phone_verified_at) VALUES ('%s', now()) ON CONFLICT (primary_phone_e164) DO UPDATE SET phone_verified_at = EXCLUDED.phone_verified_at, updated_at = now() RETURNING id::text AS user_id), insert_device AS (INSERT INTO devices (user_id, platform, device_name, capabilities, last_seen_at) SELECT user_id::uuid, 'WEB', '%s', ARRAY['MINI_APPS']::text[], now() FROM upsert_user RETURNING id::text AS device_id, user_id::text) SELECT user_id || '|' || device_id FROM insert_device;", escapeSQLString(phone), escapeSQLString(deviceName))
-	out, err := runCommand(ctx, "kubectl", "-n", cfg.Namespace, "exec", cfg.PostgresResource, "--", "sh", "-lc", fmt.Sprintf("psql -U %s -d %s -t -A -c %q", cfg.PostgresUser, cfg.PostgresDB, query))
-	if err != nil {
-		return "", "", "", err
+	line := ""
+	if strings.TrimSpace(cfg.PostgresDSN) != "" {
+		pool, err := pgxpool.New(ctx, cfg.PostgresDSN)
+		if err != nil {
+			return "", "", "", err
+		}
+		defer pool.Close()
+		if err := pool.QueryRow(ctx, query).Scan(&line); err != nil {
+			return "", "", "", err
+		}
+	} else {
+		out, err := runCommand(ctx, "kubectl", "-n", cfg.Namespace, "exec", cfg.PostgresResource, "--", "sh", "-lc", fmt.Sprintf("psql -U %s -d %s -t -A -c %q", cfg.PostgresUser, cfg.PostgresDB, query))
+		if err != nil {
+			return "", "", "", err
+		}
+		line = strings.TrimSpace(lastNonEmptyLine(out))
 	}
-	line := strings.TrimSpace(lastNonEmptyLine(out))
 	parts := strings.Split(strings.TrimSpace(line), "|")
 	if len(parts) != 2 {
-		return "", "", "", fmt.Errorf("unexpected seed principal output: %q", out)
+		return "", "", "", fmt.Errorf("unexpected seed principal output: %q", line)
 	}
 	token, err := mintAccessToken(parts[0], parts[1], cfg.JWTSecret, 24*time.Hour)
 	if err != nil {

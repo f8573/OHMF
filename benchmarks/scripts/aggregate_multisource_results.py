@@ -346,6 +346,7 @@ def main():
     parser.add_argument("--artifact-head", required=True)
     parser.add_argument("--run-id-prefix", required=True)
     parser.add_argument("--run-date", required=True)
+    parser.add_argument("--principal-provisioning-mode", required=True)
     parser.add_argument("--kafka-consumer-group", default="messages-processor-v1")
     parser.add_argument("--kafka-topic", default="msg.ingress.v1")
     parser.add_argument("--cassandra-keyspace", default="ohmf_messages")
@@ -473,7 +474,7 @@ def main():
             "cluster_name": args.cluster_name,
             "cluster_context": args.cluster_context,
             "driver_location": "in-cluster multisource",
-            "principal_provisioning_mode": "auth_api",
+            "principal_provisioning_mode": args.principal_provisioning_mode,
             "loadgen_pods": args.loadgen_pods,
             "source_ip_count": len(source_ips),
             "source_ips": source_ips,
