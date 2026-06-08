@@ -1,0 +1,46 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: ohmf
+
+# Local resilience profile layered on top of local-k3s-full.
+#
+# This keeps the same single-broker / single-node honesty, but swaps the
+# Postgres, Kafka, and Cassandra `emptyDir` volumes to local-path PVCs so pod
+# restarts do not automatically wipe local state.
+
+resources:
+  - ../local-k3s-full
+  - pvc.yaml
+
+patches:
+  - target:
+      kind: Deployment
+      name: postgres
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/volumes/0
+        value:
+          name: data
+          persistentVolumeClaim:
+            claimName: postgres-data
+  - target:
+      kind: Deployment
+      name: kafka
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/volumes/0
+        value:
+          name: data
+          persistentVolumeClaim:
+            claimName: kafka-data
+  - target:
+      kind: Deployment
+      name: cassandra
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/volumes/0
+        value:
+          name: data
+          persistentVolumeClaim:
+            claimName: cassandra-data

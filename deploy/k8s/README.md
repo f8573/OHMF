@@ -93,6 +93,34 @@ kubectl apply -k deploy/k8s/overlays/local-k3s-full-hpa
 deploy/k8s/scripts/hpa-smoke-k3s-full.sh
 ```
 
+### `overlays/local-k3s-resilience`
+
+PVC-backed local resilience profile layered on top of `local-k3s-full`.
+
+Current scope:
+
+- swaps Postgres, Kafka, and Cassandra from `emptyDir` to `local-path` PVCs
+- keeps the same single-broker and single-node honesty
+- supports local restart/recovery validation on a k3s/k3d cluster
+
+What it proves when a restart artifact passes:
+
+- local PVC-backed state can survive a pod restart
+- the single-node stack can return to service after local restart stabilization
+
+What it still does not prove:
+
+- HA
+- broker failover
+- durable production storage
+- zero-loss across restart windows
+
+Run it with:
+
+```bash
+kubectl apply -k deploy/k8s/overlays/local-k3s-resilience
+```
+
 ## Prerequisites
 
 - A reachable local Kubernetes cluster:
@@ -140,6 +168,8 @@ not sized for production:
 - Kafka and Cassandra are single-node and use `emptyDir`
 - `local-k3s-full` increases requests/limits enough to run the real async path
 - the HPA profile relies on those requests for CPU-based scaling
+- `local-k3s-resilience` keeps local-path PVC semantics and still does not imply
+  production durability
 
 ## Recorded evidence
 
