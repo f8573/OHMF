@@ -1,0 +1,206 @@
+{
+  "scenario": "sustained-120msgsec",
+  "stage": "B1",
+  "status": "failed",
+  "scope": "local single-node Kubernetes only",
+  "result_dir": "C:\\Users\\James\\Downloads\\Messages\\benchmarks\\results\\2026-06-08-sustained-120msgsec",
+  "run": {
+    "run_id": "20260608t143945z-fc4eebd4",
+    "commit_sha": "a767b25091b9eeecbe83b163d6abd669253a5917",
+    "overlay": "deploy/k8s/overlays/local-k3s-full",
+    "cluster_name": "ohmf-b1",
+    "cluster_context": "k3d-ohmf-b1",
+    "driver_location": "host",
+    "configured_rate_per_second": 120,
+    "configured_duration_seconds": 120,
+    "configured_active_conversations": 12,
+    "wall_clock_started_utc": "2026-06-08T14:39:45Z",
+    "wall_clock_completed_utc": "2026-06-08T14:42:07Z"
+  },
+  "warmup_diagnostic": {
+    "ran": true,
+    "scenario": "warmup-10x60",
+    "configured_rate_per_second": 10,
+    "configured_duration_seconds": 60,
+    "requested": 600,
+    "accepted": 239,
+    "failed_http_429": 361,
+    "postgres_delta": 239,
+    "cassandra_delta": 239,
+    "kafka_lag_zero_seconds": 2.1503326,
+    "note": "Warmup consumed OTP-start limiter budget, so the ohmf namespace was deleted and recreated before the clean target run."
+  },
+  "environment": {
+    "host": {
+      "hostname": "skibidiohiogyat",
+      "os": "windows",
+      "arch": "amd64",
+      "cpus": 32,
+      "docker_operating_system": "Docker Desktop",
+      "docker_cpus": 32,
+      "docker_total_memory_gib": 31.46
+    },
+    "docker": {
+      "desktop_version": "4.32.0",
+      "engine_version": "27.0.3"
+    },
+    "cluster": {
+      "flavor": "k3d",
+      "k3d_version": "v5.9.0",
+      "kubernetes_server_version": "v1.35.5+k3s1",
+      "node_runtime": "containerd://2.2.3-k3s1",
+      "node_count": 1
+    },
+    "images": [
+      "ohmf-gateway:dev",
+      "ohmf-apps:dev",
+      "ohmf-messages-processor:dev"
+    ]
+  },
+  "commands": [
+    "git status --short",
+    "git rev-parse HEAD",
+    "git log --oneline -5",
+    "kubectl kustomize deploy/k8s/overlays/local-k3s-full",
+    "docker run --rm -v \"${PWD}:/src\" -w /src -e CGO_ENABLED=0 -e GOOS=windows -e GOARCH=amd64 golang:1.25 sh -lc \"mkdir -p benchmarks/bin && /usr/local/go/bin/go build -o benchmarks/bin/loadgen.exe ./benchmarks/cmd/loadgen\"",
+    ".\\tools\\bin\\k3d.exe cluster create ohmf-b1",
+    "docker build -t ohmf-gateway:dev ohmf/services/gateway",
+    "docker build -t ohmf-apps:dev -f ohmf/services/apps/Dockerfile .",
+    "docker build -t ohmf-messages-processor:dev ohmf/services/messages-processor",
+    ".\\tools\\bin\\k3d.exe image import ohmf-gateway:dev ohmf-apps:dev ohmf-messages-processor:dev -c ohmf-b1",
+    "kubectl apply --validate=false -k deploy/k8s/overlays/local-k3s-full",
+    "kubectl -n ohmf rollout status deploy/postgres --timeout=240s",
+    "kubectl -n ohmf rollout status deploy/redis --timeout=240s",
+    "kubectl -n ohmf rollout status deploy/cassandra --timeout=420s",
+    "kubectl -n ohmf rollout status deploy/kafka --timeout=420s",
+    "kubectl -n ohmf wait --for=condition=complete job/kafka-init --timeout=240s",
+    "kubectl -n ohmf rollout status deploy/apps --timeout=240s",
+    "kubectl -n ohmf rollout status deploy/messages-processor --timeout=240s",
+    "kubectl -n ohmf rollout status deploy/gateway --timeout=240s",
+    "kubectl -n ohmf port-forward svc/gateway 18080:8081",
+    ".\\benchmarks\\bin\\loadgen.exe -config benchmarks\\tmp\\stage-b1\\warmup-10x60.json -output-dir benchmarks\\tmp\\stage-b1\\warmup-10x60-result",
+    "kubectl delete namespace ohmf --wait=true --timeout=240s",
+    "kubectl apply --validate=false -k deploy/k8s/overlays/local-k3s-full",
+    ".\\benchmarks\\bin\\loadgen.exe -config benchmarks\\tmp\\stage-b1\\sustained-120x120.json -output-dir benchmarks\\results\\2026-06-08-sustained-120msgsec"
+  ],
+  "counts": {
+    "requested": 14400,
+    "sent_attempts": 14400,
+    "accepted": 419,
+    "accepted_responses": 419,
+    "failed": 13981,
+    "failed_sends_by_reason": {
+      "http_429": 13981
+    },
+    "duplicates": 0,
+    "missing": 0,
+    "postgres_delta": 419,
+    "cassandra_delta": 419
+  },
+  "latency": {
+    "label": "client-observed HTTP accept latency",
+    "sample_count": 419,
+    "p50_ms": 39.241,
+    "p95_ms": 2027.8411,
+    "p99_ms": 2116.66308
+  },
+  "kafka": {
+    "consumer_group": "messages-processor-v1",
+    "lag_settled_to_zero": true,
+    "lag_zero_seconds": 2.0490272,
+    "lag_at_end": 0,
+    "highest_captured_snapshot_total_lag": 1,
+    "limitation": "Kafka lag reconciliation is consumer-group scoped, not run scoped."
+  },
+  "pods": {
+    "restarts_before": {
+      "apps": 0,
+      "cassandra": 0,
+      "gateway": 0,
+      "kafka": 0,
+      "messages-processor": 0,
+      "postgres": 0,
+      "redis": 0
+    },
+    "restarts_after": {
+      "apps": 0,
+      "cassandra": 0,
+      "gateway": 0,
+      "kafka": 0,
+      "messages-processor": 0,
+      "postgres": 0,
+      "redis": 0
+    },
+    "hpa_present": false
+  },
+  "resource_observations": {
+    "typical_pre_run": {
+      "cassandra": {
+        "cpu": "26m",
+        "memory": "1331Mi"
+      },
+      "kafka": {
+        "cpu": "49m",
+        "memory": "371Mi"
+      },
+      "gateway": {
+        "cpu": "4m",
+        "memory": "9Mi"
+      },
+      "postgres": {
+        "cpu": "11m",
+        "memory": "45Mi"
+      }
+    },
+    "peak_sampled_during_run": {
+      "cassandra": {
+        "cpu": "851m",
+        "memory": "1331Mi"
+      },
+      "kafka": {
+        "cpu": "347m",
+        "memory": "402Mi"
+      },
+      "gateway": {
+        "cpu": "127m",
+        "memory": "28Mi"
+      },
+      "postgres": {
+        "cpu": "39m",
+        "memory": "85Mi"
+      },
+      "messages-processor": {
+        "cpu": "31m",
+        "memory": "7Mi"
+      }
+    }
+  },
+  "limiting_factor": {
+    "type": "front-door user send rate limit",
+    "source_file": "ohmf/services/gateway/internal/messages/service.go:2679",
+    "details": "The committed gateway send path enforces 30 messages per 10 seconds per user with burst 60. The observed 419 accepted messages over 120 seconds closely matches that envelope."
+  },
+  "limitations": [
+    "Client latency is client-observed HTTP accept latency only, not end-to-end delivery latency.",
+    "This was a local single-node k3d/k3s run, not a cloud or production benchmark.",
+    "The committed driver uses one sender account, so the configured per-user limiter bounds accepted throughput in this scenario.",
+    "Kafka lag reconciliation is consumer-group scoped, not run scoped."
+  ],
+  "supported_claim": "OHMF, as configured on commit a767b25091b9eeecbe83b163d6abd669253a5917 and exercised by the committed local load driver on a single-node k3d cluster, did not sustain 120 accepted messages/sec through the local full pipeline. During the clean target run, 419 of 14400 requests were accepted, accepted messages reconciled to Postgres and Cassandra, duplicates remained 0, missing remained 0, and Kafka lag returned to 0 within 2.05 seconds.",
+  "unsupported_claims": [
+    "OHMF can sustain 120 accepted messages/sec in this local configuration",
+    "Zero loss at 120 msg/sec",
+    "Any p95 or p99 delivery latency claim",
+    "3,100 concurrent clients",
+    "Production readiness",
+    "HA or failover",
+    "Any cloud or production benchmark interpretation"
+  ],
+  "artifacts": {
+    "human_summary_md": "C:\\Users\\James\\Downloads\\Messages\\benchmarks\\results\\2026-06-08-sustained-120msgsec\\summary.md",
+    "raw_driver_summary_json": "C:\\Users\\James\\Downloads\\Messages\\benchmarks\\results\\2026-06-08-sustained-120msgsec\\driver-summary.raw.json",
+    "raw_driver_summary_md": "C:\\Users\\James\\Downloads\\Messages\\benchmarks\\results\\2026-06-08-sustained-120msgsec\\driver-summary.raw.md",
+    "deploy_result_md": "C:\\Users\\James\\Downloads\\Messages\\deploy\\k8s\\results\\2026-06-08-throughput-120msgsec.md",
+    "observations_dir": "C:\\Users\\James\\Downloads\\Messages\\benchmarks\\results\\2026-06-08-sustained-120msgsec\\observations"
+  }
+}

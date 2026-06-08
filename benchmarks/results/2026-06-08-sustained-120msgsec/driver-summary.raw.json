@@ -1,0 +1,99 @@
+{
+  "scenario": "sustained-120msgsec",
+  "run_id": "20260608t143945z-fc4eebd4",
+  "result_dir": "C:\\Users\\James\\Downloads\\Messages\\benchmarks\\results\\2026-06-08-sustained-120msgsec",
+  "driver_mode": "host",
+  "completed_utc": "2026-06-08T14:42:07Z",
+  "cancelled": false,
+  "counts": {
+    "requested": 14400,
+    "sent_attempts": 14400,
+    "accepted": 419,
+    "accepted_responses": 419,
+    "send_failures": {
+      "http_429": 13981
+    },
+    "duplicates": 0,
+    "missing": 0,
+    "unique_idempotency_keys": 419,
+    "unique_accepted_message_ids": 419
+  },
+  "latency": {
+    "sample_count": 419,
+    "p50_ms": 39.241,
+    "p95_ms": 2027.8410999999999,
+    "p99_ms": 2116.66308,
+    "location": "host"
+  },
+  "reconcile": {
+    "postgres_before": 0,
+    "postgres_after": 419,
+    "postgres_delta": 419,
+    "cassandra_before": 0,
+    "cassandra_after": 419,
+    "cassandra_delta": 419,
+    "kafka_lag_at_end": 0,
+    "kafka_lag_settled_to_zero": true,
+    "kafka_lag_zero_seconds": 2.0490272,
+    "run_scoped_reconcile_mode": "Postgres reconciled by fresh test conversation ids derived from run_id; Cassandra reconciled by fresh test conversation ids plus UTC partition bucket; there is no dedicated persisted run_id column",
+    "limitations": [
+      "Client latency is client-observed POST-to-ack latency only, labeled by driver execution location.",
+      "Kafka lag reconciliation is not run-scoped in the current schema/tooling; it is consumer-group wide and should be treated as isolated-cluster evidence."
+    ]
+  },
+  "conversations": [
+    {
+      "conversation_id": "3c009568-2b59-4860-8fd5-305cdc208f82",
+      "recipient_user_id": "f30eab39-e983-43c9-bd09-4e5ebe08c0a2"
+    },
+    {
+      "conversation_id": "10a073db-1693-408d-ba08-94d6123172c0",
+      "recipient_user_id": "fb8ad79c-9748-4db5-b3df-a63e4992b281"
+    },
+    {
+      "conversation_id": "25a1fd9c-d9d4-43c1-83bf-3dfc001b23c1",
+      "recipient_user_id": "5d2f9ae3-a358-4eb6-8528-d0e33442dd73"
+    },
+    {
+      "conversation_id": "80f25366-31a0-448a-8461-02ca5e6bdfc1",
+      "recipient_user_id": "10839379-1cba-41e4-8b9d-661a9fdfbda0"
+    },
+    {
+      "conversation_id": "31de1341-1b8a-4c27-bc3f-f5aea6d10e85",
+      "recipient_user_id": "d0dbaea3-c3d8-4d96-8c33-4dfc37b7118e"
+    },
+    {
+      "conversation_id": "68354464-9eb5-497c-b043-4a2322fe08e9",
+      "recipient_user_id": "2564b456-0b66-4118-9f88-ed69b0ef9a34"
+    },
+    {
+      "conversation_id": "806a8eb0-6d6a-4b31-bfc0-3048a0d43841",
+      "recipient_user_id": "6d2376cc-f219-44f2-94a2-b13fa438d991"
+    },
+    {
+      "conversation_id": "a3005e94-5fbc-49ba-93e3-9056db6a4af9",
+      "recipient_user_id": "42b12da9-e118-4f64-a52c-26a015d85c80"
+    },
+    {
+      "conversation_id": "d45f4ed4-3cb7-4c68-b0ad-b8b8db61515c",
+      "recipient_user_id": "05a2461b-d29b-4cfb-8c56-a2040f5a458b"
+    },
+    {
+      "conversation_id": "76a31c7e-d36e-4e9c-bec1-d45650413e0a",
+      "recipient_user_id": "4daebe83-6d0f-434a-b0b8-a5e105f1bf2b"
+    },
+    {
+      "conversation_id": "940695d5-a0fb-4b33-8cc5-76a750bd402e",
+      "recipient_user_id": "3acd086a-b097-46ff-ae96-9f38dd1f714d"
+    },
+    {
+      "conversation_id": "8f292131-a078-4dca-aeb9-c2b69a4ccc7e",
+      "recipient_user_id": "499adc99-c0b4-4dbf-ba49-5838a01ae7c8"
+    }
+  ],
+  "limitations": [
+    "Client latency is client-observed POST-to-ack latency only, labeled by driver execution location.",
+    "Kafka lag reconciliation is not run-scoped in the current schema/tooling; it is consumer-group wide and should be treated as isolated-cluster evidence."
+  ],
+  "supported_claim": "This artifact supports only a local host benchmark claim for scenario \"sustained-120msgsec\" at run_id \"20260608t143945z-fc4eebd4\", with client-observed accept latency and run-scoped Postgres/Cassandra reconciliation by fresh test conversation where available."
+}

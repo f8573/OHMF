@@ -137,12 +137,14 @@ below. For the complete day-to-day local-hosting guide, see
 
 ## Benchmarks and load testing
 
-**Honest status:** the repository does not yet contain WebSocket load-test scripts or captured
-benchmark artifacts (latency histograms, message-loss accounting, environment manifests). The only
-load-oriented file today is `ohmf/services/gateway/_tools/e2ee-load-test.go`, which is an in-process
-simulation of E2EE message *generation* - it does not open WebSocket connections, does not measure
-p95 latency, and does not measure message loss. Treat it as a micro-benchmark scaffold, not as
-evidence of system throughput.
+**Honest status:** the repository still does not contain a WebSocket concurrency harness, but it now
+does contain committed local benchmark artifacts under [`benchmarks/results/`](benchmarks/results/).
+Those artifacts currently support only a Stage A smoke and a failed local Stage B1 `120 msg/sec`
+attempt; they do **not** substantiate large-client-count, delivery-latency, or production-throughput
+claims. The old `ohmf/services/gateway/_tools/e2ee-load-test.go` remains an in-process simulation of
+E2EE message *generation* - it does not open WebSocket connections, does not measure p95 delivery
+latency, and does not measure message loss. Treat it as a micro-benchmark scaffold, not as evidence
+of system throughput.
 
 Reported local/containerized benchmark **target** (design goal, not yet substantiated by artifacts
 in this repo): sustained ~3,100 concurrent WebSocket clients, p95 latency under 150 ms, and zero
