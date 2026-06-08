@@ -1,0 +1,59 @@
+{
+  "scenario": "sustained-120-aggregate",
+  "run_id": "20260608t162740z-857c16c8",
+  "system_under_test_commit": "2aa00eac7f4f5a57457034dee2f6f3b9410b5d38",
+  "base_url": "http://127.0.0.1:18080",
+  "driver_location": "host",
+  "rate_per_second": 5,
+  "duration_seconds": 10,
+  "active_conversations": 1,
+  "user_count": 60,
+  "per_user_rate": 2,
+  "aggregate_target_rate": 120,
+  "conversations_per_user": 1,
+  "principal_provisioning_mode": "seed_db",
+  "jwt_secret": "dev-only-change-me",
+  "message_text": "m4 sustained aggregate local k3s validation",
+  "auth_otp_code": "123456",
+  "namespace": "ohmf",
+  "postgres_resource": "deploy/postgres",
+  "postgres_user": "ohmf",
+  "postgres_db": "ohmf",
+  "cassandra_resource": "deploy/cassandra",
+  "cassandra_keyspace": "ohmf_messages",
+  "kafka_resource": "deploy/kafka",
+  "kafka_consumer_group": "messages-processor-v1",
+  "kafka_ingress_topic": "msg.ingress.v1",
+  "kafka_lag_poll_seconds": 2,
+  "kafka_lag_timeout_seconds": 180,
+  "request_timeout_seconds": 15,
+  "duplicate_every": 0,
+  "phases": [
+    {
+      "name": "warmup-10x1x60",
+      "user_count": 10,
+      "per_user_rate": 1,
+      "aggregate_target_rate": 10,
+      "duration_seconds": 60
+    },
+    {
+      "name": "warmup-30x2x60",
+      "user_count": 30,
+      "per_user_rate": 2,
+      "aggregate_target_rate": 60,
+      "duration_seconds": 60
+    },
+    {
+      "name": "main-60x2x720",
+      "user_count": 60,
+      "per_user_rate": 2,
+      "aggregate_target_rate": 120,
+      "duration_seconds": 720
+    }
+  ],
+  "metadata": {
+    "design_note": "aggregate across many authenticated users; do not disable gateway send rate limits",
+    "stage": "B1",
+    "supported_claim_boundary": "local single-cluster throughput only"
+  }
+}

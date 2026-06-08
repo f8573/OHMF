@@ -1,0 +1,9 @@
+NAME                                  READY   STATUS      RESTARTS   AGE    IP           NODE                   NOMINATED NODE   READINESS GATES
+apps-695b467944-qvg2w                 1/1     Running     0          124m   10.42.0.21   k3d-ohmf-b1-server-0   <none>           <none>
+cassandra-669556d58f-f5bbv            1/1     Running     0          124m   10.42.0.18   k3d-ohmf-b1-server-0   <none>           <none>
+gateway-7c9fbf9d9f-rd9tw              1/1     Running     0          124m   10.42.0.17   k3d-ohmf-b1-server-0   <none>           <none>
+kafka-9fd8b548c-qblzp                 1/1     Running     0          124m   10.42.0.20   k3d-ohmf-b1-server-0   <none>           <none>
+kafka-init-9ds8n                      0/1     Completed   0          124m   10.42.0.23   k3d-ohmf-b1-server-0   <none>           <none>
+messages-processor-7c6855b667-9t8tc   1/1     Running     0          124m   10.42.0.19   k3d-ohmf-b1-server-0   <none>           <none>
+postgres-6f4c6cfddc-f7rhp             1/1     Running     0          124m   10.42.0.22   k3d-ohmf-b1-server-0   <none>           <none>
+redis-5649fbd7f-75gzg                 1/1     Running     0          124m   10.42.0.24   k3d-ohmf-b1-server-0   <none>           <none>

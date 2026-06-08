@@ -1,0 +1,387 @@
+{
+  "scenario": "sustained-120-aggregate",
+  "run_id": "20260608t162740z-857c16c8",
+  "system_under_test_commit": "2aa00eac7f4f5a57457034dee2f6f3b9410b5d38",
+  "result_dir": "benchmarks\\results\\2026-06-08-sustained-120msgsec-aggregate",
+  "driver_mode": "host",
+  "completed_utc": "2026-06-08T16:43:41Z",
+  "cancelled": false,
+  "phases": [
+    {
+      "name": "warmup-10x1x60",
+      "user_count": 10,
+      "per_user_rate": 1,
+      "aggregate_target_rate": 10,
+      "duration_seconds": 60,
+      "requested": 600,
+      "accepted": 600
+    },
+    {
+      "name": "warmup-30x2x60",
+      "user_count": 30,
+      "per_user_rate": 2,
+      "aggregate_target_rate": 60,
+      "duration_seconds": 60,
+      "requested": 3600,
+      "accepted": 959,
+      "send_failures": {
+        "http_429_ip": 2641
+      }
+    },
+    {
+      "name": "main-60x2x720",
+      "user_count": 60,
+      "per_user_rate": 2,
+      "aggregate_target_rate": 120,
+      "duration_seconds": 720,
+      "requested": 86400,
+      "accepted": 8640,
+      "send_failures": {
+        "http_429_ip": 77760
+      }
+    }
+  ],
+  "counts": {
+    "requested": 90600,
+    "sent_attempts": 90600,
+    "accepted": 10199,
+    "accepted_responses": 10199,
+    "send_failures": {
+      "http_429_ip": 80401
+    },
+    "duplicates": 0,
+    "missing": 0,
+    "unique_idempotency_keys": 10199,
+    "unique_accepted_message_ids": 10199
+  },
+  "latency": {
+    "sample_count": 10199,
+    "p50_ms": 36.206,
+    "p95_ms": 1303.6692000000094,
+    "p99_ms": 2026.01394,
+    "location": "host"
+  },
+  "reconcile": {
+    "postgres_before": 0,
+    "postgres_after": 10199,
+    "postgres_delta": 10199,
+    "cassandra_before": 0,
+    "cassandra_after": 10199,
+    "cassandra_delta": 10199,
+    "kafka_lag_at_end": 0,
+    "kafka_lag_settled_to_zero": true,
+    "kafka_lag_zero_seconds": 1.9447813,
+    "run_scoped_reconcile_mode": "Postgres reconciled by fresh test conversation ids derived from run_id; Cassandra reconciled by fresh test conversation ids plus UTC partition bucket; there is no dedicated persisted run_id column",
+    "limitations": [
+      "Client latency is client-observed POST-to-ack latency only, labeled by driver execution location.",
+      "Kafka lag reconciliation is not run-scoped in the current schema/tooling; it is consumer-group wide and should be treated as isolated-cluster evidence."
+    ]
+  },
+  "conversations": [
+    {
+      "conversation_id": "41c5696a-7d22-478e-9b51-947191df4ee0",
+      "sender_user_id": "9e352ef4-91e8-4184-979f-d6c58d648015",
+      "recipient_user_id": "267abed6-e8da-439a-88f7-01c4b72293de"
+    },
+    {
+      "conversation_id": "e9e96497-4c83-4c92-b078-045874419cf9",
+      "sender_user_id": "3e4a7ddc-4d97-47bd-b381-07fea4f45166",
+      "recipient_user_id": "1a602084-ae08-4efa-8ba2-c5d59cfa00fb"
+    },
+    {
+      "conversation_id": "277efff4-8546-4efa-ac90-af9791279a1b",
+      "sender_user_id": "50876a0b-bb62-4d20-886e-405bb3ce723f",
+      "recipient_user_id": "1b3736e2-54e3-4593-9b65-800bc316ea59"
+    },
+    {
+      "conversation_id": "08d47799-8e9c-483c-b5d4-c7b3254b45b9",
+      "sender_user_id": "7473e483-becf-4778-9425-87a78c9562be",
+      "recipient_user_id": "8362bd97-4f97-4356-851f-0b3412478b54"
+    },
+    {
+      "conversation_id": "2591b57a-165a-401b-90d0-e03d807c9a10",
+      "sender_user_id": "225e428a-c4ef-455f-991a-456f88fd4981",
+      "recipient_user_id": "718c7e5d-ad6a-4088-9dcf-6c6e561e84aa"
+    },
+    {
+      "conversation_id": "96963543-a4c6-4da3-a3cc-f8a8ed302a5c",
+      "sender_user_id": "6b323e03-fd80-4e15-97f9-c3cce15f55ba",
+      "recipient_user_id": "89b2b56a-045f-4e30-a3ac-534add2f5851"
+    },
+    {
+      "conversation_id": "610222f9-9c12-4021-b401-14dc8a243e1b",
+      "sender_user_id": "94154dad-8628-4fed-af80-98870ac2f9bc",
+      "recipient_user_id": "cb0c03ba-12f6-48db-88e5-0bcdabf14099"
+    },
+    {
+      "conversation_id": "cc7302fc-0252-4d4c-bf52-d66971849f80",
+      "sender_user_id": "4b49800f-cbad-44e5-af03-8c2a436538d7",
+      "recipient_user_id": "c0aa6e79-de8c-4f5d-b46a-36a389a211f7"
+    },
+    {
+      "conversation_id": "95e0c89d-38af-4ae9-844d-d546aecf4049",
+      "sender_user_id": "f301b275-e69b-4c57-beb5-a50a07dbc617",
+      "recipient_user_id": "4b890391-15df-4e9b-95bd-ad1f3d3e080d"
+    },
+    {
+      "conversation_id": "de13d2fa-2fbf-47e3-a2c0-d48001a68d62",
+      "sender_user_id": "ec8cd4fa-55e6-4d41-8e01-2f35d497b8db",
+      "recipient_user_id": "9b4db315-d1c0-41e3-b1e7-71a4ff38b201"
+    },
+    {
+      "conversation_id": "efbddc0c-cadd-439f-9639-bf5918769864",
+      "sender_user_id": "f148d00d-6f6e-48e1-96d4-59c4e54bda02",
+      "recipient_user_id": "120f0f75-9a98-4d42-8129-ae2c996a1d82"
+    },
+    {
+      "conversation_id": "264cb1b4-2af3-4227-9f4d-2cb830a9d78e",
+      "sender_user_id": "7d08f099-c5ab-4e6a-9463-0ee5555b1e8b",
+      "recipient_user_id": "f70852d5-5cbd-4167-bf1e-7267b3348916"
+    },
+    {
+      "conversation_id": "c760f06a-e939-4476-a8bc-f8aee0117de9",
+      "sender_user_id": "1a9cac32-63e0-47e4-a321-ebed1f7fb2fa",
+      "recipient_user_id": "e5f6a819-d283-49e9-b025-2231bf813c5c"
+    },
+    {
+      "conversation_id": "d50b527f-5fde-4c48-aad2-6c21d88288ea",
+      "sender_user_id": "94809e85-e841-4a05-a77f-4963267a2006",
+      "recipient_user_id": "8960faed-f383-4eb0-8cef-7158340a1265"
+    },
+    {
+      "conversation_id": "207e68fd-868c-4460-874d-ce8cc974eb17",
+      "sender_user_id": "fade1283-6373-40f9-b9be-dc145e756081",
+      "recipient_user_id": "8c64c02f-ccef-4025-9c4d-fb0fcce91c46"
+    },
+    {
+      "conversation_id": "461f80a5-4d84-4b58-994d-3517f8c1dd6a",
+      "sender_user_id": "aaba5bca-3ec6-4cfc-9716-51994b7dbd8b",
+      "recipient_user_id": "ea75967d-3e6a-454f-9056-a48d425ac419"
+    },
+    {
+      "conversation_id": "56534601-7f8f-4b24-ad03-bc0b552b28d6",
+      "sender_user_id": "98765fa9-8c91-47c2-926b-4ebea75a4c97",
+      "recipient_user_id": "301d7494-df4d-4944-a101-75ed241caad8"
+    },
+    {
+      "conversation_id": "9f54573b-99fa-425a-b6fb-dba36646e281",
+      "sender_user_id": "57733542-80f2-40ed-9481-44aa645e6b3f",
+      "recipient_user_id": "fb6707e1-6fab-4295-a66c-fb33d730654a"
+    },
+    {
+      "conversation_id": "a938ab3a-2372-4dca-8bf0-916bbc0b28d7",
+      "sender_user_id": "ac00db7e-f9a2-4969-8717-51ac02e12c68",
+      "recipient_user_id": "ce0f0f94-7c59-45a8-8f3c-8944b7e69c8a"
+    },
+    {
+      "conversation_id": "73b9aee7-957c-41f3-8e7a-4304f75274c0",
+      "sender_user_id": "d3a93455-5c93-40d0-99d1-3fca046186b5",
+      "recipient_user_id": "84b23356-a700-419a-a982-5679ce2e6b5f"
+    },
+    {
+      "conversation_id": "26c5560b-9f04-4dd2-8935-09d00305d7de",
+      "sender_user_id": "01360735-eb86-49c1-9a4e-7e6ea5c0cf52",
+      "recipient_user_id": "4cce4c4a-1568-4b67-aae9-89b27583e369"
+    },
+    {
+      "conversation_id": "d331e3dc-0ff5-4a1c-90bb-d7ccc5ed6d32",
+      "sender_user_id": "5318d625-f54b-4db9-b510-43b215bfe028",
+      "recipient_user_id": "8b2f3710-93a5-4cf3-a9a3-c4d0a894edba"
+    },
+    {
+      "conversation_id": "c602b93d-59e5-4d1a-ae02-04e168795325",
+      "sender_user_id": "37825052-028f-449c-9ed5-4c3c6ce3a09a",
+      "recipient_user_id": "5b40c34e-99a1-4e53-89d2-7b6723e642b6"
+    },
+    {
+      "conversation_id": "e9b776cd-2245-4161-9cf9-89d6a5a15e7f",
+      "sender_user_id": "3847f1ed-848f-4a67-8f94-b9dd83e1cae3",
+      "recipient_user_id": "0728a9f4-aac5-4e36-841b-3da050a3d89b"
+    },
+    {
+      "conversation_id": "a71ac582-c938-41c1-bf71-86808aca5de8",
+      "sender_user_id": "35431041-006f-4a8e-a73a-ee8dc1bca8db",
+      "recipient_user_id": "8a8b9c25-82d7-43a4-9f5e-203f523a9cd4"
+    },
+    {
+      "conversation_id": "bee2037c-1ed8-4456-a97e-3e706aed6583",
+      "sender_user_id": "3537c98c-c433-4a69-91e9-1aa76d2d340e",
+      "recipient_user_id": "750f59aa-4e76-414b-b92c-ff3fa286713e"
+    },
+    {
+      "conversation_id": "b418d372-5537-494d-99c7-23cf8051482d",
+      "sender_user_id": "4b66d8af-3160-4c80-9910-7f579b8f2aa8",
+      "recipient_user_id": "0bd735e0-976c-4831-873d-5a446ff6618e"
+    },
+    {
+      "conversation_id": "9281be80-5db6-46eb-a001-b5fc58521a97",
+      "sender_user_id": "2c8e0cdc-cdb7-498b-9908-3dcda9b20e4a",
+      "recipient_user_id": "5bed6b42-92c3-4e09-a387-8ac414ab135c"
+    },
+    {
+      "conversation_id": "120aed74-3ce5-4a82-9556-f104d03ae788",
+      "sender_user_id": "de026847-e34e-41b0-82b2-38678444e0e7",
+      "recipient_user_id": "0651047c-97a7-4bc7-af5b-65d92dc33684"
+    },
+    {
+      "conversation_id": "3e81bfd1-1d43-4df8-9f82-5cf10756e70a",
+      "sender_user_id": "473646e1-f759-48ad-8a75-8e0caddaf1fe",
+      "recipient_user_id": "4a918ff1-62cb-4740-b407-9d6d72cc0f04"
+    },
+    {
+      "conversation_id": "e69bc362-b8cb-4abe-bf33-f007bbc310b9",
+      "sender_user_id": "c707f8ad-c6d0-4e26-9963-059fd0bfa821",
+      "recipient_user_id": "13e822a0-acbd-4b06-a863-1d10d779c793"
+    },
+    {
+      "conversation_id": "7c10adde-57c2-46b2-b90c-a4508955e023",
+      "sender_user_id": "631dbcba-099f-4b62-9d9f-06bd5e2c21be",
+      "recipient_user_id": "2333442a-81c7-41b0-ad76-fe2ee31ffb88"
+    },
+    {
+      "conversation_id": "68fe7d0b-2b62-4b8f-b2b9-7911c5ad2e8f",
+      "sender_user_id": "4062f073-d32f-4f03-a596-e6cd3bae5ef2",
+      "recipient_user_id": "663b8541-5f57-4b15-80cf-86c02899754b"
+    },
+    {
+      "conversation_id": "503a3581-a4d3-4dab-9bff-6889b3e0b5cd",
+      "sender_user_id": "a039f8d1-4bb9-4762-b6c5-0fe683f025cc",
+      "recipient_user_id": "1daef2af-dc14-4feb-88e8-f3568b48ef8d"
+    },
+    {
+      "conversation_id": "885ad88e-65de-4c44-bc9a-7f1784cf9626",
+      "sender_user_id": "ffa4db3e-4338-442f-8190-d356c2d4ef6d",
+      "recipient_user_id": "01aa7401-5f95-4161-b013-46d29c36d567"
+    },
+    {
+      "conversation_id": "082c6545-bc9c-47b5-ae81-7cd4557a1819",
+      "sender_user_id": "7cabe1fa-8848-44e1-a8b1-b8587c92dec2",
+      "recipient_user_id": "191c2ba6-c39e-463c-8e72-974900368f31"
+    },
+    {
+      "conversation_id": "6e191534-5c01-46ba-b548-5c0c0a565a67",
+      "sender_user_id": "cb04c825-7d7d-489b-a512-a2e4d152c68a",
+      "recipient_user_id": "c5973b03-883d-4c16-bff9-3b889201509e"
+    },
+    {
+      "conversation_id": "acc3b2fc-f729-4361-a946-4045f1df1a7a",
+      "sender_user_id": "32e667c4-7d2b-456e-a5cb-d056b2b52692",
+      "recipient_user_id": "f611fc7d-6855-42ad-81d6-10cf761f5d12"
+    },
+    {
+      "conversation_id": "8b7ef2aa-1004-48f9-b42b-4814995f8e26",
+      "sender_user_id": "52454429-28c2-4542-8973-c63528772ff4",
+      "recipient_user_id": "d71336d8-6839-4e65-aaf4-d43030ed4011"
+    },
+    {
+      "conversation_id": "ca0e0d66-bc16-41c3-a6ac-24264c69bbbd",
+      "sender_user_id": "f904f3f1-7c79-4857-9386-3ed2579f5c4e",
+      "recipient_user_id": "c046fa03-2318-4645-9020-0ae8a629036d"
+    },
+    {
+      "conversation_id": "99dd915b-f456-40dd-8335-b3ff1479679c",
+      "sender_user_id": "786f685a-253b-40ba-b8f4-dd778d3baa81",
+      "recipient_user_id": "d27ae83f-ba50-4fd4-9a58-9274e8240c11"
+    },
+    {
+      "conversation_id": "62efccfe-f7b9-4c18-a9ab-a7fa33574dfe",
+      "sender_user_id": "1498824c-30ff-4c60-8058-54937ad12416",
+      "recipient_user_id": "4c52ef98-0a19-478c-bb16-41854248f099"
+    },
+    {
+      "conversation_id": "27662d85-8341-46b8-adce-e295291c59ec",
+      "sender_user_id": "0fd8cf90-e88e-4838-80b8-b9461d5d5b0b",
+      "recipient_user_id": "e747a714-631c-4afd-a97a-282b7a5be01f"
+    },
+    {
+      "conversation_id": "b21a8740-67ea-4a3e-83f5-2f46b4a69d70",
+      "sender_user_id": "3a52aee2-e0e4-4669-9249-1ad90a1e8c7b",
+      "recipient_user_id": "46ee21bf-3212-4421-8964-6319fdeceb94"
+    },
+    {
+      "conversation_id": "e1200d04-291e-4235-8142-50636916d9ad",
+      "sender_user_id": "b5b7ee55-dd19-43d3-a11d-4bcaa72d5ca5",
+      "recipient_user_id": "952f230b-58f8-4cc6-aed9-956e89dd6681"
+    },
+    {
+      "conversation_id": "56000f51-a89b-47a3-aac2-b6bac7c4fead",
+      "sender_user_id": "aa70ef20-da28-432c-bd12-13a0e3c99256",
+      "recipient_user_id": "ff11bc69-9210-47a8-a7d4-50f2e4f66c65"
+    },
+    {
+      "conversation_id": "7dabc1b8-1c75-41d4-b9f1-7064e2d1d9d6",
+      "sender_user_id": "9eecc300-20bb-4d7b-a56c-108850b5093a",
+      "recipient_user_id": "bd0afe98-edee-4c1b-9cf9-5df5850cb488"
+    },
+    {
+      "conversation_id": "e706f52e-032e-4e6c-9db1-9af93987ade4",
+      "sender_user_id": "3c57c3e0-332a-416d-9875-02ac5c22fe9e",
+      "recipient_user_id": "3f58c48e-e07a-4059-bb58-785b24e613f1"
+    },
+    {
+      "conversation_id": "a3e264f8-9085-4ea0-8433-8040ddd17283",
+      "sender_user_id": "e780a998-ec2a-40e0-9c87-f35105cf3523",
+      "recipient_user_id": "9bd62e36-dc8c-4667-bc0f-74a1b65d13b8"
+    },
+    {
+      "conversation_id": "681429e6-4338-45c0-8346-3de53314ec3c",
+      "sender_user_id": "bae658da-7499-4f9e-99af-fea66ce83081",
+      "recipient_user_id": "458a961c-758b-430e-9447-c07c01a89281"
+    },
+    {
+      "conversation_id": "e26d2099-59ce-46de-ad1d-6c3906f2698d",
+      "sender_user_id": "03d110ca-2632-4422-9cf6-576bb5cd948a",
+      "recipient_user_id": "e65c97ed-2e53-41a1-8a24-e0ec12a748d8"
+    },
+    {
+      "conversation_id": "1fa3e70a-066c-4e2b-bf78-6372b0a03930",
+      "sender_user_id": "ef491d5a-143e-4166-822f-e11235157a13",
+      "recipient_user_id": "2a8a36de-2d62-4116-bbef-2d78c4033b74"
+    },
+    {
+      "conversation_id": "1df41834-fd8a-4d13-9db8-be6409fd3b64",
+      "sender_user_id": "f243930b-527c-49a6-b7ef-6b54dcd95296",
+      "recipient_user_id": "14e53058-90e6-46d5-87dc-d97110c50bf0"
+    },
+    {
+      "conversation_id": "107080e5-e2af-488b-8180-56ff26b5f6c6",
+      "sender_user_id": "63588fda-f651-4505-95b5-7fee157196d7",
+      "recipient_user_id": "ed8ce429-8c55-4794-acb4-6b30724f4f2b"
+    },
+    {
+      "conversation_id": "817f1e86-2ce4-4e1e-ad85-89d96be7af8d",
+      "sender_user_id": "855593f5-2364-4ba6-a847-3eb0236dd71f",
+      "recipient_user_id": "013114de-ebc1-4441-82b2-0c10dbe64c96"
+    },
+    {
+      "conversation_id": "a082ef7c-e062-4556-a812-df466ab68c32",
+      "sender_user_id": "5d020ffc-8601-4443-a219-175ce71dba4b",
+      "recipient_user_id": "bb65b0ff-92d0-491d-8fd2-a7334f5a8158"
+    },
+    {
+      "conversation_id": "af2109d0-22fe-499e-b640-ae40b9a57f5c",
+      "sender_user_id": "04365552-3b54-464c-b63c-c637ae50d6e0",
+      "recipient_user_id": "b46ab9ce-6489-465c-b7a7-02044d38df40"
+    },
+    {
+      "conversation_id": "1e41495d-e885-4e4c-8c7a-340f21afab49",
+      "sender_user_id": "fbf58f69-d263-4d00-9869-9cc8b93e0357",
+      "recipient_user_id": "1bd23e8e-704e-4096-aa16-650f888c3f8f"
+    },
+    {
+      "conversation_id": "6233c890-beb4-4c31-8206-2191a1a59bc8",
+      "sender_user_id": "ca162aa3-c435-4308-9462-c7a3ab3dae1f",
+      "recipient_user_id": "440c33dc-fa4b-4ce4-8749-53c0ccd5b562"
+    },
+    {
+      "conversation_id": "3d2de319-4f84-4767-88f2-d609f187a710",
+      "sender_user_id": "7228b375-2142-499e-92a9-347644ee0aa8",
+      "recipient_user_id": "9b7728f4-01b0-43e1-bbdb-9508d2ede674"
+    }
+  ],
+  "limitations": [
+    "Client latency is client-observed POST-to-ack latency only, labeled by driver execution location.",
+    "Kafka lag reconciliation is not run-scoped in the current schema/tooling; it is consumer-group wide and should be treated as isolated-cluster evidence."
+  ],
+  "supported_claim": "This artifact supports only a local host benchmark claim for scenario \"sustained-120-aggregate\" at run_id \"20260608t162740z-857c16c8\", with client-observed accept latency and run-scoped Postgres/Cassandra reconciliation by fresh test conversation where available."
+}

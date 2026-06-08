@@ -1,0 +1,8 @@
+NAME                                  CPU(cores)   MEMORY(bytes)   
+apps-695b467944-qvg2w                 1m           3Mi             
+cassandra-669556d58f-f5bbv            94m          1338Mi          
+gateway-7c9fbf9d9f-rd9tw              85m          32Mi            
+kafka-9fd8b548c-qblzp                 65m          749Mi           
+messages-processor-7c6855b667-9t8tc   73m          8Mi             
+postgres-6f4c6cfddc-f7rhp             81m          59Mi            
+redis-5649fbd7f-75gzg                 25m          4Mi             
