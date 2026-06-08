@@ -1,15 +1,21 @@
 # OHMF Benchmarks
 
-This directory is the home for OHMF's load-testing methodology and results. It is written to be
-honest about the current state: **OHMF does not yet contain a WebSocket load-test harness or captured
-benchmark artifacts.** This README defines what a credible benchmark must capture so that results,
-once produced, can be reproduced and trusted rather than asserted.
+This directory is the home for OHMF's load-testing methodology and results. It
+is written to be honest about the current state: OHMF now contains a
+**stage-A local Kubernetes HTTP load driver** for `/v1/messages` accept-path
+validation, but it does **not** yet contain a WebSocket concurrency harness or
+evidence for the old large-scale headline claims. This README defines what a
+credible benchmark must capture so that results can be reproduced and trusted
+rather than asserted.
 
 ## Current status
 
-- ❌ No WebSocket load-test driver (e.g. k6, Gatling, or a Go-based client) is committed.
-- ❌ No captured results: no latency histograms, no throughput series, no message-loss accounting,
-  no environment manifests.
+- ✅ `benchmarks/cmd/loadgen` exists for local `/v1/messages` accept-path runs.
+  It uses a unique `run_id`, fresh test conversations, and writes
+  `summary.json`, `summary.md`, `config.json`, and `env.json` per run.
+- ✅ Captured local stage-A artifacts now exist under `benchmarks/results/`.
+- ❌ No WebSocket concurrency driver is committed yet.
+- ❌ No evidence yet for large-scale concurrent client claims.
 - ⚠️ The only load-oriented file in the repo is
   `ohmf/services/gateway/_tools/e2ee-load-test.go`. It is an **in-process simulation of E2EE message
   generation** — it does not open WebSocket connections to the gateway, does not measure p95 latency,
@@ -18,7 +24,7 @@ once produced, can be reproduced and trusted rather than asserted.
 
 ### The target claim (not yet substantiated here)
 
-The intended headline benchmark is:
+The intended headline benchmark is still:
 
 > sustained ~3,100 concurrent WebSocket clients, p95 latency under 150 ms, and zero observed message
 > loss under the tested configuration.
@@ -53,8 +59,9 @@ Latency and capacity numbers are meaningless without the environment. Record at 
 
 ### 3. Metrics collected
 
-- **Latency:** end-to-end send→delivery latency, reported as p50 / p95 / p99, not just average.
-  State exactly which two timestamps bound the measurement.
+- **Latency:** state exactly which two timestamps bound the measurement.
+  Current stage-A artifacts report **client-observed POST→ack accept latency**
+  only, not end-to-end delivery latency.
 - **Throughput:** sustained messages/second and concurrent connection count held.
 - **Errors:** connection failures, send errors, timeouts.
 - **Resource use:** CPU/memory of gateway and processors, Kafka consumer lag (processors expose
@@ -84,13 +91,16 @@ Committed runs should include:
 
 ```
 benchmarks/
-├── README.md                 # this file
-├── scenarios/                # load-test driver scripts (k6 / Go client / etc.)
+├── README.md
+├── cmd/
+│   └── loadgen/              # std-lib Go accept-path load driver
+├── scenarios/                # JSON scenario inputs
 └── results/
     └── <date>-<scenario>/
-        ├── manifest.md       # environment + exact config
-        ├── raw/              # raw tool output
-        └── summary.md        # what it proves / does not prove
+        ├── config.json
+        ├── env.json
+        ├── summary.json
+        └── summary.md
 ```
 
 ## Follow-ups
@@ -101,5 +111,5 @@ To turn the target claim into evidence:
    and verifies receipt with per-message ids.
 2. Fix or remove `ohmf/services/gateway/_tools/e2ee-load-test.go` (it uses `"=" * 60`, which is not
    valid Go), and relabel it clearly as an E2EE micro-benchmark, not a system load test.
-3. Run against the full `ohmf/infra/docker/docker-compose.yml` stack with the driver on a separate
-   host, capture results under `benchmarks/results/`, and update the status section above.
+3. Extend the committed local benchmark artifacts with throughput, restart, and
+   HPA evidence only as those scenarios are actually run and preserved.

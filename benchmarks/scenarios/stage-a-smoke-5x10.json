@@ -1,0 +1,26 @@
+{
+  "scenario": "stage-a-smoke-5x10",
+  "base_url": "http://127.0.0.1:18080",
+  "driver_location": "host",
+  "rate_per_second": 5,
+  "duration_seconds": 10,
+  "active_conversations": 1,
+  "message_text": "m4 stage a smoke",
+  "auth_otp_code": "123456",
+  "namespace": "ohmf",
+  "postgres_resource": "deploy/postgres",
+  "postgres_user": "ohmf",
+  "postgres_db": "ohmf",
+  "cassandra_resource": "deploy/cassandra",
+  "cassandra_keyspace": "ohmf_messages",
+  "kafka_resource": "deploy/kafka",
+  "kafka_consumer_group": "messages-processor-v1",
+  "kafka_ingress_topic": "msg.ingress.v1",
+  "kafka_lag_poll_seconds": 2,
+  "kafka_lag_timeout_seconds": 60,
+  "request_timeout_seconds": 15,
+  "metadata": {
+    "stage": "A",
+    "verification": "accepted == pg_delta and lag -> 0"
+  }
+}
