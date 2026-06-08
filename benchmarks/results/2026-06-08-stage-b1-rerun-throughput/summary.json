@@ -1,0 +1,227 @@
+{
+  "title": "Stage B1 throughput rerun - 2026-06-08",
+  "generated_at_utc": "2026-06-08T23:10:14.244035+00:00",
+  "namespace": "ohmf",
+  "rollout": {
+    "generated_at_utc": "2026-06-08T21:40:45.499395+00:00",
+    "namespace": "ohmf",
+    "cluster_context": "k3d-ohmf-b1",
+    "stage_events_metric_present": true,
+    "verified": true,
+    "services": {
+      "gateway": {
+        "intended_image": "ohmf-gateway:b1rerun-20260608t213926169462z",
+        "deployment_image": "ohmf-gateway:b1rerun-20260608t213926169462z",
+        "verified": true,
+        "running_pods": [
+          {
+            "pod_name": "gateway-7cffd6fff-nzn45",
+            "pod_ip": "10.42.0.209",
+            "image": "docker.io/library/ohmf-gateway:b1rerun-20260608t213703212485z",
+            "image_id": "sha256:63fed96f726735f3870641537e71c8f93d70acfe99270b61c9f1abd86b4b2fd1",
+            "ready": true,
+            "restart_count": 0
+          }
+        ]
+      },
+      "apps": {
+        "intended_image": "ohmf-apps:b1rerun-20260608t213926169462z",
+        "deployment_image": "ohmf-apps:b1rerun-20260608t213926169462z",
+        "verified": true,
+        "running_pods": [
+          {
+            "pod_name": "apps-55bff77658-bp267",
+            "pod_ip": "10.42.0.210",
+            "image": "docker.io/library/ohmf-apps:b1rerun-20260608t213703212485z",
+            "image_id": "sha256:bb0125359b381050f7cb44f247b691c2797d4a8f4b268505d7de4094b3984e58",
+            "ready": true,
+            "restart_count": 0
+          }
+        ]
+      },
+      "messages-processor": {
+        "intended_image": "ohmf-messages-processor:b1rerun-20260608t213926169462z",
+        "deployment_image": "ohmf-messages-processor:b1rerun-20260608t213926169462z",
+        "verified": true,
+        "running_pods": [
+          {
+            "pod_name": "messages-processor-7994b774d5-xzvmb",
+            "pod_ip": "10.42.0.211",
+            "image": "docker.io/library/ohmf-messages-processor:b1rerun-20260608t213926169462z",
+            "image_id": "sha256:ecfaf0d62268c10070b4b0af97f01b717278ae3024857a40e20911d60dd9eb70",
+            "ready": true,
+            "restart_count": 0
+          }
+        ]
+      }
+    }
+  },
+  "highest_passing_sustained_rate_msg_sec": 105,
+  "highest_attempted_rate_msg_sec": 120,
+  "passed_120_msg_sec": false,
+  "supported_claim": "Validated 105 msg/sec through the local Kubernetes full pipeline with exact reconciliation across Kafka consumption, Postgres persistence, Cassandra persistence, downstream publishes, and offset commits.",
+  "unsupported_claims_still_remaining": [
+    "Any delivery-latency claim beyond client-observed HTTP accept latency",
+    "Any burst-throughput headline beyond the highest sustained passing rung",
+    "Any production, HA, failover, or cloud benchmark interpretation",
+    "Any large-client-count claim such as 3,100 concurrent clients"
+  ],
+  "rungs": [
+    {
+      "rate_msg_sec": 75,
+      "status": "passed",
+      "requested": 11025,
+      "sent_attempts": 11025,
+      "accepted": 11025,
+      "failed_sends_by_reason": {},
+      "missing": 0,
+      "duplicates": 0,
+      "postgres_exact": 11025,
+      "cassandra_exact": 11025,
+      "kafka_lag_zero_seconds": 122.471551,
+      "kafka_lag_settled_to_zero": true,
+      "latency": {
+        "label": "client-observed HTTP accept latency",
+        "calculation": "exact from merged shard accept samples",
+        "sample_count": 11025,
+        "p50_ms": 2021.051,
+        "p95_ms": 2032.545,
+        "p99_ms": 2086.94456
+      },
+      "restart_changes": {},
+      "stage_counters": {
+        "consumed": 11025,
+        "decoded": 11025,
+        "deduped": 0,
+        "postgres_write_succeeded": 11025,
+        "cassandra_write_succeeded": 11025,
+        "redis_ack_set_succeeded": 11025,
+        "persisted_publish_succeeded": 11025,
+        "microservice_publish_succeeded": 11025,
+        "offset_commit_succeeded": 11025,
+        "handler_success": 11025,
+        "handler_error": 0
+      },
+      "result_dir": "benchmarks\\results\\2026-06-08-stage-b1-rerun-throughput\\75msgsec"
+    },
+    {
+      "rate_msg_sec": 90,
+      "status": "passed",
+      "requested": 13050,
+      "sent_attempts": 13050,
+      "accepted": 13050,
+      "failed_sends_by_reason": {},
+      "missing": 0,
+      "duplicates": 0,
+      "postgres_exact": 13050,
+      "cassandra_exact": 13050,
+      "kafka_lag_zero_seconds": 213.191436,
+      "kafka_lag_settled_to_zero": true,
+      "latency": {
+        "label": "client-observed HTTP accept latency",
+        "calculation": "exact from merged shard accept samples",
+        "sample_count": 13050,
+        "p50_ms": 2020.9255,
+        "p95_ms": 2031.5925,
+        "p99_ms": 2097.284
+      },
+      "restart_changes": {},
+      "stage_counters": {
+        "consumed": 13050,
+        "decoded": 13050,
+        "deduped": 0,
+        "postgres_write_succeeded": 13050,
+        "cassandra_write_succeeded": 13050,
+        "redis_ack_set_succeeded": 13050,
+        "persisted_publish_succeeded": 13050,
+        "microservice_publish_succeeded": 13050,
+        "offset_commit_succeeded": 13050,
+        "handler_success": 13050,
+        "handler_error": 0
+      },
+      "result_dir": "benchmarks\\results\\2026-06-08-stage-b1-rerun-throughput\\90msgsec"
+    },
+    {
+      "rate_msg_sec": 105,
+      "status": "passed",
+      "requested": 15075,
+      "sent_attempts": 15075,
+      "accepted": 15075,
+      "failed_sends_by_reason": {},
+      "missing": 0,
+      "duplicates": 0,
+      "postgres_exact": 15075,
+      "cassandra_exact": 15075,
+      "kafka_lag_zero_seconds": 303.511194,
+      "kafka_lag_settled_to_zero": true,
+      "latency": {
+        "label": "client-observed HTTP accept latency",
+        "calculation": "exact from merged shard accept samples",
+        "sample_count": 15075,
+        "p50_ms": 2021.039,
+        "p95_ms": 2032.6375,
+        "p99_ms": 2067.98926
+      },
+      "restart_changes": {},
+      "stage_counters": {
+        "consumed": 15075,
+        "decoded": 15075,
+        "deduped": 0,
+        "postgres_write_succeeded": 15075,
+        "cassandra_write_succeeded": 15075,
+        "redis_ack_set_succeeded": 15075,
+        "persisted_publish_succeeded": 15075,
+        "microservice_publish_succeeded": 15075,
+        "offset_commit_succeeded": 15075,
+        "handler_success": 15075,
+        "handler_error": 0
+      },
+      "result_dir": "benchmarks\\results\\2026-06-08-stage-b1-rerun-throughput\\105msgsec"
+    },
+    {
+      "rate_msg_sec": 120,
+      "status": "failed",
+      "requested": 74700,
+      "sent_attempts": 74700,
+      "accepted": 74685,
+      "failed_sends_by_reason": {
+        "http_500": 15
+      },
+      "missing": 23804,
+      "duplicates": 0,
+      "postgres_exact": 50881,
+      "cassandra_exact": 51755,
+      "kafka_lag_zero_seconds": 903.000761,
+      "kafka_lag_settled_to_zero": false,
+      "latency": {
+        "label": "client-observed HTTP accept latency",
+        "calculation": "exact from merged shard accept samples",
+        "sample_count": 74685,
+        "p50_ms": 2021.228,
+        "p95_ms": 2035.3922,
+        "p99_ms": 2099.77996
+      },
+      "restart_changes": {},
+      "stage_counters": {
+        "consumed": 46568,
+        "decoded": 46568,
+        "deduped": 0,
+        "postgres_write_succeeded": 46568,
+        "cassandra_write_succeeded": 46568,
+        "redis_ack_set_succeeded": 46568,
+        "persisted_publish_succeeded": 46568,
+        "microservice_publish_succeeded": 46567,
+        "offset_commit_succeeded": 46567,
+        "handler_success": 46567,
+        "handler_error": 0
+      },
+      "result_dir": "benchmarks\\results\\2026-06-08-stage-b1-rerun-throughput\\120msgsec"
+    }
+  ],
+  "artifacts": {
+    "summary_json": "benchmarks\\results\\2026-06-08-stage-b1-rerun-throughput\\summary.json",
+    "summary_md": "benchmarks\\results\\2026-06-08-stage-b1-rerun-throughput\\summary.md",
+    "deploy_result_md": "deploy/k8s/results/2026-06-08-stage-b1-rerun-throughput.md",
+    "rollout_evidence": "benchmarks/results/2026-06-08-stage-b1-rerun-throughput/rollout-evidence.json"
+  }
+}

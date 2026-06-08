@@ -1,0 +1,54 @@
+{
+  "generated_at_utc": "2026-06-08T21:40:45.499395+00:00",
+  "namespace": "ohmf",
+  "cluster_context": "k3d-ohmf-b1",
+  "stage_events_metric_present": true,
+  "verified": false,
+  "services": {
+    "gateway": {
+      "intended_image": "ohmf-gateway:b1rerun-20260608t213926169462z",
+      "deployment_image": "ohmf-gateway:b1rerun-20260608t213926169462z",
+      "verified": false,
+      "running_pods": [
+        {
+          "pod_name": "gateway-7cffd6fff-nzn45",
+          "pod_ip": "10.42.0.209",
+          "image": "docker.io/library/ohmf-gateway:b1rerun-20260608t213703212485z",
+          "image_id": "sha256:63fed96f726735f3870641537e71c8f93d70acfe99270b61c9f1abd86b4b2fd1",
+          "ready": true,
+          "restart_count": 0
+        }
+      ]
+    },
+    "apps": {
+      "intended_image": "ohmf-apps:b1rerun-20260608t213926169462z",
+      "deployment_image": "ohmf-apps:b1rerun-20260608t213926169462z",
+      "verified": false,
+      "running_pods": [
+        {
+          "pod_name": "apps-55bff77658-bp267",
+          "pod_ip": "10.42.0.210",
+          "image": "docker.io/library/ohmf-apps:b1rerun-20260608t213703212485z",
+          "image_id": "sha256:bb0125359b381050f7cb44f247b691c2797d4a8f4b268505d7de4094b3984e58",
+          "ready": true,
+          "restart_count": 0
+        }
+      ]
+    },
+    "messages-processor": {
+      "intended_image": "ohmf-messages-processor:b1rerun-20260608t213926169462z",
+      "deployment_image": "ohmf-messages-processor:b1rerun-20260608t213926169462z",
+      "verified": false,
+      "running_pods": [
+        {
+          "pod_name": "messages-processor-7994b774d5-xzvmb",
+          "pod_ip": "10.42.0.211",
+          "image": "docker.io/library/ohmf-messages-processor:b1rerun-20260608t213926169462z",
+          "image_id": "sha256:ecfaf0d62268c10070b4b0af97f01b717278ae3024857a40e20911d60dd9eb70",
+          "ready": true,
+          "restart_count": 0
+        }
+      ]
+    }
+  }
+}

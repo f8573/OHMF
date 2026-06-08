@@ -1,0 +1,11 @@
+Consistency level set to ONE.
+
+ count
+--------
+ 162095
+
+(1 rows)
+
+Warnings :
+Aggregation query used without partition key
+

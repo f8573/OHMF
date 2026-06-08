@@ -1,0 +1,2 @@
+{"level":"info","media_root":"var/media","miniapp_root":"var/miniapps","time":"2026-06-08T21:40:32Z","message":"storage domains initialized"}
+{"level":"info","addr":":8081","time":"2026-06-08T21:40:32Z","message":"starting api"}

@@ -1,0 +1,5 @@
+NAME                         CPU(cores)   MEMORY(bytes)   
+cassandra-669556d58f-x4xvf   100m         1362Mi          
+kafka-9fd8b548c-fpsrx        22m          746Mi           
+postgres-6f4c6cfddc-qnfv6    10m          296Mi           
+redis-5649fbd7f-ngk5k        10m          82Mi            

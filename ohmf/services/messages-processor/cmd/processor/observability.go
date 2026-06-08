@@ -20,6 +20,12 @@ type dependencyCheck struct {
 	check func(context.Context) error
 }
 
+type stageMetricLabel struct {
+	stage   string
+	outcome string
+	target  string
+}
+
 type processorObservability struct {
 	service         string
 	addr            string
@@ -97,6 +103,7 @@ func newProcessorObservability(service, addr string, brokers []string, checks []
 		obs.consumerLag,
 		obs.dependencyReady,
 	)
+	obs.initializeStageEventLabels()
 	return obs
 }
 
@@ -187,6 +194,30 @@ func (o *processorObservability) recordDuplicate() {
 
 func (o *processorObservability) recordStage(stage, outcome, target string) {
 	o.stageEvents.WithLabelValues(stage, outcome, target).Inc()
+}
+
+func (o *processorObservability) initializeStageEventLabels() {
+	for _, label := range []stageMetricLabel{
+		{stage: "kafka_consume", outcome: "succeeded", target: ""},
+		{stage: "decode", outcome: "succeeded", target: ""},
+		{stage: "dedupe", outcome: "skipped", target: ""},
+		{stage: "postgres_write", outcome: "attempted", target: ""},
+		{stage: "postgres_write", outcome: "succeeded", target: ""},
+		{stage: "postgres_write", outcome: "failed", target: ""},
+		{stage: "cassandra_write", outcome: "attempted", target: ""},
+		{stage: "cassandra_write", outcome: "succeeded", target: ""},
+		{stage: "cassandra_write", outcome: "failed", target: ""},
+		{stage: "redis_ack", outcome: "attempted", target: "set"},
+		{stage: "redis_ack", outcome: "succeeded", target: "set"},
+		{stage: "redis_ack", outcome: "failed", target: "set"},
+		{stage: "downstream_publish", outcome: "succeeded", target: "persisted"},
+		{stage: "downstream_publish", outcome: "succeeded", target: "microservice"},
+		{stage: "kafka_offset_commit", outcome: "succeeded", target: ""},
+		{stage: "handler_return", outcome: "success", target: ""},
+		{stage: "handler_return", outcome: "error", target: ""},
+	} {
+		o.stageEvents.WithLabelValues(label.stage, label.outcome, label.target).Add(0)
+	}
 }
 
 func kafkaReady(ctx context.Context, brokers []string) error {

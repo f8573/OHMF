@@ -1,0 +1,2 @@
+NAME                   STATUS   ROLES           AGE   VERSION        INTERNAL-IP   EXTERNAL-IP   OS-IMAGE           KERNEL-VERSION                      CONTAINER-RUNTIME
+k3d-ohmf-b1-server-0   Ready    control-plane   8h    v1.35.5+k3s1   172.26.0.3    <none>        K3s v1.35.5+k3s1   6.6.114.1-microsoft-standard-WSL2   containerd://2.2.3-k3s1

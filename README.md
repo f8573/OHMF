@@ -139,10 +139,12 @@ below. For the complete day-to-day local-hosting guide, see
 
 **Honest status:** the repository still does not contain a WebSocket concurrency harness, but it now
 does contain committed local benchmark artifacts under [`benchmarks/results/`](benchmarks/results/).
-Those artifacts currently support a Stage A smoke plus three bounded Stage B1 outcomes: a per-user
-rate-limit validation, a per-IP rate-limit validation, and a clean multisource `120 msg/sec`
-aggregate ingress run that still failed backend reconciliation and Kafka-lag recovery. They do
-**not** substantiate large-client-count, delivery-latency, or production-throughput claims. The old
+Those artifacts currently support a Stage A smoke, per-user and per-IP limiter validations, and a
+unique-tag Stage B1 rerun that passed exact full-pipeline reconciliation at `75`, `90`, and
+`105 msg/sec` across `12` source IPs and failed at `120 msg/sec for 600s`. A prior `60 msg/sec`
+under-reconciliation result was traced to stale container image deployment; the subsequent
+instrumented unique-tag rerun reconciled exactly through `105 msg/sec`. These artifacts do **not**
+substantiate large-client-count, delivery-latency, or production-throughput claims. The old
 `ohmf/services/gateway/_tools/e2ee-load-test.go` remains an in-process simulation of
 E2EE message *generation* - it does not open WebSocket connections, does not measure p95 delivery
 latency, and does not measure message loss. Treat it as a micro-benchmark scaffold, not as evidence

@@ -1,0 +1,396 @@
+{
+  "scenario": "stage-b1-rerun-75msgsec-multisource",
+  "stage": "B1",
+  "status": "failed",
+  "scope": "local single-node Kubernetes only",
+  "result_dir": "C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-08-stage-b1-rerun-throughput/75msgsec",
+  "run": {
+    "run_id_prefix": "20260608t21401780954848z-multisource",
+    "run_date": "2026-06-08",
+    "system_under_test_commit": "78806de20936e00c9d683c136b63cea8c1905d43",
+    "artifact_generation_head": "78806de20936e00c9d683c136b63cea8c1905d43",
+    "overlay": "deploy/k8s/overlays/local-k3s-full",
+    "cluster_name": "ohmf-b1",
+    "cluster_context": "k3d-ohmf-b1",
+    "driver_location": "in-cluster multisource",
+    "principal_provisioning_mode": "seed_db",
+    "loadgen_pods": 12,
+    "source_ip_count": 12,
+    "source_ips": [
+      "10.42.0.212",
+      "10.42.0.213",
+      "10.42.0.214",
+      "10.42.0.215",
+      "10.42.0.216",
+      "10.42.0.217",
+      "10.42.0.218",
+      "10.42.0.219",
+      "10.42.0.220",
+      "10.42.0.221",
+      "10.42.0.222",
+      "10.42.0.223"
+    ],
+    "per_pod_rate": 1,
+    "per_pod_rate_label": "mixed 6-7 msg/sec per pod",
+    "aggregate_target_rate": 75,
+    "main_duration_seconds": 120
+  },
+  "phases": [
+    {
+      "name": "main-6x1x120",
+      "user_count": 54,
+      "per_user_rate": 1,
+      "aggregate_target_rate": 54,
+      "duration_seconds": 120,
+      "requested": 6480,
+      "accepted": 6480,
+      "failed_sends_by_reason": {}
+    },
+    {
+      "name": "main-7x1x120",
+      "user_count": 21,
+      "per_user_rate": 1,
+      "aggregate_target_rate": 21,
+      "duration_seconds": 120,
+      "requested": 2520,
+      "accepted": 2520,
+      "failed_sends_by_reason": {}
+    },
+    {
+      "name": "warmup-5x1x15",
+      "user_count": 60,
+      "per_user_rate": 1,
+      "aggregate_target_rate": 60,
+      "duration_seconds": 15,
+      "requested": 900,
+      "accepted": 900,
+      "failed_sends_by_reason": {}
+    },
+    {
+      "name": "warmup-6x1x15",
+      "user_count": 54,
+      "per_user_rate": 1,
+      "aggregate_target_rate": 54,
+      "duration_seconds": 15,
+      "requested": 810,
+      "accepted": 810,
+      "failed_sends_by_reason": {}
+    },
+    {
+      "name": "warmup-7x1x15",
+      "user_count": 21,
+      "per_user_rate": 1,
+      "aggregate_target_rate": 21,
+      "duration_seconds": 15,
+      "requested": 315,
+      "accepted": 315,
+      "failed_sends_by_reason": {}
+    }
+  ],
+  "counts": {
+    "requested": 11025,
+    "sent_attempts": 11025,
+    "accepted": 11025,
+    "accepted_responses": 11025,
+    "failed": 0,
+    "failed_sends_by_reason": {},
+    "duplicates": 0,
+    "missing": 3635,
+    "postgres_delta": 7390,
+    "cassandra_delta": 7963
+  },
+  "latency": {
+    "label": "client-observed HTTP accept latency",
+    "calculation": "exact from merged shard accept samples",
+    "sample_count": 11025,
+    "p50_ms": 2021.051,
+    "p95_ms": 2032.545,
+    "p99_ms": 2086.94456
+  },
+  "kafka": {
+    "consumer_group": "messages-processor-v1",
+    "lag_settled_to_zero": true,
+    "lag_zero_seconds": 122.471551,
+    "lag_at_end": 0,
+    "limitation": "Kafka lag reconciliation is consumer-group scoped, not run scoped."
+  },
+  "pods": {
+    "restarts_before": {
+      "apps-55bff77658": 0,
+      "cassandra-669556d58f": 0,
+      "gateway-7cffd6fff": 0,
+      "kafka-9fd8b548c": 0,
+      "kafka-init": 0,
+      "loadgen-multisource-120-0": 0,
+      "loadgen-multisource-120-1": 0,
+      "loadgen-multisource-120-10": 0,
+      "loadgen-multisource-120-11": 0,
+      "loadgen-multisource-120-2": 0,
+      "loadgen-multisource-120-3": 0,
+      "loadgen-multisource-120-4": 0,
+      "loadgen-multisource-120-5": 0,
+      "loadgen-multisource-120-6": 0,
+      "loadgen-multisource-120-7": 0,
+      "loadgen-multisource-120-8": 0,
+      "loadgen-multisource-120-9": 0,
+      "loadgen-pipeline-diagnostic-30msgsec-multisource-0": 0,
+      "loadgen-pipeline-diagnostic-30msgsec-multisource-1": 0,
+      "loadgen-pipeline-diagnostic-30msgsec-multisource-10": 0,
+      "loadgen-pipeline-diagnostic-30msgsec-multisource-11": 0,
+      "loadgen-pipeline-diagnostic-30msgsec-multisource-2": 0,
+      "loadgen-pipeline-diagnostic-30msgsec-multisource-3": 0,
+      "loadgen-pipeline-diagnostic-30msgsec-multisource-4": 0,
+      "loadgen-pipeline-diagnostic-30msgsec-multisource-5": 0,
+      "loadgen-pipeline-diagnostic-30msgsec-multisource-6": 0,
+      "loadgen-pipeline-diagnostic-30msgsec-multisource-7": 0,
+      "loadgen-pipeline-diagnostic-30msgsec-multisource-8": 0,
+      "loadgen-pipeline-diagnostic-30msgsec-multisource-9": 0,
+      "loadgen-pipeline-diagnostic-45msgsec-multisource-0": 0,
+      "loadgen-pipeline-diagnostic-45msgsec-multisource-1": 0,
+      "loadgen-pipeline-diagnostic-45msgsec-multisource-10": 0,
+      "loadgen-pipeline-diagnostic-45msgsec-multisource-11": 0,
+      "loadgen-pipeline-diagnostic-45msgsec-multisource-2": 0,
+      "loadgen-pipeline-diagnostic-45msgsec-multisource-3": 0,
+      "loadgen-pipeline-diagnostic-45msgsec-multisource-4": 0,
+      "loadgen-pipeline-diagnostic-45msgsec-multisource-5": 0,
+      "loadgen-pipeline-diagnostic-45msgsec-multisource-6": 0,
+      "loadgen-pipeline-diagnostic-45msgsec-multisource-7": 0,
+      "loadgen-pipeline-diagnostic-45msgsec-multisource-8": 0,
+      "loadgen-pipeline-diagnostic-45msgsec-multisource-9": 0,
+      "loadgen-pipeline-diagnostic-60msgsec-multisource-0": 0,
+      "loadgen-pipeline-diagnostic-60msgsec-multisource-1": 0,
+      "loadgen-pipeline-diagnostic-60msgsec-multisource-10": 0,
+      "loadgen-pipeline-diagnostic-60msgsec-multisource-11": 0,
+      "loadgen-pipeline-diagnostic-60msgsec-multisource-2": 0,
+      "loadgen-pipeline-diagnostic-60msgsec-multisource-3": 0,
+      "loadgen-pipeline-diagnostic-60msgsec-multisource-4": 0,
+      "loadgen-pipeline-diagnostic-60msgsec-multisource-5": 0,
+      "loadgen-pipeline-diagnostic-60msgsec-multisource-6": 0,
+      "loadgen-pipeline-diagnostic-60msgsec-multisource-7": 0,
+      "loadgen-pipeline-diagnostic-60msgsec-multisource-8": 0,
+      "loadgen-pipeline-diagnostic-60msgsec-multisource-9": 0,
+      "loadgen-processor-stage-45msgsec-multisource-0": 0,
+      "loadgen-processor-stage-45msgsec-multisource-1": 0,
+      "loadgen-processor-stage-45msgsec-multisource-10": 0,
+      "loadgen-processor-stage-45msgsec-multisource-11": 0,
+      "loadgen-processor-stage-45msgsec-multisource-2": 0,
+      "loadgen-processor-stage-45msgsec-multisource-3": 0,
+      "loadgen-processor-stage-45msgsec-multisource-4": 0,
+      "loadgen-processor-stage-45msgsec-multisource-5": 0,
+      "loadgen-processor-stage-45msgsec-multisource-6": 0,
+      "loadgen-processor-stage-45msgsec-multisource-7": 0,
+      "loadgen-processor-stage-45msgsec-multisource-8": 0,
+      "loadgen-processor-stage-45msgsec-multisource-9": 0,
+      "loadgen-processor-stage-60msgsec-multisource-0": 0,
+      "loadgen-processor-stage-60msgsec-multisource-1": 0,
+      "loadgen-processor-stage-60msgsec-multisource-10": 0,
+      "loadgen-processor-stage-60msgsec-multisource-11": 0,
+      "loadgen-processor-stage-60msgsec-multisource-2": 0,
+      "loadgen-processor-stage-60msgsec-multisource-3": 0,
+      "loadgen-processor-stage-60msgsec-multisource-4": 0,
+      "loadgen-processor-stage-60msgsec-multisource-5": 0,
+      "loadgen-processor-stage-60msgsec-multisource-6": 0,
+      "loadgen-processor-stage-60msgsec-multisource-7": 0,
+      "loadgen-processor-stage-60msgsec-multisource-8": 0,
+      "loadgen-processor-stage-60msgsec-multisource-9": 0,
+      "messages-processor-7994b774d5": 0,
+      "postgres-6f4c6cfddc": 0,
+      "redis-5649fbd7f": 0
+    },
+    "restarts_after": {
+      "apps-55bff77658": 0,
+      "cassandra-669556d58f": 0,
+      "gateway-7cffd6fff": 0,
+      "kafka-9fd8b548c": 0,
+      "kafka-init": 0,
+      "loadgen-multisource-120-0": 0,
+      "loadgen-multisource-120-1": 0,
+      "loadgen-multisource-120-10": 0,
+      "loadgen-multisource-120-11": 0,
+      "loadgen-multisource-120-2": 0,
+      "loadgen-multisource-120-3": 0,
+      "loadgen-multisource-120-4": 0,
+      "loadgen-multisource-120-5": 0,
+      "loadgen-multisource-120-6": 0,
+      "loadgen-multisource-120-7": 0,
+      "loadgen-multisource-120-8": 0,
+      "loadgen-multisource-120-9": 0,
+      "loadgen-pipeline-diagnostic-30msgsec-multisource-0": 0,
+      "loadgen-pipeline-diagnostic-30msgsec-multisource-1": 0,
+      "loadgen-pipeline-diagnostic-30msgsec-multisource-10": 0,
+      "loadgen-pipeline-diagnostic-30msgsec-multisource-11": 0,
+      "loadgen-pipeline-diagnostic-30msgsec-multisource-2": 0,
+      "loadgen-pipeline-diagnostic-30msgsec-multisource-3": 0,
+      "loadgen-pipeline-diagnostic-30msgsec-multisource-4": 0,
+      "loadgen-pipeline-diagnostic-30msgsec-multisource-5": 0,
+      "loadgen-pipeline-diagnostic-30msgsec-multisource-6": 0,
+      "loadgen-pipeline-diagnostic-30msgsec-multisource-7": 0,
+      "loadgen-pipeline-diagnostic-30msgsec-multisource-8": 0,
+      "loadgen-pipeline-diagnostic-30msgsec-multisource-9": 0,
+      "loadgen-pipeline-diagnostic-45msgsec-multisource-0": 0,
+      "loadgen-pipeline-diagnostic-45msgsec-multisource-1": 0,
+      "loadgen-pipeline-diagnostic-45msgsec-multisource-10": 0,
+      "loadgen-pipeline-diagnostic-45msgsec-multisource-11": 0,
+      "loadgen-pipeline-diagnostic-45msgsec-multisource-2": 0,
+      "loadgen-pipeline-diagnostic-45msgsec-multisource-3": 0,
+      "loadgen-pipeline-diagnostic-45msgsec-multisource-4": 0,
+      "loadgen-pipeline-diagnostic-45msgsec-multisource-5": 0,
+      "loadgen-pipeline-diagnostic-45msgsec-multisource-6": 0,
+      "loadgen-pipeline-diagnostic-45msgsec-multisource-7": 0,
+      "loadgen-pipeline-diagnostic-45msgsec-multisource-8": 0,
+      "loadgen-pipeline-diagnostic-45msgsec-multisource-9": 0,
+      "loadgen-pipeline-diagnostic-60msgsec-multisource-0": 0,
+      "loadgen-pipeline-diagnostic-60msgsec-multisource-1": 0,
+      "loadgen-pipeline-diagnostic-60msgsec-multisource-10": 0,
+      "loadgen-pipeline-diagnostic-60msgsec-multisource-11": 0,
+      "loadgen-pipeline-diagnostic-60msgsec-multisource-2": 0,
+      "loadgen-pipeline-diagnostic-60msgsec-multisource-3": 0,
+      "loadgen-pipeline-diagnostic-60msgsec-multisource-4": 0,
+      "loadgen-pipeline-diagnostic-60msgsec-multisource-5": 0,
+      "loadgen-pipeline-diagnostic-60msgsec-multisource-6": 0,
+      "loadgen-pipeline-diagnostic-60msgsec-multisource-7": 0,
+      "loadgen-pipeline-diagnostic-60msgsec-multisource-8": 0,
+      "loadgen-pipeline-diagnostic-60msgsec-multisource-9": 0,
+      "loadgen-processor-stage-45msgsec-multisource-0": 0,
+      "loadgen-processor-stage-45msgsec-multisource-1": 0,
+      "loadgen-processor-stage-45msgsec-multisource-10": 0,
+      "loadgen-processor-stage-45msgsec-multisource-11": 0,
+      "loadgen-processor-stage-45msgsec-multisource-2": 0,
+      "loadgen-processor-stage-45msgsec-multisource-3": 0,
+      "loadgen-processor-stage-45msgsec-multisource-4": 0,
+      "loadgen-processor-stage-45msgsec-multisource-5": 0,
+      "loadgen-processor-stage-45msgsec-multisource-6": 0,
+      "loadgen-processor-stage-45msgsec-multisource-7": 0,
+      "loadgen-processor-stage-45msgsec-multisource-8": 0,
+      "loadgen-processor-stage-45msgsec-multisource-9": 0,
+      "loadgen-processor-stage-60msgsec-multisource-0": 0,
+      "loadgen-processor-stage-60msgsec-multisource-1": 0,
+      "loadgen-processor-stage-60msgsec-multisource-10": 0,
+      "loadgen-processor-stage-60msgsec-multisource-11": 0,
+      "loadgen-processor-stage-60msgsec-multisource-2": 0,
+      "loadgen-processor-stage-60msgsec-multisource-3": 0,
+      "loadgen-processor-stage-60msgsec-multisource-4": 0,
+      "loadgen-processor-stage-60msgsec-multisource-5": 0,
+      "loadgen-processor-stage-60msgsec-multisource-6": 0,
+      "loadgen-processor-stage-60msgsec-multisource-7": 0,
+      "loadgen-processor-stage-60msgsec-multisource-8": 0,
+      "loadgen-processor-stage-60msgsec-multisource-9": 0,
+      "loadgen-stage-b1-rerun-75msgsec-multisource-0": 0,
+      "loadgen-stage-b1-rerun-75msgsec-multisource-1": 0,
+      "loadgen-stage-b1-rerun-75msgsec-multisource-10": 0,
+      "loadgen-stage-b1-rerun-75msgsec-multisource-11": 0,
+      "loadgen-stage-b1-rerun-75msgsec-multisource-2": 0,
+      "loadgen-stage-b1-rerun-75msgsec-multisource-3": 0,
+      "loadgen-stage-b1-rerun-75msgsec-multisource-4": 0,
+      "loadgen-stage-b1-rerun-75msgsec-multisource-5": 0,
+      "loadgen-stage-b1-rerun-75msgsec-multisource-6": 0,
+      "loadgen-stage-b1-rerun-75msgsec-multisource-7": 0,
+      "loadgen-stage-b1-rerun-75msgsec-multisource-8": 0,
+      "loadgen-stage-b1-rerun-75msgsec-multisource-9": 0,
+      "messages-processor-7994b774d5": 0,
+      "postgres-6f4c6cfddc": 0,
+      "redis-5649fbd7f": 0
+    },
+    "hpa_present": false,
+    "hpa_state_raw": ""
+  },
+  "resource_observations": {
+    "peak_sampled_during_run": {
+      "apps-55bff77658": {
+        "cpu": "1m",
+        "memory": "2Mi"
+      },
+      "cassandra-669556d58f": {
+        "cpu": "205m",
+        "memory": "1363Mi"
+      },
+      "gateway-7cffd6fff": {
+        "cpu": "170m",
+        "memory": "106Mi"
+      },
+      "kafka-9fd8b548c": {
+        "cpu": "265m",
+        "memory": "749Mi"
+      },
+      "loadgen-stage-b1-rerun-75msgsec-multisource-0": {
+        "cpu": "3m",
+        "memory": "7Mi"
+      },
+      "loadgen-stage-b1-rerun-75msgsec-multisource-1": {
+        "cpu": "3m",
+        "memory": "8Mi"
+      },
+      "loadgen-stage-b1-rerun-75msgsec-multisource-10": {
+        "cpu": "2m",
+        "memory": "7Mi"
+      },
+      "loadgen-stage-b1-rerun-75msgsec-multisource-11": {
+        "cpu": "2m",
+        "memory": "7Mi"
+      },
+      "loadgen-stage-b1-rerun-75msgsec-multisource-2": {
+        "cpu": "2m",
+        "memory": "7Mi"
+      },
+      "loadgen-stage-b1-rerun-75msgsec-multisource-3": {
+        "cpu": "2m",
+        "memory": "7Mi"
+      },
+      "loadgen-stage-b1-rerun-75msgsec-multisource-4": {
+        "cpu": "2m",
+        "memory": "7Mi"
+      },
+      "loadgen-stage-b1-rerun-75msgsec-multisource-5": {
+        "cpu": "2m",
+        "memory": "8Mi"
+      },
+      "loadgen-stage-b1-rerun-75msgsec-multisource-6": {
+        "cpu": "2m",
+        "memory": "7Mi"
+      },
+      "loadgen-stage-b1-rerun-75msgsec-multisource-7": {
+        "cpu": "2m",
+        "memory": "7Mi"
+      },
+      "loadgen-stage-b1-rerun-75msgsec-multisource-8": {
+        "cpu": "2m",
+        "memory": "8Mi"
+      },
+      "loadgen-stage-b1-rerun-75msgsec-multisource-9": {
+        "cpu": "2m",
+        "memory": "7Mi"
+      },
+      "messages-processor-7994b774d5": {
+        "cpu": "116m",
+        "memory": "13Mi"
+      },
+      "postgres-6f4c6cfddc": {
+        "cpu": "161m",
+        "memory": "364Mi"
+      },
+      "redis-5649fbd7f": {
+        "cpu": "68m",
+        "memory": "85Mi"
+      }
+    }
+  },
+  "reconciliation": {
+    "mode": "run-scoped by fresh test conversation IDs aggregated across shards",
+    "conversation_count": 75
+  },
+  "supported_claim": "The multisource local Kubernetes run did not establish a passing 75 msg/sec aggregate claim. It remains useful only as bounded evidence for the accepted subset: 11025/11025 accepted, Postgres delta 7390, Cassandra delta 7963, Kafka lag settled_to_zero=True.",
+  "unsupported_claims": [
+    "OHMF can sustain 75 accepted messages/sec aggregate in this local configuration",
+    "Any p95 or p99 delivery latency claim",
+    "3,100 concurrent clients",
+    "Production readiness",
+    "HA or failover",
+    "Any cloud or production benchmark interpretation"
+  ],
+  "artifacts": {
+    "human_summary_md": "C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-08-stage-b1-rerun-throughput/75msgsec/summary.md",
+    "deploy_result_md": "deploy/k8s/results/2026-06-08-stage-b1-rerun-75msgsec-multisource.md",
+    "observations_dir": "C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-08-stage-b1-rerun-throughput/75msgsec/observations",
+    "shards_dir": "C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-08-stage-b1-rerun-throughput/75msgsec/shards"
+  }
+}
