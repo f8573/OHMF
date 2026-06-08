@@ -864,9 +864,10 @@ func captureEnv() envCapture {
 }
 
 func captureCommand(name string, args ...string) commandCapture {
-	out, err := runCommandNoContext(name, args...)
+	resolved := resolveCommandName(name)
+	out, err := runCommandNoContext(resolved, args...)
 	capture := commandCapture{
-		Command: name + " " + strings.Join(args, " "),
+		Command: resolved + " " + strings.Join(args, " "),
 	}
 	if err != nil {
 		capture.Error = err.Error()
@@ -890,6 +891,61 @@ func runCommandNoContext(name string, args ...string) (string, error) {
 	cmd := exec.Command(name, args...)
 	raw, err := cmd.CombinedOutput()
 	return string(raw), err
+}
+
+func resolveCommandName(name string) string {
+	if _, err := exec.LookPath(name); err == nil {
+		return name
+	}
+	if runtime.GOOS == "windows" && !strings.HasSuffix(strings.ToLower(name), ".exe") {
+		if resolved := resolveCommandName(name + ".exe"); resolved != name+".exe" {
+			return resolved
+		}
+	}
+	if goBin := os.Getenv("GOBIN"); goBin != "" {
+		candidate := filepath.Join(goBin, name)
+		if fileExists(candidate) {
+			return candidate
+		}
+	}
+	if goPath := os.Getenv("GOPATH"); goPath != "" {
+		candidate := filepath.Join(goPath, "bin", name)
+		if fileExists(candidate) {
+			return candidate
+		}
+	}
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		candidate := filepath.Join(home, "go", "bin", name)
+		if fileExists(candidate) {
+			return candidate
+		}
+	}
+	if runtime.GOOS == "windows" && !strings.HasSuffix(strings.ToLower(name), ".exe") {
+		if goBin := os.Getenv("GOBIN"); goBin != "" {
+			candidate := filepath.Join(goBin, name+".exe")
+			if fileExists(candidate) {
+				return candidate
+			}
+		}
+		if goPath := os.Getenv("GOPATH"); goPath != "" {
+			candidate := filepath.Join(goPath, "bin", name+".exe")
+			if fileExists(candidate) {
+				return candidate
+			}
+		}
+		if home, err := os.UserHomeDir(); err == nil && home != "" {
+			candidate := filepath.Join(home, "go", "bin", name+".exe")
+			if fileExists(candidate) {
+				return candidate
+			}
+		}
+	}
+	return name
+}
+
+func fileExists(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && !info.IsDir()
 }
 
 func writeJSON(path string, value any) error {

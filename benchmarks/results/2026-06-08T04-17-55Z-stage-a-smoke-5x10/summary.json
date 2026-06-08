@@ -1,0 +1,53 @@
+{
+  "scenario": "stage-a-smoke-5x10",
+  "run_id": "20260608t041755z-16e7b274",
+  "result_dir": "benchmarks\\results\\2026-06-08T04-17-55Z-stage-a-smoke-5x10",
+  "driver_mode": "host",
+  "completed_utc": "2026-06-08T04:18:09Z",
+  "cancelled": false,
+  "counts": {
+    "requested": 50,
+    "sent_attempts": 50,
+    "accepted": 50,
+    "accepted_responses": 50,
+    "send_failures": {},
+    "duplicates": 0,
+    "missing": 0,
+    "unique_idempotency_keys": 50,
+    "unique_accepted_message_ids": 50
+  },
+  "latency": {
+    "sample_count": 50,
+    "p50_ms": 41.256,
+    "p95_ms": 50.24404999999999,
+    "p99_ms": 59.08010999999998,
+    "location": "host"
+  },
+  "reconcile": {
+    "postgres_before": 0,
+    "postgres_after": 50,
+    "postgres_delta": 50,
+    "cassandra_before": 0,
+    "cassandra_after": 50,
+    "cassandra_delta": 50,
+    "kafka_lag_at_end": 0,
+    "kafka_lag_settled_to_zero": true,
+    "kafka_lag_zero_seconds": 2.2309483,
+    "run_scoped_reconcile_mode": "Postgres reconciled by fresh test conversation ids derived from run_id; Cassandra reconciled by fresh test conversation ids plus UTC partition bucket; there is no dedicated persisted run_id column",
+    "limitations": [
+      "Client latency is client-observed POST-to-ack latency only, labeled by driver execution location.",
+      "Kafka lag reconciliation is not run-scoped in the current schema/tooling; it is consumer-group wide and should be treated as isolated-cluster evidence."
+    ]
+  },
+  "conversations": [
+    {
+      "conversation_id": "42863034-cc38-4454-a8f3-39cb74158f59",
+      "recipient_user_id": "91f215bb-7acd-49fa-b5c1-777552c7dd45"
+    }
+  ],
+  "limitations": [
+    "Client latency is client-observed POST-to-ack latency only, labeled by driver execution location.",
+    "Kafka lag reconciliation is not run-scoped in the current schema/tooling; it is consumer-group wide and should be treated as isolated-cluster evidence."
+  ],
+  "supported_claim": "This artifact supports only a local host benchmark claim for scenario \"stage-a-smoke-5x10\" at run_id \"20260608t041755z-16e7b274\", with client-observed accept latency and run-scoped Postgres/Cassandra reconciliation by fresh test conversation where available."
+}
