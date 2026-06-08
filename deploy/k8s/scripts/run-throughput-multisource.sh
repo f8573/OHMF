@@ -33,7 +33,6 @@ require_stage_a_tools
 require_cmd docker
 ensure_cluster
 
-cleanup_job
 rm -rf "${RESULT_DIR}"
 mkdir -p "${OBS_DIR}" "${SHARDS_DIR}"
 
@@ -72,6 +71,8 @@ import_image() {
 
   docker save ohmf-loadgen:dev | MSYS_NO_PATHCONV=1 docker exec -i "${K3D_SERVER_CONTAINER}" ctr -n k8s.io images import - >/dev/null
 }
+
+cleanup_job
 
 sampler() {
   while true; do
