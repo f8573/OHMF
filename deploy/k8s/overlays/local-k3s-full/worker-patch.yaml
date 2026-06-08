@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: messages-processor
+  annotations:
+    ohmf.dev/status: "enabled-local-k3s-full-baseline"
+spec:
+  replicas: 1
+  template:
+    spec:
+      initContainers:
+        - name: wait-for-dependencies
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              echo "waiting for postgres, redis, kafka, and cassandra..."
+              until nc -z postgres 5432; do sleep 2; done
+              until nc -z redis 6379; do sleep 2; done
+              until nc -z kafka 9092; do sleep 2; done
+              until nc -z cassandra 9042; do sleep 2; done
+              echo "all dependencies are reachable"
+          resources:
+            requests:
+              cpu: 20m
+              memory: 24Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+      containers:
+        - name: messages-processor
+          env:
+            - name: APP_REDIS_ADDR
+              value: redis:6379
+            - name: APP_KAFKA_BROKERS
+              value: kafka:9092
+            - name: APP_KAFKA_GROUP_ID
+              value: messages-processor-v1
+            - name: APP_KAFKA_INGRESS_TOPIC
+              value: msg.ingress.v1
+            - name: APP_KAFKA_PERSISTED_TOPIC
+              value: msg.persisted.v1
+            - name: APP_KAFKA_MICROSERVICE_TOPIC
+              value: microservice.events.v1
+            - name: APP_KAFKA_SMS_DISPATCH_TOPIC
+              value: msg.sms.dispatch.v1
+            - name: APP_KAFKA_DLQ_TOPIC
+              value: msg.ingress.dlq.v1
+            - name: APP_CASSANDRA_HOSTS
+              value: cassandra:9042
+            - name: APP_CASSANDRA_KEYSPACE
+              value: ohmf_messages
+            - name: APP_SHADOW_POSTGRES_WRITE
+              value: "true"

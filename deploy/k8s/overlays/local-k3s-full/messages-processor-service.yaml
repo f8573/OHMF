@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: messages-processor
+  labels:
+    app.kubernetes.io/name: messages-processor
+    app.kubernetes.io/part-of: ohmf
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: messages-processor
+  ports:
+    - name: http
+      port: 18088
+      targetPort: http

@@ -1,0 +1,75 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cassandra
+  labels:
+    app.kubernetes.io/name: cassandra
+    app.kubernetes.io/part-of: ohmf
+    app.kubernetes.io/component: database
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: cassandra
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: cassandra
+        app.kubernetes.io/part-of: ohmf
+        app.kubernetes.io/component: database
+    spec:
+      containers:
+        - name: cassandra
+          image: cassandra:5.0
+          ports:
+            - name: cql
+              containerPort: 9042
+          env:
+            - name: MAX_HEAP_SIZE
+              value: 512M
+            - name: HEAP_NEWSIZE
+              value: 128M
+            - name: CASSANDRA_CLUSTER_NAME
+              value: ohmf-dev
+          readinessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - cqlsh -e "DESCRIBE KEYSPACES" >/dev/null
+            initialDelaySeconds: 35
+            periodSeconds: 15
+            timeoutSeconds: 10
+            failureThreshold: 12
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - cqlsh -e "DESCRIBE KEYSPACES" >/dev/null
+            initialDelaySeconds: 60
+            periodSeconds: 20
+            timeoutSeconds: 10
+            failureThreshold: 6
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/cassandra
+      volumes:
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cassandra
+  labels:
+    app.kubernetes.io/name: cassandra
+    app.kubernetes.io/part-of: ohmf
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: cassandra
+  ports:
+    - name: cql
+      port: 9042
+      targetPort: cql

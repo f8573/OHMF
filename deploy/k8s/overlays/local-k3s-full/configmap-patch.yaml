@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ohmf-config
+data:
+  # Full gateway mode for local async-pipeline validation.
+  APP_SMOKE_MODE: "0"
+  APP_AUTO_MIGRATE: "true"
+  APP_REDIS_ADDR: "redis:6379"
+  APP_REDIS_DB: "0"
+  APP_ACCESS_TTL_MINUTES: "15"
+  APP_REFRESH_TTL_HOURS: "720"
+  APP_USE_KAFKA_SEND: "true"
+  APP_USE_CASSANDRA_READS: "false"
+  APP_ENABLE_WS_SEND: "true"
+  APP_KAFKA_BROKERS: "kafka:9092"
+  APP_KAFKA_CLIENT_ID: "ohmf-gateway"
+  APP_KAFKA_INGRESS_TOPIC: "msg.ingress.v1"
+  APP_KAFKA_PERSISTED_TOPIC: "msg.persisted.v1"
+  APP_KAFKA_DELIVERY_TOPIC: "msg.delivery.v1"
+  APP_KAFKA_SMS_DISPATCH_TOPIC: "msg.sms.dispatch.v1"
+  APP_KAFKA_PRESENCE_TOPIC: "presence.events.v1"
+  APP_KAFKA_MICROSERVICE_TOPIC: "microservice.events.v1"
+  APP_ACK_TIMEOUT_MS: "2000"
+  APP_CASSANDRA_HOSTS: "cassandra:9042"
+  APP_CASSANDRA_KEYSPACE: "ohmf_messages"
+  APP_CASSANDRA_CONSISTENCY: "quorum"

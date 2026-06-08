@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway
+spec:
+  template:
+    spec:
+      initContainers:
+        - name: wait-for-dependencies
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              echo "waiting for postgres, redis, kafka, cassandra, and apps..."
+              until nc -z postgres 5432; do sleep 2; done
+              until nc -z redis 6379; do sleep 2; done
+              until nc -z kafka 9092; do sleep 2; done
+              until nc -z cassandra 9042; do sleep 2; done
+              until nc -z apps 18086; do sleep 2; done
+              echo "all dependencies are reachable"
+          resources:
+            requests:
+              cpu: 20m
+              memory: 24Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+      containers:
+        - name: gateway
+          env:
+            - name: APP_MIGRATIONS_DIR
+              value: /app/migrations
+            - name: APP_DB_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: ohmf-secrets
+                  key: APP_DB_DSN
+            - name: APP_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: ohmf-secrets
+                  key: APP_JWT_SECRET

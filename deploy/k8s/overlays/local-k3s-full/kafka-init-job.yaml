@@ -1,0 +1,38 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: kafka-init
+  labels:
+    app.kubernetes.io/name: kafka-init
+    app.kubernetes.io/part-of: ohmf
+spec:
+  backoffLimit: 4
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kafka-init
+        app.kubernetes.io/part-of: ohmf
+    spec:
+      enableServiceLinks: false
+      restartPolicy: OnFailure
+      containers:
+        - name: kafka-init
+          image: confluentinc/cp-kafka:7.6.1
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              until /usr/bin/kafka-topics --bootstrap-server kafka:9092 --list >/dev/null 2>&1; do
+                echo "waiting for kafka..."
+                sleep 3
+              done
+              /usr/bin/kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic msg.ingress.v1 --partitions 12 --replication-factor 1
+              /usr/bin/kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic msg.persisted.v1 --partitions 12 --replication-factor 1
+              /usr/bin/kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic msg.delivery.v1 --partitions 6 --replication-factor 1
+              /usr/bin/kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic msg.sms.dispatch.v1 --partitions 3 --replication-factor 1
+              /usr/bin/kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic presence.events.v1 --partitions 6 --replication-factor 1
+              /usr/bin/kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic microservice.events.v1 --partitions 12 --replication-factor 1
+              /usr/bin/kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic msg.ingress.dlq.v1 --partitions 3 --replication-factor 1
+              /usr/bin/kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic msg.delivery.dlq.v1 --partitions 3 --replication-factor 1
+              /usr/bin/kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic msg.sms.dlq.v1 --partitions 3 --replication-factor 1
