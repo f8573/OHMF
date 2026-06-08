@@ -1,0 +1,235 @@
+{
+  "scenario": "sustained-120msgsec-multisource",
+  "stage": "B1",
+  "status": "failed",
+  "scope": "local single-node Kubernetes only",
+  "result_dir": "C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-08-sustained-120msgsec-multisource",
+  "run": {
+    "run_id_prefix": "20260608t18301780943411z-multisource",
+    "run_date": "2026-06-08",
+    "system_under_test_commit": "c50020a2af8f3527bc92307a8cf373b60969a5c5",
+    "artifact_generation_head": "c50020a2af8f3527bc92307a8cf373b60969a5c5",
+    "overlay": "deploy/k8s/overlays/local-k3s-full",
+    "cluster_name": "ohmf-b1",
+    "cluster_context": "k3d-ohmf-b1",
+    "driver_location": "in-cluster multisource",
+    "principal_provisioning_mode": "seed_db",
+    "loadgen_pods": 12,
+    "source_ip_count": 12,
+    "source_ips": [
+      "10.42.0.70",
+      "10.42.0.71",
+      "10.42.0.72",
+      "10.42.0.73",
+      "10.42.0.74",
+      "10.42.0.75",
+      "10.42.0.76",
+      "10.42.0.77",
+      "10.42.0.78",
+      "10.42.0.79",
+      "10.42.0.80",
+      "10.42.0.81"
+    ],
+    "per_pod_rate": 10,
+    "aggregate_target_rate": 120,
+    "main_duration_seconds": 600
+  },
+  "phases": [
+    {
+      "name": "main-10x1x600",
+      "user_count": 120,
+      "per_user_rate": 1,
+      "aggregate_target_rate": 120,
+      "duration_seconds": 600,
+      "requested": 72000,
+      "accepted": 71992,
+      "failed_sends_by_reason": {
+        "http_500": 8
+      }
+    },
+    {
+      "name": "warmup-10x1x60",
+      "user_count": 120,
+      "per_user_rate": 1,
+      "aggregate_target_rate": 120,
+      "duration_seconds": 60,
+      "requested": 7200,
+      "accepted": 7200,
+      "failed_sends_by_reason": {}
+    },
+    {
+      "name": "warmup-5x1x60",
+      "user_count": 60,
+      "per_user_rate": 1,
+      "aggregate_target_rate": 60,
+      "duration_seconds": 60,
+      "requested": 3600,
+      "accepted": 3600,
+      "failed_sends_by_reason": {}
+    }
+  ],
+  "counts": {
+    "requested": 82800,
+    "sent_attempts": 82800,
+    "accepted": 82792,
+    "accepted_responses": 82792,
+    "failed": 8,
+    "failed_sends_by_reason": {
+      "http_500": 8
+    },
+    "duplicates": 0,
+    "missing": 53491,
+    "postgres_delta": 29301,
+    "cassandra_delta": 30267
+  },
+  "latency": {
+    "label": "client-observed HTTP accept latency",
+    "calculation": "exact from merged shard accept samples",
+    "sample_count": 82792,
+    "p50_ms": 2020.419,
+    "p95_ms": 2025.472,
+    "p99_ms": 2032.88718
+  },
+  "kafka": {
+    "consumer_group": "messages-processor-v1",
+    "lag_settled_to_zero": false,
+    "lag_zero_seconds": 183.004328,
+    "lag_at_end": 47820,
+    "limitation": "Kafka lag reconciliation is consumer-group scoped, not run scoped."
+  },
+  "pods": {
+    "restarts_before": {
+      "apps-695b467944": 0,
+      "cassandra-669556d58f": 0,
+      "gateway-7c9fbf9d9f": 0,
+      "kafka-9fd8b548c": 0,
+      "kafka-init": 0,
+      "messages-processor-7c6855b667": 0,
+      "postgres-6f4c6cfddc": 0,
+      "redis-5649fbd7f": 0
+    },
+    "restarts_after": {
+      "apps-695b467944": 0,
+      "cassandra-669556d58f": 0,
+      "gateway-7c9fbf9d9f": 0,
+      "kafka-9fd8b548c": 0,
+      "kafka-init": 0,
+      "loadgen-multisource-120-0": 0,
+      "loadgen-multisource-120-1": 0,
+      "loadgen-multisource-120-10": 0,
+      "loadgen-multisource-120-11": 0,
+      "loadgen-multisource-120-2": 0,
+      "loadgen-multisource-120-3": 0,
+      "loadgen-multisource-120-4": 0,
+      "loadgen-multisource-120-5": 0,
+      "loadgen-multisource-120-6": 0,
+      "loadgen-multisource-120-7": 0,
+      "loadgen-multisource-120-8": 0,
+      "loadgen-multisource-120-9": 0,
+      "messages-processor-7c6855b667": 0,
+      "postgres-6f4c6cfddc": 0,
+      "redis-5649fbd7f": 0
+    },
+    "hpa_present": false,
+    "hpa_state_raw": ""
+  },
+  "resource_observations": {
+    "peak_sampled_during_run": {
+      "apps-695b467944": {
+        "cpu": "1m",
+        "memory": "3Mi"
+      },
+      "cassandra-669556d58f": {
+        "cpu": "290m",
+        "memory": "1342Mi"
+      },
+      "gateway-7c9fbf9d9f": {
+        "cpu": "316m",
+        "memory": "167Mi"
+      },
+      "kafka-9fd8b548c": {
+        "cpu": "276m",
+        "memory": "497Mi"
+      },
+      "loadgen-multisource-120-0": {
+        "cpu": "4m",
+        "memory": "9Mi"
+      },
+      "loadgen-multisource-120-1": {
+        "cpu": "4m",
+        "memory": "10Mi"
+      },
+      "loadgen-multisource-120-10": {
+        "cpu": "4m",
+        "memory": "9Mi"
+      },
+      "loadgen-multisource-120-11": {
+        "cpu": "4m",
+        "memory": "9Mi"
+      },
+      "loadgen-multisource-120-2": {
+        "cpu": "4m",
+        "memory": "9Mi"
+      },
+      "loadgen-multisource-120-3": {
+        "cpu": "4m",
+        "memory": "9Mi"
+      },
+      "loadgen-multisource-120-4": {
+        "cpu": "4m",
+        "memory": "9Mi"
+      },
+      "loadgen-multisource-120-5": {
+        "cpu": "4m",
+        "memory": "10Mi"
+      },
+      "loadgen-multisource-120-6": {
+        "cpu": "4m",
+        "memory": "9Mi"
+      },
+      "loadgen-multisource-120-7": {
+        "cpu": "4m",
+        "memory": "9Mi"
+      },
+      "loadgen-multisource-120-8": {
+        "cpu": "4m",
+        "memory": "9Mi"
+      },
+      "loadgen-multisource-120-9": {
+        "cpu": "4m",
+        "memory": "9Mi"
+      },
+      "messages-processor-7c6855b667": {
+        "cpu": "130m",
+        "memory": "18Mi"
+      },
+      "postgres-6f4c6cfddc": {
+        "cpu": "213m",
+        "memory": "308Mi"
+      },
+      "redis-5649fbd7f": {
+        "cpu": "79m",
+        "memory": "19Mi"
+      }
+    }
+  },
+  "reconciliation": {
+    "mode": "run-scoped by fresh test conversation IDs aggregated across shards",
+    "conversation_count": 120
+  },
+  "supported_claim": "The multisource local Kubernetes run did not establish a passing 120 msg/sec aggregate claim. It remains useful only as bounded evidence for the accepted subset: 82792/82800 accepted, Postgres delta 29301, Cassandra delta 30267, Kafka lag settled_to_zero=False.",
+  "unsupported_claims": [
+    "OHMF can sustain 120 accepted messages/sec aggregate in this local configuration",
+    "Any p95 or p99 delivery latency claim",
+    "3,100 concurrent clients",
+    "Production readiness",
+    "HA or failover",
+    "Any cloud or production benchmark interpretation"
+  ],
+  "artifacts": {
+    "human_summary_md": "C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-08-sustained-120msgsec-multisource/summary.md",
+    "deploy_result_md": "deploy/k8s/results/2026-06-08-throughput-120msgsec-multisource.md",
+    "observations_dir": "C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-08-sustained-120msgsec-multisource/observations",
+    "shards_dir": "C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-08-sustained-120msgsec-multisource/shards"
+  }
+}
