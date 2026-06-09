@@ -150,12 +150,18 @@ for deployment_name, container_name, intended_image in services:
     for item in pods.get("items", []):
         if item.get("status", {}).get("phase") != "Running":
             continue
+        spec_image = ""
+        for container in item.get("spec", {}).get("containers", []):
+            if container.get("name") == container_name:
+                spec_image = container.get("image", "")
+                break
         for status in item.get("status", {}).get("containerStatuses", []):
             if status.get("name") != container_name:
                 continue
             matching_items.append({
                 "pod_name": item["metadata"]["name"],
                 "pod_ip": item.get("status", {}).get("podIP"),
+                "spec_image": spec_image,
                 "image": status.get("image"),
                 "image_id": status.get("imageID"),
                 "ready": status.get("ready"),
@@ -168,7 +174,7 @@ for deployment_name, container_name, intended_image in services:
     }
     deployment_image = container_images.get(container_name, "")
     current_verified = bool(matching_items) and deployment_image == intended_image and all(
-        item["image"] == intended_image and item["image_id"] for item in matching_items
+        item["spec_image"] == intended_image and item["image_id"] for item in matching_items
     )
     verified = verified and current_verified
     service_entries[deployment_name] = {
@@ -200,6 +206,56 @@ confirm_stage_events_metric() {
     echo "messages-processor metrics do not expose ohmf_messages_processor_stage_events_total" >&2
     return 1
   fi
+}
+
+wait_for_consumer_group_assignment() {
+  local expected_members="$1"
+  local started now
+  started="$(date +%s)"
+  while true; do
+    local group_state
+    group_state="$(kubectl -n "${NS}" exec deploy/kafka -- sh -lc \
+      "/usr/bin/kafka-consumer-groups --bootstrap-server localhost:9092 --describe --group messages-processor-v1" 2>/dev/null || true)"
+    local status_line
+    status_line="$(python - "${expected_members}" "${group_state}" <<'PY'
+import re
+import sys
+
+expected = int(sys.argv[1])
+raw_text = sys.argv[2]
+assignments = {}
+assigned = 0
+total = 0
+for raw in raw_text.splitlines():
+    line = raw.strip()
+    if not line or line.startswith("GROUP") or line.startswith("Warning:"):
+        continue
+    fields = re.split(r"\s+", line)
+    if len(fields) < 9 or fields[0] != "messages-processor-v1" or fields[1] != "msg.ingress.v1":
+        continue
+    total += 1
+    member = fields[6]
+    if member == "-":
+        continue
+    assigned += 1
+    assignments.setdefault(member, 0)
+    assignments[member] += 1
+print(f"{len(assignments)} {assigned} {total}")
+PY
+)"
+    local member_count assigned_partitions total_partitions
+    read -r member_count assigned_partitions total_partitions <<<"${status_line}"
+    if (( member_count >= expected_members && total_partitions > 0 && assigned_partitions == total_partitions )); then
+      return 0
+    fi
+    now="$(date +%s)"
+    if (( now - started >= PRE_RUN_LAG_TIMEOUT_SECONDS )); then
+      echo "consumer group did not stabilize within ${PRE_RUN_LAG_TIMEOUT_SECONDS}s; members=${member_count}, assigned=${assigned_partitions}, total=${total_partitions}" >&2
+      return 1
+    fi
+    echo "waiting for consumer-group assignment: members=${member_count}/${expected_members}, assigned=${assigned_partitions}/${total_partitions}"
+    sleep "${PRE_RUN_LAG_POLL_SECONDS}"
+  done
 }
 
 scale_processor_replicas() {
@@ -247,6 +303,7 @@ wait_for_zero_lag
 for replicas in "${replicas_matrix[@]}"; do
   scale_processor_replicas "${replicas}"
   wait_for_zero_lag
+  wait_for_consumer_group_assignment "${replicas}"
 
   for rate in "${rates[@]}"; do
     duration="$(duration_for_rate "${rate}")"

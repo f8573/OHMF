@@ -113,9 +113,11 @@ def normalize_rollout(rollout):
     overall_verified = True
     for service_name, payload in rollout["services"].items():
         effective_verified = (
-            payload["deployment_image"] == payload["intended_image"]
+            payload.get("verified", False)
+            and payload["deployment_image"] == payload["intended_image"]
             and bool(payload["running_pods"])
             and all(item.get("image_id") for item in payload["running_pods"])
+            and all(item.get("spec_image") == payload["intended_image"] for item in payload["running_pods"])
         )
         overall_verified = overall_verified and effective_verified
         normalized_payload = dict(payload)
@@ -202,7 +204,7 @@ def assignment_summary(run_dir, replicas):
     }
 
 
-def rung_passes(summary, counters, postgres_exact, cassandra_exact, restart_changes):
+def rung_passes(summary, counters, postgres_exact, cassandra_exact, restart_changes, assignments):
     accepted = summary["counts"]["accepted"]
     requested = summary["counts"]["requested"]
     return all([
@@ -216,6 +218,7 @@ def rung_passes(summary, counters, postgres_exact, cassandra_exact, restart_chan
         cassandra_exact == accepted,
         summary["kafka"]["lag_settled_to_zero"],
         not restart_changes,
+        assignments["members_ok"],
     ])
 
 
@@ -444,7 +447,7 @@ def main():
         cassandra_exact = cassandra_count_by_run_prefix(args.namespace, conversations, args.cassandra_keyspace, run_prefix)
         restart_changes = summarize_restarts(summary["pods"]["restarts_before"], summary["pods"]["restarts_after"])
         assignments = assignment_summary(run_dir, processor_replicas)
-        verified_pass = rung_passes(summary, counters, postgres_exact, cassandra_exact, restart_changes)
+        verified_pass = rollout["verified"] and rung_passes(summary, counters, postgres_exact, cassandra_exact, restart_changes, assignments)
 
         rungs.append({
             "processor_replicas": processor_replicas,
