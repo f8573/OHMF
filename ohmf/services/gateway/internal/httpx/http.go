@@ -3,6 +3,8 @@ package httpx
 import (
 	"encoding/json"
 	"net/http"
+
+	chimiddleware "github.com/go-chi/chi/v5/middleware"
 )
 
 type ErrorEnvelope struct {
@@ -18,10 +20,21 @@ func WriteJSON(w http.ResponseWriter, code int, payload any) {
 	_ = json.NewEncoder(w).Encode(payload)
 }
 
+func RequestID(r *http.Request) string {
+	if r == nil {
+		return ""
+	}
+	if reqID := chimiddleware.GetReqID(r.Context()); reqID != "" {
+		return reqID
+	}
+	return r.Header.Get("X-Request-Id")
+}
+
 func WriteError(w http.ResponseWriter, r *http.Request, status int, code, message string, details map[string]any) {
-	// chi middleware sets header `X-Request-ID` (capitalization may vary).
-	// HTTP headers are case-insensitive; we accept `X-Request-ID`/`X-Request-Id`.
-	reqID := r.Header.Get("X-Request-Id")
+	reqID := RequestID(r)
+	if reqID != "" {
+		w.Header().Set("X-Request-ID", reqID)
+	}
 	WriteJSON(w, status, ErrorEnvelope{
 		Code:      code,
 		Message:   message,

@@ -352,6 +352,19 @@ func (h *Handler) Send(w http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
+		observability.EmitEvent("message.send_failed", map[string]any{
+			"request_id":       httpx.RequestID(r),
+			"trace_id":         traceID,
+			"route":            r.URL.Path,
+			"handler":          "messages.Send",
+			"user_id":          userID,
+			"sender_device_id": deviceID,
+			"conversation_id":  req.ConversationID,
+			"idempotency_key":  req.IdempotencyKey,
+			"content_type":     req.ContentType,
+			"client_generated": req.ClientGeneratedID,
+			"error":            err.Error(),
+		})
 		httpx.WriteError(w, r, http.StatusInternalServerError, "send_failed", err.Error(), nil)
 		return
 	}
@@ -467,6 +480,19 @@ func (h *Handler) SendToPhone(w http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
+		observability.EmitEvent("message.send_failed", map[string]any{
+			"request_id":       httpx.RequestID(r),
+			"trace_id":         traceID,
+			"route":            r.URL.Path,
+			"handler":          "messages.SendToPhone",
+			"user_id":          userID,
+			"sender_device_id": deviceID,
+			"recipient_phone":  req.PhoneE164,
+			"idempotency_key":  req.IdempotencyKey,
+			"content_type":     req.ContentType,
+			"client_generated": req.ClientGeneratedID,
+			"error":            err.Error(),
+		})
 		httpx.WriteError(w, r, http.StatusInternalServerError, "send_phone_failed", err.Error(), nil)
 		return
 	}

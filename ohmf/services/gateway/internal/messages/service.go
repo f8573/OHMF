@@ -17,6 +17,7 @@ import (
 	"ohmf/services/gateway/internal/e2ee"
 	"ohmf/services/gateway/internal/limit"
 	"ohmf/services/gateway/internal/middleware"
+	"ohmf/services/gateway/internal/observability"
 	"ohmf/services/gateway/internal/replication"
 )
 
@@ -1811,7 +1812,23 @@ func (s *Service) sendAsync(ctx context.Context, userID, senderDeviceID, convers
 		CreatedAt:         time.UnixMilli(ack.PersistedAtMS).UTC().Format(time.RFC3339),
 	}
 	if err := s.upsertIdempotency(ctx, userID, endpoint, idemKey, msg, 201); err != nil {
-		return SendResult{}, err
+		observability.EmitEvent("message.idempotency_persist_failed", map[string]any{
+			"user_id":           userID,
+			"conversation_id":   conversationID,
+			"endpoint":          endpoint,
+			"idempotency_key":   idemKey,
+			"message_id":        msg.MessageID,
+			"event_id":          evt.EventID,
+			"request_id":        traceID,
+			"kafka_publish_ok":  true,
+			"ack_received":      true,
+			"persisted_at_ms":   ack.PersistedAtMS,
+			"server_order":      ack.ServerOrder,
+			"transport":         ack.Transport,
+			"client_generated":  clientGeneratedID,
+			"recovery_behavior": "return_success_with_ack",
+			"error":             err.Error(),
+		})
 	}
 	return SendResult{Message: msg}, nil
 }

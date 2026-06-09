@@ -156,6 +156,78 @@ func TestSendAsyncReturnsCanonicalMessageWhenAckArrives(t *testing.T) {
 	}
 }
 
+func TestSendAsyncReturnsAckWhenPostAckIdempotencyPersistFails(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mock.Close()
+
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("start miniredis: %v", err)
+	}
+	defer mr.Close()
+
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	defer rdb.Close()
+
+	producer := &recordingIngressProducer{published: make(chan IngressEvent, 1)}
+	pipeline := NewAsyncPipeline(producer, rdb)
+	svc := &Service{
+		db:           mock,
+		useKafkaSend: true,
+		async:        pipeline,
+		ackTimeout:   500 * time.Millisecond,
+	}
+
+	expectMembershipOK(mock)
+	expectUnblocked(mock)
+	mock.ExpectQuery(`SELECT type, COALESCE\(encryption_state, 'PLAINTEXT'\), COALESCE\(is_mls_encrypted, false\) FROM conversations WHERE id = \$1::uuid`).
+		WithArgs("conversation-1").
+		WillReturnRows(pgxmock.NewRows([]string{"type", "encryption_state", "is_mls_encrypted"}).AddRow("GROUP", "PLAINTEXT", false))
+	mock.ExpectQuery(`SELECT response_payload, COALESCE\(status_code, 201\)`).
+		WithArgs("user-1", "/v1/messages", "idem-1").
+		WillReturnError(pgx.ErrNoRows)
+	mock.ExpectExec(`INSERT INTO idempotency_keys \(actor_user_id, endpoint, key, response_payload, status_code, expires_at\)`).
+		WithArgs("user-1", "/v1/messages", "idem-1", pgxmock.AnyArg(), 202).
+		WillReturnResult(pgxmock.NewResult("INSERT", 1))
+	mock.ExpectExec(`INSERT INTO idempotency_keys \(actor_user_id, endpoint, key, response_payload, status_code, expires_at\)`).
+		WithArgs("user-1", "/v1/messages", "idem-1", pgxmock.AnyArg(), 201).
+		WillReturnError(errors.New("idempotency store unavailable"))
+
+	errCh := make(chan error, 1)
+	go func() {
+		evt := <-producer.published
+		errCh <- writeAckForTest(rdb, evt.EventID, PersistedAck{
+			EventID:        evt.EventID,
+			MessageID:      evt.MessageID,
+			ConversationID: evt.ConversationID,
+			ServerOrder:    79,
+			Status:         "SENT",
+			Transport:      "OHMF",
+			PersistedAtMS:  1700000000222,
+		})
+	}()
+
+	result, err := svc.Send(context.Background(), "user-1", "device-1", "conversation-1", "idem-1", "text", map[string]any{"text": "hi"}, "client-1", "trace-1", "")
+	if err != nil {
+		t.Fatalf("Send failed: %v", err)
+	}
+	if result.Queued {
+		t.Fatalf("expected canonical response, got queued result")
+	}
+	if result.Message.MessageID == "" || result.Message.ServerOrder != 79 {
+		t.Fatalf("expected persisted ack response, got %+v", result.Message)
+	}
+	if err := <-errCh; err != nil {
+		t.Fatalf("write ack: %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
+	}
+}
+
 func TestSendAsyncTimeoutReturnsProvisionalAndLateAckRemainsReadable(t *testing.T) {
 	mock, err := pgxmock.NewPool()
 	if err != nil {

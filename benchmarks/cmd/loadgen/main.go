@@ -115,6 +115,7 @@ type runArtifacts struct {
 	Latency               latencySummary         `json:"latency"`
 	Reconcile             reconcileSummary       `json:"reconcile"`
 	Conversations         []conversationArtifact `json:"conversations"`
+	FailedSends           []failedSendArtifact   `json:"failed_sends,omitempty"`
 	LatencySamplesMS      []float64              `json:"latency_samples_ms,omitempty"`
 	Limitations           []string               `json:"limitations"`
 	Supported             string                 `json:"supported_claim"`
@@ -193,10 +194,29 @@ type messageAck struct {
 	ServerOrder int64  `json:"server_order"`
 }
 
+type failedSendArtifact struct {
+	TimestampUTC      string  `json:"timestamp_utc"`
+	PhaseName         string  `json:"phase_name"`
+	Sequence          int64   `json:"sequence"`
+	HTTPStatus        int     `json:"http_status,omitempty"`
+	ResponseBody      string  `json:"response_body,omitempty"`
+	RequestID         string  `json:"request_id,omitempty"`
+	CorrelationID     string  `json:"correlation_id,omitempty"`
+	SenderUserID      string  `json:"sender_user_id,omitempty"`
+	ShardID           string  `json:"shard_id,omitempty"`
+	PrincipalIndex    int     `json:"principal_index"`
+	ConversationID    string  `json:"conversation_id"`
+	IdempotencyKey    string  `json:"idempotency_key"`
+	RequestDurationMS float64 `json:"request_duration_ms"`
+	Retryability      string  `json:"retryability"`
+	Failure           string  `json:"failure"`
+}
+
 type sendJob struct {
 	PhaseName         string
 	Sequence          int64
 	PrincipalIndex    int
+	SenderUserID      string
 	ConversationID    string
 	IdempotencyKey    string
 	ClientGeneratedID string
@@ -204,11 +224,17 @@ type sendJob struct {
 }
 
 type sendResult struct {
-	Job       sendJob
-	LatencyMS float64
-	MessageID string
-	Accepted  bool
-	Failure   string
+	Job           sendJob
+	LatencyMS     float64
+	MessageID     string
+	Accepted      bool
+	Failure       string
+	TimestampUTC  string
+	HTTPStatus    int
+	ResponseBody  string
+	RequestID     string
+	CorrelationID string
+	Retryability  string
 }
 
 type runState struct {
@@ -225,6 +251,7 @@ type runState struct {
 	acceptedByIdem        map[string]string
 	acceptedMessageIDs    map[string]struct{}
 	duplicateAcceptedKeys map[string]struct{}
+	failedSends           []failedSendArtifact
 	mu                    sync.Mutex
 }
 
@@ -672,6 +699,7 @@ func executeRun(ctx context.Context, client *http.Client, state *runState) error
 						PhaseName:         phase.Name,
 						Sequence:          globalSequence,
 						PrincipalIndex:    userIdx,
+						SenderUserID:      principal.UserID,
 						ConversationID:    conversation.ConversationID,
 						IdempotencyKey:    idem,
 						ClientGeneratedID: fmt.Sprintf("%s-u%03d-%06d", state.config.RunID, state.config.UserIndexOffset+userIdx, globalSequence),
@@ -683,6 +711,7 @@ func executeRun(ctx context.Context, client *http.Client, state *runState) error
 							PhaseName:         phase.Name,
 							Sequence:          globalSequence,
 							PrincipalIndex:    userIdx,
+							SenderUserID:      principal.UserID,
 							ConversationID:    conversation.ConversationID,
 							IdempotencyKey:    lastIdem,
 							ClientGeneratedID: fmt.Sprintf("%s-u%03d-%06d-dup", state.config.RunID, state.config.UserIndexOffset+userIdx, globalSequence),
@@ -725,26 +754,62 @@ func doSend(ctx context.Context, client *http.Client, state *runState, job sendJ
 		},
 	}
 	start := time.Now()
-	raw, status, err := apiRequest(ctx, client, state.config.BaseURL, http.MethodPost, "/v1/messages", job.Token, body)
+	timestamp := start.UTC().Format(time.RFC3339Nano)
+	raw, status, headers, err := apiRequest(ctx, client, state.config.BaseURL, http.MethodPost, "/v1/messages", job.Token, body)
 	latencyMS := float64(time.Since(start).Microseconds()) / 1000.0
 	if err != nil {
-		return sendResult{Job: job, Failure: classifyError(err), LatencyMS: latencyMS}
+		failure := classifyError(err)
+		return sendResult{
+			Job:          job,
+			Failure:      failure,
+			LatencyMS:    latencyMS,
+			TimestampUTC: timestamp,
+			Retryability: classifyRetryability(status, failure),
+		}
 	}
 	if status < 200 || status > 299 {
-		return sendResult{Job: job, Failure: classifyHTTPFailure(status, raw), LatencyMS: latencyMS}
+		failure := classifyHTTPFailure(status, raw)
+		return sendResult{
+			Job:           job,
+			Failure:       failure,
+			LatencyMS:     latencyMS,
+			TimestampUTC:  timestamp,
+			HTTPStatus:    status,
+			ResponseBody:  strings.TrimSpace(string(raw)),
+			RequestID:     firstNonEmpty(headers.Get("X-Request-ID"), headers.Get("X-Request-Id"), parseTopLevelString(raw, "request_id")),
+			CorrelationID: firstNonEmpty(headers.Get("X-Correlation-ID"), headers.Get("X-Correlation-Id"), parseTopLevelString(raw, "correlation_id")),
+			Retryability:  classifyRetryability(status, failure),
+		}
 	}
 	var ack messageAck
 	if err := json.Unmarshal(raw, &ack); err != nil {
-		return sendResult{Job: job, Failure: "decode_ack", LatencyMS: latencyMS}
+		return sendResult{
+			Job:          job,
+			Failure:      "decode_ack",
+			LatencyMS:    latencyMS,
+			TimestampUTC: timestamp,
+			HTTPStatus:   status,
+			ResponseBody: strings.TrimSpace(string(raw)),
+			Retryability: classifyRetryability(status, "decode_ack"),
+		}
 	}
 	if ack.MessageID == "" {
-		return sendResult{Job: job, Failure: "empty_message_id", LatencyMS: latencyMS}
+		return sendResult{
+			Job:          job,
+			Failure:      "empty_message_id",
+			LatencyMS:    latencyMS,
+			TimestampUTC: timestamp,
+			HTTPStatus:   status,
+			ResponseBody: strings.TrimSpace(string(raw)),
+			Retryability: classifyRetryability(status, "empty_message_id"),
+		}
 	}
 	return sendResult{
-		Job:       job,
-		LatencyMS: latencyMS,
-		MessageID: ack.MessageID,
-		Accepted:  true,
+		Job:          job,
+		LatencyMS:    latencyMS,
+		MessageID:    ack.MessageID,
+		Accepted:     true,
+		TimestampUTC: timestamp,
 	}
 }
 
@@ -769,6 +834,23 @@ func (s *runState) record(result sendResult) {
 		return
 	}
 	s.sendFailures[result.Failure]++
+	s.failedSends = append(s.failedSends, failedSendArtifact{
+		TimestampUTC:      result.TimestampUTC,
+		PhaseName:         result.Job.PhaseName,
+		Sequence:          result.Job.Sequence,
+		HTTPStatus:        result.HTTPStatus,
+		ResponseBody:      result.ResponseBody,
+		RequestID:         result.RequestID,
+		CorrelationID:     result.CorrelationID,
+		SenderUserID:      result.Job.SenderUserID,
+		ShardID:           shardID(s.config),
+		PrincipalIndex:    result.Job.PrincipalIndex,
+		ConversationID:    result.Job.ConversationID,
+		IdempotencyKey:    result.Job.IdempotencyKey,
+		RequestDurationMS: result.LatencyMS,
+		Retryability:      result.Retryability,
+		Failure:           result.Failure,
+	})
 	s.markPhaseFailureLocked(result.Job.PhaseName, result.Failure)
 }
 
@@ -798,6 +880,7 @@ func buildSummary(state *runState, cancelled bool, reconcile reconcileSummary, e
 	duplicateKeys := len(state.duplicateAcceptedKeys)
 	acceptedMessageIDs := len(state.acceptedMessageIDs)
 	conversations := append([]conversationArtifact(nil), state.conversations...)
+	failedSends := append([]failedSendArtifact(nil), state.failedSends...)
 	phases := clonePhases(state.phases)
 	sentAttempts := state.sentAttempts
 	acceptedResponses := state.acceptedResponses
@@ -852,6 +935,7 @@ func buildSummary(state *runState, cancelled bool, reconcile reconcileSummary, e
 		Latency:               latency,
 		Reconcile:             reconcile,
 		Conversations:         conversations,
+		FailedSends:           failedSends,
 		LatencySamplesMS:      latencySamples,
 		Limitations:           limitations,
 		Supported: fmt.Sprintf(
@@ -905,6 +989,9 @@ func renderMarkdown(summary runArtifacts, cfg scenarioConfig, env envCapture) st
 			b.WriteString(fmt.Sprintf("- Send failure `%s`: `%d`\n", key, summary.Counts.SendFailures[key]))
 		}
 	}
+	if len(summary.FailedSends) > 0 {
+		b.WriteString(fmt.Sprintf("- Failed send detail records: `%d`\n", len(summary.FailedSends)))
+	}
 	b.WriteString("\n## Latency\n\n")
 	b.WriteString(fmt.Sprintf("- Samples: `%d`\n", summary.Latency.SampleCount))
 	b.WriteString(fmt.Sprintf("- p50 accept latency: `%.2f ms`\n", summary.Latency.P50MS))
@@ -941,7 +1028,7 @@ func provisionPrincipal(ctx context.Context, client *http.Client, cfg scenarioCo
 }
 
 func verifyUser(ctx context.Context, client *http.Client, cfg scenarioConfig, phone, deviceName string) (string, string, string, error) {
-	raw, status, err := apiRequest(ctx, client, cfg.BaseURL, http.MethodPost, "/v1/auth/phone/start", "", map[string]any{
+	raw, status, _, err := apiRequest(ctx, client, cfg.BaseURL, http.MethodPost, "/v1/auth/phone/start", "", map[string]any{
 		"phone_e164": phone,
 		"channel":    "SMS",
 	})
@@ -955,7 +1042,7 @@ func verifyUser(ctx context.Context, client *http.Client, cfg scenarioConfig, ph
 	if err := json.Unmarshal(raw, &start); err != nil {
 		return "", "", "", err
 	}
-	raw, status, err = apiRequest(ctx, client, cfg.BaseURL, http.MethodPost, "/v1/auth/phone/verify", "", map[string]any{
+	raw, status, _, err = apiRequest(ctx, client, cfg.BaseURL, http.MethodPost, "/v1/auth/phone/verify", "", map[string]any{
 		"challenge_id": start.ChallengeID,
 		"otp_code":     cfg.AuthOTPCode,
 		"device": map[string]any{
@@ -1061,8 +1148,25 @@ func parseNestedString(raw []byte, path ...string) (string, bool) {
 	return text, ok && text != ""
 }
 
+func parseTopLevelString(raw []byte, key string) string {
+	value, ok := parseNestedString(raw, key)
+	if !ok {
+		return ""
+	}
+	return value
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
+}
+
 func createConversation(ctx context.Context, client *http.Client, cfg scenarioConfig, token, participant string) (string, error) {
-	raw, status, err := apiRequest(ctx, client, cfg.BaseURL, http.MethodPost, "/v1/conversations", token, map[string]any{
+	raw, status, _, err := apiRequest(ctx, client, cfg.BaseURL, http.MethodPost, "/v1/conversations", token, map[string]any{
 		"type":         "DM",
 		"participants": []string{participant},
 	})
@@ -1079,18 +1183,18 @@ func createConversation(ctx context.Context, client *http.Client, cfg scenarioCo
 	return resp.ConversationID, nil
 }
 
-func apiRequest(ctx context.Context, client *http.Client, baseURL, method, path, token string, body any) ([]byte, int, error) {
+func apiRequest(ctx context.Context, client *http.Client, baseURL, method, path, token string, body any) ([]byte, int, http.Header, error) {
 	var payload io.Reader
 	if body != nil {
 		raw, err := json.Marshal(body)
 		if err != nil {
-			return nil, 0, err
+			return nil, 0, nil, err
 		}
 		payload = bytes.NewReader(raw)
 	}
 	req, err := http.NewRequestWithContext(ctx, method, strings.TrimRight(baseURL, "/")+path, payload)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, nil, err
 	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
@@ -1100,11 +1204,11 @@ func apiRequest(ctx context.Context, client *http.Client, baseURL, method, path,
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, nil, err
 	}
 	defer resp.Body.Close()
 	raw, err := io.ReadAll(resp.Body)
-	return raw, resp.StatusCode, err
+	return raw, resp.StatusCode, resp.Header.Clone(), err
 }
 
 func postgresCount(ctx context.Context, cfg scenarioConfig, conversations []conversationArtifact) (int64, string, error) {
@@ -1388,6 +1492,27 @@ func classifyHTTPFailure(status int, raw []byte) string {
 	return base
 }
 
+func classifyRetryability(status int, failure string) string {
+	switch {
+	case strings.HasPrefix(failure, "http_5"):
+		return "retryable_http_5xx"
+	case failure == "timeout":
+		return "retryable_timeout"
+	case strings.HasPrefix(failure, "http_429"):
+		return "retryable_rate_limit"
+	case strings.HasPrefix(failure, "http_4"):
+		return "not_retryable_http_4xx"
+	case failure == "connection_refused" || failure == "dns" || failure == "transport_error":
+		return "retryable_transport"
+	case failure == "decode_ack" || failure == "empty_message_id":
+		return "unknown_response_contract"
+	case failure == "":
+		return ""
+	default:
+		return "unknown"
+	}
+}
+
 func ensureRunID(input string) string {
 	if input != "" {
 		return input
@@ -1423,6 +1548,13 @@ func sanitizeName(input string) string {
 	input = strings.ReplaceAll(input, "/", "-")
 	input = strings.ReplaceAll(input, "\\", "-")
 	return input
+}
+
+func shardID(cfg scenarioConfig) string {
+	if cfg.Metadata == nil {
+		return ""
+	}
+	return firstNonEmpty(cfg.Metadata["shard_id"], cfg.Metadata["shard"], cfg.Metadata["driver_shard"])
 }
 
 func shellQuote(input string) string {
