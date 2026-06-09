@@ -31,6 +31,7 @@ BENCHMARK_LABEL="${BENCHMARK_LABEL:-${SCENARIO_NAME}}"
 MESSAGE_TEXT="${MESSAGE_TEXT:-m4 sustained multisource local k3s validation}"
 OBS_DIR="${RESULT_DIR}/observations"
 SHARDS_DIR="${RESULT_DIR}/shards"
+CLEAN_RESULT_DIR="${CLEAN_RESULT_DIR:-true}"
 K3D_CONTEXT="$(kubectl config current-context)"
 K3D_CLUSTER="${K3D_CONTEXT#k3d-}"
 K3D_SERVER_CONTAINER="k3d-${K3D_CLUSTER}-server-0"
@@ -40,7 +41,9 @@ require_stage_a_tools
 require_cmd docker
 ensure_cluster
 
-rm -rf "${RESULT_DIR}"
+if [[ "${CLEAN_RESULT_DIR}" == "true" ]]; then
+  rm -rf "${RESULT_DIR}"
+fi
 mkdir -p "${OBS_DIR}" "${SHARDS_DIR}"
 
 capture_snapshot() {
@@ -72,6 +75,11 @@ capture_processor_diagnostics() {
   kubectl -n "${NS}" exec deploy/messages-processor -- wget -qO- http://localhost:18088/metrics > "${OBS_DIR}/messages-processor-metrics-${stamp}.txt" || true
   kubectl -n "${NS}" exec deploy/messages-processor -- wget -qO- http://localhost:18088/readyz > "${OBS_DIR}/messages-processor-readyz-${stamp}.txt" || true
   kubectl -n "${NS}" get deploy messages-processor -o yaml > "${OBS_DIR}/messages-processor-deployment-${stamp}.yaml" || true
+  while IFS= read -r pod_name; do
+    [[ -n "${pod_name}" ]] || continue
+    kubectl -n "${NS}" exec "${pod_name}" -- wget -qO- http://localhost:18088/metrics > "${OBS_DIR}/messages-processor-metrics-${stamp}-${pod_name}.txt" || true
+    kubectl -n "${NS}" exec "${pod_name}" -- wget -qO- http://localhost:18088/readyz > "${OBS_DIR}/messages-processor-readyz-${stamp}-${pod_name}.txt" || true
+  done < <(kubectl -n "${NS}" get pods -l app.kubernetes.io/name=messages-processor -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null || true)
 }
 
 capture_gateway_diagnostics() {
