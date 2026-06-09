@@ -83,7 +83,7 @@ func (p *AsyncPipeline) WaitAck(ctx context.Context, eventID string, timeout tim
 	defer cancel()
 
 	key := AckRedisKey(eventID)
-	if ack, ok, err := p.readAck(waitCtx, key); ok || err != nil {
+	if ack, ok, err := p.readAckWithTimeoutHandling(ctx, waitCtx, key); ok || err != nil {
 		return ack, ok, err
 	}
 
@@ -95,7 +95,7 @@ func (p *AsyncPipeline) WaitAck(ctx context.Context, eventID string, timeout tim
 
 	// Re-check the durable ack key after the subscription is live so a key write
 	// that raced with subscription setup is still observed without polling.
-	if ack, ok, err := p.readAck(waitCtx, key); ok || err != nil {
+	if ack, ok, err := p.readAckWithTimeoutHandling(ctx, waitCtx, key); ok || err != nil {
 		return ack, ok, err
 	}
 
@@ -114,7 +114,7 @@ func (p *AsyncPipeline) WaitAck(ctx context.Context, eventID string, timeout tim
 			return ackWaitResult(ctx, waitCtx, waitCtx.Err())
 		case msg, ok := <-msgCh:
 			if !ok {
-				if ack, found, err := p.readAck(waitCtx, key); found || err != nil {
+				if ack, found, err := p.readAckWithTimeoutHandling(ctx, waitCtx, key); found || err != nil {
 					return ack, found, err
 				}
 				return ackWaitResult(ctx, waitCtx, errors.New("redis ack subscription closed"))
@@ -128,7 +128,7 @@ func (p *AsyncPipeline) WaitAck(ctx context.Context, eventID string, timeout tim
 			// Sparse fallback polling is retained for rolling-deploy compatibility
 			// and missed/lost Pub/Sub notifications. The durable ack key remains
 			// authoritative; Pub/Sub is only a wake-up optimization.
-			if ack, ok, err := p.readAck(waitCtx, key); ok || err != nil {
+			if ack, ok, err := p.readAckWithTimeoutHandling(ctx, waitCtx, key); ok || err != nil {
 				return ack, ok, err
 			}
 		}
@@ -193,6 +193,14 @@ func (p *AsyncPipeline) readAck(ctx context.Context, key string) (PersistedAck, 
 		return PersistedAck{}, false, err
 	}
 	return PersistedAck{}, false, nil
+}
+
+func (p *AsyncPipeline) readAckWithTimeoutHandling(parentCtx, waitCtx context.Context, key string) (PersistedAck, bool, error) {
+	ack, ok, err := p.readAck(waitCtx, key)
+	if err == nil {
+		return ack, ok, nil
+	}
+	return ackWaitResult(parentCtx, waitCtx, err)
 }
 
 func decodeAckPayload(payload string) (PersistedAck, error) {

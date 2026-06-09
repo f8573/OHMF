@@ -87,6 +87,28 @@ func TestAsyncPipelineWaitAckTimeoutDoesNotBusyPoll(t *testing.T) {
 	}
 }
 
+func TestAsyncPipelineWaitAckTreatsRedisGetDeadlineAsTimeout(t *testing.T) {
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("start miniredis: %v", err)
+	}
+	defer mr.Close()
+
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	defer rdb.Close()
+
+	rdb.AddHook(redisDelayHook{delay: 40 * time.Millisecond})
+
+	pipeline := &AsyncPipeline{redis: rdb}
+	_, ok, err := pipeline.WaitAck(context.Background(), "event-read-timeout", 10*time.Millisecond)
+	if err != nil {
+		t.Fatalf("WaitAck returned error instead of timeout: %v", err)
+	}
+	if ok {
+		t.Fatalf("expected timeout without ack")
+	}
+}
+
 func TestSendAsyncReturnsCanonicalMessageWhenAckArrives(t *testing.T) {
 	mock, err := pgxmock.NewPool()
 	if err != nil {
@@ -404,4 +426,25 @@ func (h *redisCommandCounter) record(name string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.counts[strings.ToLower(name)]++
+}
+
+type redisDelayHook struct {
+	delay time.Duration
+}
+
+func (h redisDelayHook) DialHook(next redis.DialHook) redis.DialHook {
+	return next
+}
+
+func (h redisDelayHook) ProcessHook(next redis.ProcessHook) redis.ProcessHook {
+	return func(ctx context.Context, cmd redis.Cmder) error {
+		if strings.EqualFold(cmd.Name(), "get") {
+			time.Sleep(h.delay)
+		}
+		return next(ctx, cmd)
+	}
+}
+
+func (h redisDelayHook) ProcessPipelineHook(next redis.ProcessPipelineHook) redis.ProcessPipelineHook {
+	return next
 }
