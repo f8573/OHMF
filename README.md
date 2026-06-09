@@ -13,10 +13,10 @@ and to show those problems being solved with tests that pin the behavior down. I
 development environment and a correctness case study, **not** a finished, production-operated system.
 
 > Status: actively developed. Core send/persist/deliver paths and reliability hardening are
-> implemented and unit/integration tested. Local single-node Kubernetes evidence now includes an
-> exact full-pipeline pass at `105 msg/sec` across `12` source IPs, with stage-level processor
-> instrumentation; the `120 msg/sec` artifacts are retained as diagnostic ceiling evidence, not as a
-> passing throughput result. See [Limitations](#limitations) and
+> implemented and unit/integration tested. Local single-node Kubernetes evidence now includes a
+> validated exact full-pipeline pass at `120 msg/sec` with `4` `messages-processor` replicas
+> across `12` source IPs. The earlier `105 msg/sec` result remains the previous
+> single-processor-supported passing rung. See [Limitations](#limitations) and
 > [Benchmarks](#benchmarks-and-load-testing).
 
 ## Why this exists
@@ -141,17 +141,16 @@ below. For the complete day-to-day local-hosting guide, see
 
 **Honest status:** the repository still does not contain a WebSocket concurrency harness, but it now
 does contain committed local benchmark artifacts under [`benchmarks/results/`](benchmarks/results/).
-Those artifacts currently support a Stage A smoke, per-user and per-IP limiter validations, and a
-unique-tag Stage B1 rerun that passed exact full-pipeline reconciliation at `75`, `90`, and
-`105 msg/sec` across `12` source IPs. The `120 msg/sec for 600s` rung is retained as diagnostic
-ceiling evidence: ingress acceptance remained high, but full backend reconciliation did not settle
-cleanly. A prior `60 msg/sec` under-reconciliation result was traced to stale container image
-deployment; the subsequent instrumented unique-tag rerun reconciled exactly through `105 msg/sec`.
-These artifacts do **not** substantiate large-client-count, client-observed HTTP accept latency, or
-production-throughput claims. The old `ohmf/services/gateway/_tools/e2ee-load-test.go` remains an
-in-process simulation of E2EE message *generation* - it does not open WebSocket connections, does
-not measure client-observed HTTP accept latency, and does not measure end-to-end message loss.
-Treat it as a micro-benchmark scaffold, not as evidence of system throughput.
+Those artifacts currently support a Stage A smoke, per-user and per-IP limiter validations, the
+earlier unique-tag Stage B1 rerun ladder that passed exact full-pipeline reconciliation at `75`,
+`90`, and `105 msg/sec` across `12` source IPs, and a processor-scaling matrix that validated a
+full-pipeline pass at `120 msg/sec` with `4` `messages-processor` replicas. The `105 msg/sec`
+result remains the previous single-processor-supported passing rung. These artifacts do **not**
+substantiate large-client-count, client-observed HTTP accept latency, or production-throughput
+claims. The old `ohmf/services/gateway/_tools/e2ee-load-test.go` remains an in-process simulation
+of E2EE message *generation* - it does not open WebSocket connections, does not measure
+client-observed HTTP accept latency, and does not measure end-to-end message loss. Treat it as a
+micro-benchmark scaffold, not as evidence of system throughput.
 
 Benchmark documentation is being consolidated under [benchmarks/](benchmarks/README.md), which
 describes what a credible run must capture (driver, environment, metrics, how message loss is
@@ -203,7 +202,7 @@ These are stated up front so the repo is read accurately:
   network policy, or benchmark/performance claims.
 - **Cassandra is in shadow-write mode.** It is wired up and written to, but reads default to Postgres
   (`APP_USE_CASSANDRA_READS=false`). The Cassandra read path is not the live serving path.
-- **No substantiated load-test results.** See [Benchmarks](#benchmarks-and-load-testing).
+- **No substantiated production load-test results.** See [Benchmarks](#benchmarks-and-load-testing).
 - **Ordering is per-conversation, not global.** Fan-out preserves `server_order` within a
   conversation, not a total order across conversations.
 
