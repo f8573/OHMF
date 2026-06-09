@@ -134,6 +134,32 @@ def wait_for_kafka_zero(namespace, consumer_group, topic, observations_dir, time
         time.sleep(poll_seconds)
 
 
+def wait_for_store_settle(namespace, conversations, keyspace, expected, observations_dir, timeout_seconds, poll_seconds):
+    started = time.time()
+    poll_index = 0
+    postgres_delta = postgres_count(namespace, conversations)
+    cassandra_delta = cassandra_count(namespace, conversations, keyspace)
+    while True:
+        payload = {
+            "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+            "expected": expected,
+            "postgres_delta": postgres_delta,
+            "cassandra_delta": cassandra_delta,
+        }
+        (observations_dir / f"store-settle-poll-{poll_index:02d}.json").write_text(
+            json.dumps(payload, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        if postgres_delta >= expected and cassandra_delta >= expected:
+            return postgres_delta, cassandra_delta
+        if time.time() - started >= timeout_seconds:
+            return postgres_delta, cassandra_delta
+        poll_index += 1
+        time.sleep(poll_seconds)
+        postgres_delta = postgres_count(namespace, conversations)
+        cassandra_delta = cassandra_count(namespace, conversations, keyspace)
+
+
 def parse_restart_counts(pods_json_path):
     payload = json.loads(pods_json_path.read_text(encoding="utf-8"))
     counts = {}
@@ -358,6 +384,8 @@ def main():
     parser.add_argument("--cassandra-keyspace", default="ohmf_messages")
     parser.add_argument("--kafka-timeout-seconds", default=180, type=int)
     parser.add_argument("--kafka-poll-seconds", default=2, type=int)
+    parser.add_argument("--store-settle-timeout-seconds", default=30, type=int)
+    parser.add_argument("--store-settle-poll-seconds", default=2, type=int)
     args = parser.parse_args()
 
     result_dir = Path(args.result_dir)
@@ -398,8 +426,6 @@ def main():
         duplicates += counts["duplicates"]
         failures.update(counts.get("send_failures", {}))
 
-    postgres_delta = postgres_count(args.namespace, all_conversations)
-    cassandra_delta = cassandra_count(args.namespace, all_conversations, args.cassandra_keyspace)
     lag_info = wait_for_kafka_zero(
         args.namespace,
         args.kafka_consumer_group,
@@ -407,6 +433,15 @@ def main():
         observations_dir,
         args.kafka_timeout_seconds,
         args.kafka_poll_seconds,
+    )
+    postgres_delta, cassandra_delta = wait_for_store_settle(
+        args.namespace,
+        all_conversations,
+        args.cassandra_keyspace,
+        accepted,
+        observations_dir,
+        args.store_settle_timeout_seconds,
+        args.store_settle_poll_seconds,
     )
 
     missing = accepted - postgres_delta
