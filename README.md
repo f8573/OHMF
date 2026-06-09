@@ -13,9 +13,11 @@ and to show those problems being solved with tests that pin the behavior down. I
 development environment and a correctness case study, **not** a finished, production-operated system.
 
 > Status: actively developed. Core send/persist/deliver paths and reliability hardening are
-> implemented and unit/integration tested. Local single-node Kubernetes evidence is now in the
-> repository, but production orchestration and large-scale load-test evidence are **not** yet here -
-> see [Limitations](#limitations) and [Benchmarks](#benchmarks-and-load-testing).
+> implemented and unit/integration tested. Local single-node Kubernetes evidence now includes an
+> exact full-pipeline pass at `105 msg/sec` across `12` source IPs, with stage-level processor
+> instrumentation; the `120 msg/sec` artifacts are retained as diagnostic ceiling evidence, not as a
+> passing throughput result. See [Limitations](#limitations) and
+> [Benchmarks](#benchmarks-and-load-testing).
 
 ## Why this exists
 
@@ -49,8 +51,8 @@ single-node k3s/k3d validation** live under `deploy/k8s/`. The repo now
 contains a lighter smoke profile (`overlays/local-k3s`), a fuller local
 pipeline profile (`overlays/local-k3s-full`), and an optional local gateway HPA
 layer (`overlays/local-k3s-full-hpa`). These support local single-node evidence
-only: they are **not** production-grade, **not** HA, **not** Helm, and **not**
-benchmark-validated. See `deploy/k8s/README.md`.
+only: they are not a production deployment package, not multi-node resilience
+evidence, not Helm, and not benchmark-validated. See `deploy/k8s/README.md`.
 
 Not currently in the repo: Helm charts, and standalone WebSocket load-test
 scripts or captured benchmark artifacts. These are referenced as design intent
@@ -141,19 +143,15 @@ below. For the complete day-to-day local-hosting guide, see
 does contain committed local benchmark artifacts under [`benchmarks/results/`](benchmarks/results/).
 Those artifacts currently support a Stage A smoke, per-user and per-IP limiter validations, and a
 unique-tag Stage B1 rerun that passed exact full-pipeline reconciliation at `75`, `90`, and
-`105 msg/sec` across `12` source IPs and failed at `120 msg/sec for 600s`. A prior `60 msg/sec`
-under-reconciliation result was traced to stale container image deployment; the subsequent
-instrumented unique-tag rerun reconciled exactly through `105 msg/sec`. These artifacts do **not**
-substantiate large-client-count, delivery-latency, or production-throughput claims. The old
-`ohmf/services/gateway/_tools/e2ee-load-test.go` remains an in-process simulation of
-E2EE message *generation* - it does not open WebSocket connections, does not measure p95 delivery
-latency, and does not measure message loss. Treat it as a micro-benchmark scaffold, not as evidence
-of system throughput.
-
-Reported local/containerized benchmark **target** (design goal, not yet substantiated by artifacts
-in this repo): sustained ~3,100 concurrent WebSocket clients, p95 latency under 150 ms, and zero
-observed message loss under the tested configuration. **The supporting methodology and raw results
-should be produced and verified before this claim is used externally.**
+`105 msg/sec` across `12` source IPs. The `120 msg/sec for 600s` rung is retained as diagnostic
+ceiling evidence: ingress acceptance remained high, but full backend reconciliation did not settle
+cleanly. A prior `60 msg/sec` under-reconciliation result was traced to stale container image
+deployment; the subsequent instrumented unique-tag rerun reconciled exactly through `105 msg/sec`.
+These artifacts do **not** substantiate large-client-count, client-observed HTTP accept latency, or
+production-throughput claims. The old `ohmf/services/gateway/_tools/e2ee-load-test.go` remains an
+in-process simulation of E2EE message *generation* - it does not open WebSocket connections, does
+not measure client-observed HTTP accept latency, and does not measure end-to-end message loss.
+Treat it as a micro-benchmark scaffold, not as evidence of system throughput.
 
 Benchmark documentation is being consolidated under [benchmarks/](benchmarks/README.md), which
 describes what a credible run must capture (driver, environment, metrics, how message loss is
@@ -201,8 +199,8 @@ These are stated up front so the repo is read accurately:
   `gateway/API -> Kafka -> processor -> Postgres/Cassandra` proof and a gateway
   HPA smoke where replicas increased under synthetic load and later returned to
   1 after load stopped. These artifacts do **not** support production
-  readiness, Helm, multi-node/HA, durable storage, ingress/TLS, network policy,
-  or benchmark/performance claims.
+  operations claims, Helm, multi-node resilience, durable storage, ingress/TLS,
+  network policy, or benchmark/performance claims.
 - **Cassandra is in shadow-write mode.** It is wired up and written to, but reads default to Postgres
   (`APP_USE_CASSANDRA_READS=false`). The Cassandra read path is not the live serving path.
 - **No substantiated load-test results.** See [Benchmarks](#benchmarks-and-load-testing).
