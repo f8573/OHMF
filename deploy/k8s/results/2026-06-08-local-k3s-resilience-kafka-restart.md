@@ -34,7 +34,7 @@ All three PVCs bound successfully before the workload rolled out.
 
 Loadgen artifact:
 
-- [`benchmarks/results/2026-06-08T04-15-23Z-stage-a-smoke-5x10/summary.md`](/C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-08T04-15-23Z-stage-a-smoke-5x10/summary.md)
+- [`benchmarks/results/2026-06-08T04-15-23Z-stage-a-smoke-5x10/summary.md`](/benchmarks/results/2026-06-08T04-15-23Z-stage-a-smoke-5x10/summary.md)
 
 Observed:
 
@@ -64,7 +64,7 @@ Observed after the restart:
 
 Loadgen artifact:
 
-- [`benchmarks/results/2026-06-08T04-16-24Z-stage-a-smoke-5x10/summary.md`](/C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-08T04-16-24Z-stage-a-smoke-5x10/summary.md)
+- [`benchmarks/results/2026-06-08T04-16-24Z-stage-a-smoke-5x10/summary.md`](/benchmarks/results/2026-06-08T04-16-24Z-stage-a-smoke-5x10/summary.md)
 
 Observed:
 
@@ -85,7 +85,7 @@ Interpretation:
 
 Loadgen artifact:
 
-- [`benchmarks/results/2026-06-08T04-17-55Z-stage-a-smoke-5x10/summary.md`](/C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-08T04-17-55Z-stage-a-smoke-5x10/summary.md)
+- [`benchmarks/results/2026-06-08T04-17-55Z-stage-a-smoke-5x10/summary.md`](/benchmarks/results/2026-06-08T04-17-55Z-stage-a-smoke-5x10/summary.md)
 
 Observed after an additional settle window:
 

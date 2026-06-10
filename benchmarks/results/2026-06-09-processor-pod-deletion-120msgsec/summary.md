@@ -54,11 +54,23 @@
 | messages-processor-5bff77847-skz9m | 17756 | 17756 | 1 | 17755 | 0 | 17756 | 0 | 17669 | 87 | 17668 | 17668 | 17669 | 17669 | 87 |
 | aggregate | 78336 | 78336 | 3 | 78333 | 0 | 78336 | 0 | 78076 | 260 | 78073 | 78073 | 78076 | 78076 | 260 |
 
+## Diagnostics
+
+- Gateway 500 cause: `dial tcp 10.43.209.89:6379: connect: connection refused`
+- Processor log correlation sample (tail-limited): `1` / `4520`
+- Failed sends durably persisted lower bound: `89`
+- Processor handler error reason: `redis ack failed after persistence: dial tcp 10.43.209.89:6379: connect: connection refused`
+- Redis ack failure reason: `dial tcp 10.43.209.89:6379: connect: connection refused`
+- Kafka offset commit failure reason: `none recorded; gaps are retryable handler failures before commit`
+- Rebalance snapshot labels: `pre-delete, delete, during-rebalance, settled`
+
 ## Artifact paths
 
-- `kubectl get pods -o wide`: `C:\Users\James\Downloads\Messages\benchmarks\results\2026-06-09-processor-pod-deletion-120msgsec\observations\pods-settled.txt`
-- `kubectl top pods`: `C:\Users\James\Downloads\Messages\benchmarks\results\2026-06-09-processor-pod-deletion-120msgsec\observations\top-pods-settled.txt`
-- Processor logs around deletion/rebalance: `C:\Users\James\Downloads\Messages\benchmarks\results\2026-06-09-processor-pod-deletion-120msgsec\observations`
+- `kubectl get pods -o wide`: `benchmarks\results\2026-06-09-processor-pod-deletion-120msgsec\observations\pods-settled.txt`
+- `kubectl top pods`: `benchmarks\results\2026-06-09-processor-pod-deletion-120msgsec\observations\top-pods-settled.txt`
+- Processor logs around deletion/rebalance: `benchmarks\results\2026-06-09-processor-pod-deletion-120msgsec\observations`
+- Gateway logs around deletion/rebalance: `benchmarks\results\2026-06-09-processor-pod-deletion-120msgsec\observations`
+- Kubernetes events around deletion/rebalance: `benchmarks\results\2026-06-09-processor-pod-deletion-120msgsec\observations`
 
 ## Supported claim
 

@@ -58,4 +58,4 @@ Validated 120 msg/sec local Kubernetes backlog recovery: Kafka consumer group sc
 
 ## Paired artifact
 
-- Benchmark summary: [summary.md](C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-10-processor-backlog-recovery-120msgsec/summary.md)
+- Benchmark summary: [summary.md](benchmarks/results/2026-06-10-processor-backlog-recovery-120msgsec/summary.md)

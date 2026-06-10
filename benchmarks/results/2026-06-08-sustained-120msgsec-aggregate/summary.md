@@ -65,8 +65,8 @@ That means the next throughput correction is not "disable the limiter"; it is "d
 
 The dominant failure mode in the aggregate run was the gateway per-IP limiter, not persistence or processor throughput. The committed send path enforces:
 
-- Per user: `30 messages / 10 seconds`, burst `60` in [service.go](/C:/Users/James/Downloads/Messages/ohmf/services/gateway/internal/messages/service.go:2679)
-- Per IP: `120 messages / 10 seconds`, burst `240` in [service.go](/C:/Users/James/Downloads/Messages/ohmf/services/gateway/internal/messages/service.go:2698)
+- Per user: `30 messages / 10 seconds`, burst `60` in [service.go](/ohmf/services/gateway/internal/messages/service.go:2679)
+- Per IP: `120 messages / 10 seconds`, burst `240` in [service.go](/ohmf/services/gateway/internal/messages/service.go:2698)
 
 Because the driver ran from one host source IP through `kubectl port-forward`, the aggregate phases were bounded by the per-IP limiter. The main-phase acceptance rate of `12.00 msg/sec` exactly matches the sustained refill rate of that limiter.
 
@@ -127,9 +127,9 @@ Unsupported:
 
 ## Raw files
 
-- Raw driver summary: [driver-summary.raw.md](/C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-08-sustained-120msgsec-aggregate/driver-summary.raw.md)
-- Raw driver JSON: [driver-summary.raw.json](/C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-08-sustained-120msgsec-aggregate/driver-summary.raw.json)
-- Environment capture: [env.json](/C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-08-sustained-120msgsec-aggregate/env.json)
-- Driver stdout: [driver.stdout.log](/C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-08-sustained-120msgsec-aggregate/driver.stdout.log)
-- Driver stderr: [driver.stderr.log](/C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-08-sustained-120msgsec-aggregate/driver.stderr.log)
-- Observation snapshots: [observations](/C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-08-sustained-120msgsec-aggregate/observations)
+- Raw driver summary: [driver-summary.raw.md](/benchmarks/results/2026-06-08-sustained-120msgsec-aggregate/driver-summary.raw.md)
+- Raw driver JSON: [driver-summary.raw.json](/benchmarks/results/2026-06-08-sustained-120msgsec-aggregate/driver-summary.raw.json)
+- Environment capture: [env.json](/benchmarks/results/2026-06-08-sustained-120msgsec-aggregate/env.json)
+- Driver stdout: [driver.stdout.log](/benchmarks/results/2026-06-08-sustained-120msgsec-aggregate/driver.stdout.log)
+- Driver stderr: [driver.stderr.log](/benchmarks/results/2026-06-08-sustained-120msgsec-aggregate/driver.stderr.log)
+- Observation snapshots: [observations](/benchmarks/results/2026-06-08-sustained-120msgsec-aggregate/observations)

@@ -31,8 +31,8 @@ This does **not** support a claim that OHMF sustains `120 accepted msg/sec` thro
 
 The aggregate rerun corrected the single-user benchmark design, but the host-driven setup still shared one gateway source IP. The committed gateway send path enforces:
 
-- Per-user limit in [service.go](/C:/Users/James/Downloads/Messages/ohmf/services/gateway/internal/messages/service.go:2679)
-- Per-IP limit in [service.go](/C:/Users/James/Downloads/Messages/ohmf/services/gateway/internal/messages/service.go:2698)
+- Per-user limit in [service.go](/ohmf/services/gateway/internal/messages/service.go:2679)
+- Per-IP limit in [service.go](/ohmf/services/gateway/internal/messages/service.go:2698)
 
 The evidence boundary moved:
 
@@ -89,4 +89,4 @@ Unsupported:
 
 ## Paired artifact
 
-- Benchmark summary: [summary.md](/C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-08-sustained-120msgsec-aggregate/summary.md)
+- Benchmark summary: [summary.md](/benchmarks/results/2026-06-08-sustained-120msgsec-aggregate/summary.md)

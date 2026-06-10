@@ -53,4 +53,4 @@ Validated 120 msg/sec local Kubernetes ingress with exact full-pipeline reconcil
 
 ## Paired artifact
 
-- Benchmark summary: [summary.md](C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-10-processor-pod-deletion-120msgsec/summary.md)
+- Benchmark summary: [summary.md](benchmarks/results/2026-06-10-processor-pod-deletion-120msgsec/summary.md)

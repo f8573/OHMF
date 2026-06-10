@@ -13,7 +13,7 @@ and to show those problems being solved with tests that pin the behavior down. I
 development environment and a correctness case study, **not** a finished, production-operated system.
 
 > **Validated 120 msg/sec local Kubernetes ingress with exact Kafka/Postgres/Cassandra
-> reconciliation across normal load, processor pod deletion/rebalance, and processor backlog
+> reconciliation across normal scaled load, processor pod deletion/rebalance, and processor backlog
 > recovery** — all on a single-node local cluster, not production. Core send/persist/deliver paths
 > and reliability hardening are implemented and unit/integration tested. See
 > [Limitations](#limitations) and [Benchmarks](#benchmarks-and-load-testing).
@@ -145,9 +145,11 @@ contain committed local benchmark artifacts under [`benchmarks/results/`](benchm
 
 | Scenario | Result | Artifact |
 | --- | --- | --- |
-| Normal load: `120 msg/sec`, `4` processors, `12` source IPs | Exact reconciliation — `74,700/74,700` accepted, Postgres `74,700`, Cassandra `74,700`, Kafka lag→`0` in `103s` | [processor-scaling-matrix](benchmarks/results/2026-06-09-processor-scaling-matrix/summary.json) |
-| Pod deletion/rebalance: one processor pod deleted mid-run at `120 msg/sec` | Kafka consumer group rebalanced (pod removed, replacement joined, group settled); exact full-pipeline reconciliation **not** confirmed — Redis outage during run caused `4,520` gateway 500s | [processor-pod-deletion-120msgsec](benchmarks/results/2026-06-09-processor-pod-deletion-120msgsec/summary.md) |
+| Normal scaled load: `120 msg/sec`, `4` processors, `12` source IPs | Exact reconciliation — `74,700/74,700` accepted, Postgres `74,700`, Cassandra `74,700`, Kafka lag→`0` in `103s` | [processor-scaling-matrix](benchmarks/results/2026-06-09-processor-scaling-matrix/summary.json) |
+| Pod deletion/rebalance: one processor pod deleted mid-run at `120 msg/sec` | Exact reconciliation — `82,800/82,800` accepted, Postgres `82,800`, Cassandra `82,800`, missing `0`, duplicates `0`, Kafka lag→`0` in `283.608s` | [processor-pod-deletion-120msgsec](benchmarks/results/2026-06-10-processor-pod-deletion-120msgsec/summary.md) |
 | Backlog recovery: processors scaled to `0`, peak lag `18,021`, restored to `4` replicas | Exact reconciliation — `82,800/82,800` accepted, Postgres `82,800`, Cassandra `82,800`, missing `0`, duplicates `0`, lag→`0` | [processor-backlog-recovery-120msgsec](benchmarks/results/2026-06-10-processor-backlog-recovery-120msgsec/summary.md) |
+
+*Diagnostic history: the initial 2026-06-09 pod-deletion run at 120 msg/sec was invalidated by a coincident Redis ack outage (4,520 gateway 500s); that artifact is preserved at [2026-06-09-processor-pod-deletion-120msgsec](benchmarks/results/2026-06-09-processor-pod-deletion-120msgsec/summary.md) as diagnostic-only evidence of the Redis ack issue.*
 
 Path to these results: Stage A smoke at 5 msg/sec → per-user and per-IP limiter validations → Stage
 B1 rerun ladder confirming exact reconciliation at 75, 90, and 105 msg/sec (12 source IPs, 1

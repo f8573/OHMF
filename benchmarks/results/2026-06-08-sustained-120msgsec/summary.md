@@ -142,12 +142,12 @@ These are **client-observed HTTP accept latencies** for accepted requests only:
 
 ## Limiting factor
 
-The dominant failure mode was front-door rate limiting, not persistence loss. The committed gateway send path enforces a per-user limiter of `30 messages / 10 seconds` with burst `60` in [service.go](/C:/Users/James/Downloads/Messages/ohmf/services/gateway/internal/messages/service.go:2679). The observed `419` accepted requests over `120s` closely matches that limiter envelope, which explains why the run failed the `120 accepted msg/sec` objective even though accepted messages reconciled cleanly downstream.
+The dominant failure mode was front-door rate limiting, not persistence loss. The committed gateway send path enforces a per-user limiter of `30 messages / 10 seconds` with burst `60` in [service.go](/ohmf/services/gateway/internal/messages/service.go:2679). The observed `419` accepted requests over `120s` closely matches that limiter envelope, which explains why the run failed the `120 accepted msg/sec` objective even though accepted messages reconciled cleanly downstream.
 
 ## Raw files
 
-- Raw driver summary: [driver-summary.raw.md](/C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-08-sustained-120msgsec/driver-summary.raw.md)
-- Raw driver JSON: [driver-summary.raw.json](/C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-08-sustained-120msgsec/driver-summary.raw.json)
-- Environment capture: [env.json](/C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-08-sustained-120msgsec/env.json)
-- Driver stderr: [driver.stderr.log](/C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-08-sustained-120msgsec/driver.stderr.log)
-- Observation snapshots: [observations](/C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-08-sustained-120msgsec/observations)
+- Raw driver summary: [driver-summary.raw.md](/benchmarks/results/2026-06-08-sustained-120msgsec/driver-summary.raw.md)
+- Raw driver JSON: [driver-summary.raw.json](/benchmarks/results/2026-06-08-sustained-120msgsec/driver-summary.raw.json)
+- Environment capture: [env.json](/benchmarks/results/2026-06-08-sustained-120msgsec/env.json)
+- Driver stderr: [driver.stderr.log](/benchmarks/results/2026-06-08-sustained-120msgsec/driver.stderr.log)
+- Observation snapshots: [observations](/benchmarks/results/2026-06-08-sustained-120msgsec/observations)

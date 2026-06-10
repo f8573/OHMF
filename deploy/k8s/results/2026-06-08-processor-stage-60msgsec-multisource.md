@@ -28,4 +28,4 @@ Unsupported:
 
 ## Paired artifact
 
-- Benchmark summary: [summary.md](C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-08-processor-stage-instrumentation/60msgsec/summary.md)
+- Benchmark summary: [summary.md](benchmarks/results/2026-06-08-processor-stage-instrumentation/60msgsec/summary.md)

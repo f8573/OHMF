@@ -15,6 +15,6 @@ Kafka offsets do not commit after a retryable partial-persistence failure. The c
 
 ## Artifacts
 
-- `45 msg/sec`: `C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-08-processor-stage-instrumentation/45msgsec`
-- `60 msg/sec`: `C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-08-processor-stage-instrumentation/60msgsec`
-- Combined summary JSON: `C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-08-processor-stage-instrumentation/summary.json`
+- `45 msg/sec`: `benchmarks/results/2026-06-08-processor-stage-instrumentation/45msgsec`
+- `60 msg/sec`: `benchmarks/results/2026-06-08-processor-stage-instrumentation/60msgsec`
+- Combined summary JSON: `benchmarks/results/2026-06-08-processor-stage-instrumentation/summary.json`

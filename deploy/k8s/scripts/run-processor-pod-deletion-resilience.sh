@@ -86,6 +86,16 @@ capture_kafka_state() {
     > "${OBS_DIR}/kafka-consumer-group-${stamp}.txt" || true
 }
 
+capture_gateway_logs() {
+  local stamp="$1"
+  kubectl -n "${NS}" logs deploy/gateway --tail=1200 > "${OBS_DIR}/gateway-logs-${stamp}.txt" || true
+}
+
+capture_cluster_events() {
+  local stamp="$1"
+  kubectl -n "${NS}" get events --sort-by=.lastTimestamp > "${OBS_DIR}/events-${stamp}.txt" || true
+}
+
 capture_processor_metrics() {
   local stamp="$1"
   local pod_name
@@ -109,6 +119,8 @@ capture_processor_rollup() {
   local stamp="$1"
   capture_pods_state "${stamp}"
   capture_kafka_state "${stamp}"
+  capture_gateway_logs "${stamp}"
+  capture_cluster_events "${stamp}"
   capture_processor_metrics "${stamp}"
   capture_processor_logs "${stamp}"
 }
@@ -400,6 +412,8 @@ delete_processor_pod_mid_run() {
 
     capture_pods_state "${pre_delete_stamp}"
     capture_kafka_state "${pre_delete_stamp}"
+    capture_gateway_logs "${pre_delete_stamp}"
+    capture_cluster_events "${pre_delete_stamp}"
     capture_processor_metrics "${pre_delete_stamp}"
     capture_processor_logs "${pre_delete_stamp}"
 
@@ -419,6 +433,8 @@ EOF
 
     capture_pods_state "${delete_stamp}"
     capture_kafka_state "${delete_stamp}"
+    capture_gateway_logs "${delete_stamp}"
+    capture_cluster_events "${delete_stamp}"
     capture_processor_metrics "${delete_stamp}"
     capture_processor_logs "${delete_stamp}"
 
@@ -426,6 +442,8 @@ EOF
 
     capture_pods_state "${recovery_stamp}"
     capture_kafka_state "${recovery_stamp}"
+    capture_gateway_logs "${recovery_stamp}"
+    capture_cluster_events "${recovery_stamp}"
     capture_processor_metrics "${recovery_stamp}"
     capture_processor_logs "${recovery_stamp}"
   ) &

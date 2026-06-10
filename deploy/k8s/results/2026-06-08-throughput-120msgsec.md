@@ -24,7 +24,7 @@ This does **not** support a claim that OHMF sustains `120 accepted msg/sec` thro
 
 ## Why it failed
 
-The observed failure mode was front-door throttling, not downstream persistence loss. The committed gateway send path enforces a per-user limiter of `30 messages / 10 seconds` with burst `60` in [service.go](/C:/Users/James/Downloads/Messages/ohmf/services/gateway/internal/messages/service.go:2679). The accepted total of `419` over `120s` closely matches that limiter envelope.
+The observed failure mode was front-door throttling, not downstream persistence loss. The committed gateway send path enforces a per-user limiter of `30 messages / 10 seconds` with burst `60` in [service.go](/ohmf/services/gateway/internal/messages/service.go:2679). The accepted total of `419` over `120s` closely matches that limiter envelope.
 
 ## What the run still proved
 
@@ -92,4 +92,4 @@ Unsupported:
 
 ## Paired artifact
 
-- Benchmark summary: [summary.md](/C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-08-sustained-120msgsec/summary.md)
+- Benchmark summary: [summary.md](/benchmarks/results/2026-06-08-sustained-120msgsec/summary.md)

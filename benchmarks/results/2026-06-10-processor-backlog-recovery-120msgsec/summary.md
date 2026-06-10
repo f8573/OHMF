@@ -73,11 +73,11 @@
 
 ## Artifact paths
 
-- `kubectl get pods -o wide`: `C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-10-processor-backlog-recovery-120msgsec/observations/pods-settled.txt`
-- `kubectl top pods`: `C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-10-processor-backlog-recovery-120msgsec/observations/top-pods-settled.txt`
-- Processor logs: `C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-10-processor-backlog-recovery-120msgsec/observations`
-- Gateway logs: `C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-10-processor-backlog-recovery-120msgsec/observations`
-- Kubernetes events: `C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-10-processor-backlog-recovery-120msgsec/observations`
+- `kubectl get pods -o wide`: `benchmarks/results/2026-06-10-processor-backlog-recovery-120msgsec/observations/pods-settled.txt`
+- `kubectl top pods`: `benchmarks/results/2026-06-10-processor-backlog-recovery-120msgsec/observations/top-pods-settled.txt`
+- Processor logs: `benchmarks/results/2026-06-10-processor-backlog-recovery-120msgsec/observations`
+- Gateway logs: `benchmarks/results/2026-06-10-processor-backlog-recovery-120msgsec/observations`
+- Kubernetes events: `benchmarks/results/2026-06-10-processor-backlog-recovery-120msgsec/observations`
 
 ## Supported claim
 

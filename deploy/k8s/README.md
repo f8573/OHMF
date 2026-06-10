@@ -179,9 +179,10 @@ Supported claims must match those artifacts exactly. Current M4 evidence under `
 
 | Artifact | What it shows |
 | --- | --- |
-| [2026-06-09-processor-scaling-matrix](results/2026-06-09-processor-scaling-4replicas-120msgsec-multisource.md) | Exact reconciliation at `120 msg/sec` with `4` processor replicas |
-| [2026-06-09-processor-pod-deletion-120msgsec](results/2026-06-09-processor-pod-deletion-120msgsec.md) | Kafka consumer group rebalanced after pod deletion; exact reconciliation not confirmed (Redis outage during run) |
+| [2026-06-09-processor-scaling-matrix](results/2026-06-09-processor-scaling-4replicas-120msgsec-multisource.md) | Exact reconciliation at `120 msg/sec` with `4` processor replicas (normal scaled load) |
+| [2026-06-10-processor-pod-deletion-120msgsec](results/2026-06-10-processor-pod-deletion-120msgsec.md) | Exact reconciliation at `120 msg/sec` during pod deletion and Kafka consumer-group rebalance — `82,800/82,800` accepted, Postgres `82,800`, Cassandra `82,800`, missing `0`, duplicates `0`, lag→`0` |
 | [2026-06-10-processor-backlog-recovery-120msgsec](results/2026-06-10-processor-backlog-recovery-120msgsec.md) | Exact reconciliation after consumer-group drain and restore at `120 msg/sec` |
+| [2026-06-09-processor-pod-deletion-120msgsec](results/2026-06-09-processor-pod-deletion-120msgsec.md) | **Diagnostic-only / superseded** — Kafka consumer group rebalanced but exact reconciliation not confirmed; run invalidated by coincident Redis ack outage (4,520 gateway 500s) |
 
 ## Unsupported claims
 

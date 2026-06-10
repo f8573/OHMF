@@ -67,11 +67,11 @@
 
 ## Artifact paths
 
-- `kubectl get pods -o wide`: `C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-10-processor-pod-deletion-120msgsec/observations/pods-settled.txt`
-- `kubectl top pods`: `C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-10-processor-pod-deletion-120msgsec/observations/top-pods-settled.txt`
-- Processor logs around deletion/rebalance: `C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-10-processor-pod-deletion-120msgsec/observations`
-- Gateway logs around deletion/rebalance: `C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-10-processor-pod-deletion-120msgsec/observations`
-- Kubernetes events around deletion/rebalance: `C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-10-processor-pod-deletion-120msgsec/observations`
+- `kubectl get pods -o wide`: `benchmarks/results/2026-06-10-processor-pod-deletion-120msgsec/observations/pods-settled.txt`
+- `kubectl top pods`: `benchmarks/results/2026-06-10-processor-pod-deletion-120msgsec/observations/top-pods-settled.txt`
+- Processor logs around deletion/rebalance: `benchmarks/results/2026-06-10-processor-pod-deletion-120msgsec/observations`
+- Gateway logs around deletion/rebalance: `benchmarks/results/2026-06-10-processor-pod-deletion-120msgsec/observations`
+- Kubernetes events around deletion/rebalance: `benchmarks/results/2026-06-10-processor-pod-deletion-120msgsec/observations`
 
 ## Supported claim
 
