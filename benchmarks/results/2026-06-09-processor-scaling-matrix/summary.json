@@ -1,0 +1,553 @@
+{
+  "title": "Processor scaling matrix - 2026-06-09",
+  "generated_at_utc": "2026-06-09T20:40:37.506968+00:00",
+  "namespace": "ohmf",
+  "hypothesis": "The 120 msg/sec ceiling is caused by single messages-processor throughput, not gateway ingress or Kafka partition count.",
+  "question_answer": "Yes. Adding processors made `120 msg/sec` pass strict full-pipeline reconciliation.",
+  "hypothesis_result": "validated",
+  "rollout": {
+    "generated_at_utc": "2026-06-09T17:29:44.766292+00:00",
+    "namespace": "ohmf",
+    "cluster_context": "k3d-ohmf-b1",
+    "stage_events_metric_present": true,
+    "verified": true,
+    "services": {
+      "gateway": {
+        "intended_image": "ohmf-gateway:procscale-20260609t172819512779z",
+        "deployment_image": "ohmf-gateway:procscale-20260609t172819512779z",
+        "verified": true,
+        "running_pods": [
+          {
+            "pod_name": "gateway-787597bfc5-4hchr",
+            "pod_ip": "10.42.0.84",
+            "spec_image": "ohmf-gateway:procscale-20260609t172819512779z",
+            "image": "docker.io/library/ohmf-gateway:procscale-20260609t172819512779z",
+            "image_id": "sha256:65583391120581d3ba1b5ab85d93adf87fbd2ee4809e72d4a3165180043fafdf",
+            "ready": true,
+            "restart_count": 0
+          }
+        ]
+      },
+      "apps": {
+        "intended_image": "ohmf-apps:procscale-20260609t172819512779z",
+        "deployment_image": "ohmf-apps:procscale-20260609t172819512779z",
+        "verified": true,
+        "running_pods": [
+          {
+            "pod_name": "apps-644d78876b-52sf5",
+            "pod_ip": "10.42.0.85",
+            "spec_image": "ohmf-apps:procscale-20260609t172819512779z",
+            "image": "docker.io/library/ohmf-apps:b1rerun-20260608t213703212485z",
+            "image_id": "sha256:bb0125359b381050f7cb44f247b691c2797d4a8f4b268505d7de4094b3984e58",
+            "ready": true,
+            "restart_count": 0
+          }
+        ]
+      },
+      "messages-processor": {
+        "intended_image": "ohmf-messages-processor:procscale-20260609t172819512779z",
+        "deployment_image": "ohmf-messages-processor:procscale-20260609t172819512779z",
+        "verified": true,
+        "running_pods": [
+          {
+            "pod_name": "messages-processor-5ffb7c68d9-9c6gv",
+            "pod_ip": "10.42.0.87",
+            "spec_image": "ohmf-messages-processor:procscale-20260609t172819512779z",
+            "image": "docker.io/library/ohmf-messages-processor:b1rerun-20260608t213926169462z",
+            "image_id": "sha256:ecfaf0d62268c10070b4b0af97f01b717278ae3024857a40e20911d60dd9eb70",
+            "ready": true,
+            "restart_count": 0
+          },
+          {
+            "pod_name": "messages-processor-5ffb7c68d9-d2zsw",
+            "pod_ip": "10.42.0.86",
+            "spec_image": "ohmf-messages-processor:procscale-20260609t172819512779z",
+            "image": "docker.io/library/ohmf-messages-processor:b1rerun-20260608t213926169462z",
+            "image_id": "sha256:ecfaf0d62268c10070b4b0af97f01b717278ae3024857a40e20911d60dd9eb70",
+            "ready": true,
+            "restart_count": 0
+          }
+        ]
+      }
+    }
+  },
+  "control_105": {
+    "rate_msg_sec": 105,
+    "passing_replicas": [
+      1,
+      4
+    ],
+    "all_passed": false
+  },
+  "supported_claim": "Validated 120 msg/sec local Kubernetes ingress with exact full-pipeline reconciliation after scaling the messages-processor consumer group across Kafka partitions.",
+  "rungs": [
+    {
+      "processor_replicas": 1,
+      "rate_msg_sec": 105,
+      "status": "passed",
+      "requested": 15075,
+      "accepted": 15075,
+      "postgres_exact": 15075,
+      "cassandra_exact": 15075,
+      "kafka_lag_zero_seconds": 410.277555,
+      "kafka_lag_settled_to_zero": true,
+      "kafka_lag_at_end": 0,
+      "latency": {
+        "label": "client-observed HTTP accept latency",
+        "calculation": "exact from merged shard accept samples",
+        "sample_count": 15075,
+        "p50_ms": 2021.847,
+        "p95_ms": 2075.349,
+        "p99_ms": 2101.67046
+      },
+      "restart_changes": {},
+      "stage_counters": {
+        "consumed": 15075,
+        "decoded": 15075,
+        "deduped": 0,
+        "postgres_write_succeeded": 15075,
+        "cassandra_write_succeeded": 15075,
+        "redis_ack_set_succeeded": 15075,
+        "persisted_publish_succeeded": 15075,
+        "microservice_publish_succeeded": 15075,
+        "offset_commit_succeeded": 15075,
+        "handler_success": 15075,
+        "handler_error": 0
+      },
+      "assignment": {
+        "scale_ready": {
+          "total_partitions": 12,
+          "assigned_partitions": 12,
+          "unique_members": [
+            "messages-processor@messages-processor-5ffb7c68d9-d2zsw"
+          ],
+          "member_partition_counts": {
+            "messages-processor@messages-processor-5ffb7c68d9-d2zsw": 12
+          }
+        },
+        "post_run": {
+          "total_partitions": 12,
+          "assigned_partitions": 12,
+          "unique_members": [
+            "messages-processor@messages-processor-5ffb7c68d9-d2zsw"
+          ],
+          "member_partition_counts": {
+            "messages-processor@messages-processor-5ffb7c68d9-d2zsw": 12
+          }
+        },
+        "post_drain": {
+          "total_partitions": 12,
+          "assigned_partitions": 12,
+          "unique_members": [
+            "messages-processor@messages-processor-5ffb7c68d9-d2zsw"
+          ],
+          "member_partition_counts": {
+            "messages-processor@messages-processor-5ffb7c68d9-d2zsw": 12
+          }
+        },
+        "members_ok": true,
+        "expected_members": 1
+      },
+      "result_dir": "benchmarks//results//2026-06-09-processor-scaling-matrix//1replicas-105msgsec"
+    },
+    {
+      "processor_replicas": 1,
+      "rate_msg_sec": 120,
+      "status": "failed",
+      "requested": 74700,
+      "accepted": 74700,
+      "postgres_exact": 74700,
+      "cassandra_exact": 74700,
+      "kafka_lag_zero_seconds": 602.316298,
+      "kafka_lag_settled_to_zero": false,
+      "kafka_lag_at_end": 37742,
+      "latency": {
+        "label": "client-observed HTTP accept latency",
+        "calculation": "exact from merged shard accept samples",
+        "sample_count": 74700,
+        "p50_ms": 2022.087,
+        "p95_ms": 2079.63755,
+        "p99_ms": 2102.68804
+      },
+      "restart_changes": {},
+      "stage_counters": {
+        "consumed": 38990,
+        "decoded": 38990,
+        "deduped": 0,
+        "postgres_write_succeeded": 38990,
+        "cassandra_write_succeeded": 38990,
+        "redis_ack_set_succeeded": 38990,
+        "persisted_publish_succeeded": 38990,
+        "microservice_publish_succeeded": 38989,
+        "offset_commit_succeeded": 38989,
+        "handler_success": 38989,
+        "handler_error": 0
+      },
+      "assignment": {
+        "scale_ready": {
+          "total_partitions": 12,
+          "assigned_partitions": 12,
+          "unique_members": [
+            "messages-processor@messages-processor-5ffb7c68d9-d2zsw"
+          ],
+          "member_partition_counts": {
+            "messages-processor@messages-processor-5ffb7c68d9-d2zsw": 12
+          }
+        },
+        "post_run": {
+          "total_partitions": 12,
+          "assigned_partitions": 12,
+          "unique_members": [
+            "messages-processor@messages-processor-5ffb7c68d9-d2zsw"
+          ],
+          "member_partition_counts": {
+            "messages-processor@messages-processor-5ffb7c68d9-d2zsw": 12
+          }
+        },
+        "post_drain": {
+          "total_partitions": 12,
+          "assigned_partitions": 12,
+          "unique_members": [
+            "messages-processor@messages-processor-5ffb7c68d9-d2zsw"
+          ],
+          "member_partition_counts": {
+            "messages-processor@messages-processor-5ffb7c68d9-d2zsw": 12
+          }
+        },
+        "members_ok": true,
+        "expected_members": 1
+      },
+      "result_dir": "benchmarks//results//2026-06-09-processor-scaling-matrix//1replicas-120msgsec"
+    },
+    {
+      "processor_replicas": 2,
+      "rate_msg_sec": 105,
+      "status": "failed",
+      "requested": 15075,
+      "accepted": 15075,
+      "postgres_exact": 0,
+      "cassandra_exact": 0,
+      "kafka_lag_zero_seconds": 2.23121,
+      "kafka_lag_settled_to_zero": true,
+      "kafka_lag_at_end": 0,
+      "latency": {
+        "label": "client-observed HTTP accept latency",
+        "calculation": "exact from merged shard accept samples",
+        "sample_count": 15075,
+        "p50_ms": 2022.717,
+        "p95_ms": 2078.8273,
+        "p99_ms": 2109.7647
+      },
+      "restart_changes": {},
+      "stage_counters": {
+        "consumed": 12651,
+        "decoded": 12651,
+        "deduped": 0,
+        "postgres_write_succeeded": 12650,
+        "cassandra_write_succeeded": 12650,
+        "redis_ack_set_succeeded": 12650,
+        "persisted_publish_succeeded": 12649,
+        "microservice_publish_succeeded": 12649,
+        "offset_commit_succeeded": 12649,
+        "handler_success": 12649,
+        "handler_error": 0
+      },
+      "assignment": {
+        "scale_ready": {
+          "total_partitions": 12,
+          "assigned_partitions": 12,
+          "unique_members": [
+            "messages-processor@messages-processor-5ffb7c68d9-d2zsw",
+            "messages-processor@messages-processor-5ffb7c68d9-g885z"
+          ],
+          "member_partition_counts": {
+            "messages-processor@messages-processor-5ffb7c68d9-d2zsw": 6,
+            "messages-processor@messages-processor-5ffb7c68d9-g885z": 6
+          }
+        },
+        "post_run": {
+          "total_partitions": 12,
+          "assigned_partitions": 12,
+          "unique_members": [
+            "messages-processor@messages-processor-5ffb7c68d9-d2zsw",
+            "messages-processor@messages-processor-5ffb7c68d9-g885z"
+          ],
+          "member_partition_counts": {
+            "messages-processor@messages-processor-5ffb7c68d9-d2zsw": 6,
+            "messages-processor@messages-processor-5ffb7c68d9-g885z": 6
+          }
+        },
+        "post_drain": {
+          "total_partitions": 12,
+          "assigned_partitions": 12,
+          "unique_members": [
+            "messages-processor@messages-processor-5ffb7c68d9-d2zsw",
+            "messages-processor@messages-processor-5ffb7c68d9-g885z"
+          ],
+          "member_partition_counts": {
+            "messages-processor@messages-processor-5ffb7c68d9-d2zsw": 6,
+            "messages-processor@messages-processor-5ffb7c68d9-g885z": 6
+          }
+        },
+        "members_ok": true,
+        "expected_members": 2
+      },
+      "result_dir": "benchmarks//results//2026-06-09-processor-scaling-matrix//2replicas-105msgsec"
+    },
+    {
+      "processor_replicas": 2,
+      "rate_msg_sec": 120,
+      "status": "failed",
+      "requested": 74700,
+      "accepted": 74700,
+      "postgres_exact": 74700,
+      "cassandra_exact": 74700,
+      "kafka_lag_zero_seconds": 600.481218,
+      "kafka_lag_settled_to_zero": false,
+      "kafka_lag_at_end": 7897,
+      "latency": {
+        "label": "client-observed HTTP accept latency",
+        "calculation": "exact from merged shard accept samples",
+        "sample_count": 74700,
+        "p50_ms": 2023.48,
+        "p95_ms": 2098.64705,
+        "p99_ms": 2148.79607
+      },
+      "restart_changes": {},
+      "stage_counters": {
+        "consumed": 70702,
+        "decoded": 70702,
+        "deduped": 0,
+        "postgres_write_succeeded": 70701,
+        "cassandra_write_succeeded": 70701,
+        "redis_ack_set_succeeded": 70701,
+        "persisted_publish_succeeded": 70701,
+        "microservice_publish_succeeded": 70700,
+        "offset_commit_succeeded": 70700,
+        "handler_success": 70700,
+        "handler_error": 0
+      },
+      "assignment": {
+        "scale_ready": {
+          "total_partitions": 12,
+          "assigned_partitions": 12,
+          "unique_members": [
+            "messages-processor@messages-processor-5ffb7c68d9-84v9d",
+            "messages-processor@messages-processor-5ffb7c68d9-d2zsw"
+          ],
+          "member_partition_counts": {
+            "messages-processor@messages-processor-5ffb7c68d9-84v9d": 6,
+            "messages-processor@messages-processor-5ffb7c68d9-d2zsw": 6
+          }
+        },
+        "post_run": {
+          "total_partitions": 12,
+          "assigned_partitions": 12,
+          "unique_members": [
+            "messages-processor@messages-processor-5ffb7c68d9-84v9d",
+            "messages-processor@messages-processor-5ffb7c68d9-d2zsw"
+          ],
+          "member_partition_counts": {
+            "messages-processor@messages-processor-5ffb7c68d9-84v9d": 6,
+            "messages-processor@messages-processor-5ffb7c68d9-d2zsw": 6
+          }
+        },
+        "post_drain": {
+          "total_partitions": 12,
+          "assigned_partitions": 12,
+          "unique_members": [
+            "messages-processor@messages-processor-5ffb7c68d9-84v9d",
+            "messages-processor@messages-processor-5ffb7c68d9-d2zsw"
+          ],
+          "member_partition_counts": {
+            "messages-processor@messages-processor-5ffb7c68d9-84v9d": 6,
+            "messages-processor@messages-processor-5ffb7c68d9-d2zsw": 6
+          }
+        },
+        "members_ok": true,
+        "expected_members": 2
+      },
+      "result_dir": "benchmarks//results//2026-06-09-processor-scaling-matrix//2replicas-120msgsec"
+    },
+    {
+      "processor_replicas": 4,
+      "rate_msg_sec": 105,
+      "status": "passed",
+      "requested": 15075,
+      "accepted": 15075,
+      "postgres_exact": 15075,
+      "cassandra_exact": 15075,
+      "kafka_lag_zero_seconds": 2.021415,
+      "kafka_lag_settled_to_zero": true,
+      "kafka_lag_at_end": 0,
+      "latency": {
+        "label": "client-observed HTTP accept latency",
+        "calculation": "exact from merged shard accept samples",
+        "sample_count": 15075,
+        "p50_ms": 2021.217,
+        "p95_ms": 2099.4253,
+        "p99_ms": 2175.76976
+      },
+      "restart_changes": {},
+      "stage_counters": {
+        "consumed": 15075,
+        "decoded": 15075,
+        "deduped": 0,
+        "postgres_write_succeeded": 15075,
+        "cassandra_write_succeeded": 15075,
+        "redis_ack_set_succeeded": 15075,
+        "persisted_publish_succeeded": 15075,
+        "microservice_publish_succeeded": 15075,
+        "offset_commit_succeeded": 15075,
+        "handler_success": 15075,
+        "handler_error": 0
+      },
+      "assignment": {
+        "scale_ready": {
+          "total_partitions": 12,
+          "assigned_partitions": 12,
+          "unique_members": [
+            "messages-processor@messages-processor-5ffb7c68d9-84v9d",
+            "messages-processor@messages-processor-5ffb7c68d9-d2zsw",
+            "messages-processor@messages-processor-5ffb7c68d9-kwkjt",
+            "messages-processor@messages-processor-5ffb7c68d9-vlhb8"
+          ],
+          "member_partition_counts": {
+            "messages-processor@messages-processor-5ffb7c68d9-84v9d": 3,
+            "messages-processor@messages-processor-5ffb7c68d9-d2zsw": 3,
+            "messages-processor@messages-processor-5ffb7c68d9-kwkjt": 3,
+            "messages-processor@messages-processor-5ffb7c68d9-vlhb8": 3
+          }
+        },
+        "post_run": {
+          "total_partitions": 12,
+          "assigned_partitions": 12,
+          "unique_members": [
+            "messages-processor@messages-processor-5ffb7c68d9-84v9d",
+            "messages-processor@messages-processor-5ffb7c68d9-d2zsw",
+            "messages-processor@messages-processor-5ffb7c68d9-kwkjt",
+            "messages-processor@messages-processor-5ffb7c68d9-vlhb8"
+          ],
+          "member_partition_counts": {
+            "messages-processor@messages-processor-5ffb7c68d9-84v9d": 3,
+            "messages-processor@messages-processor-5ffb7c68d9-d2zsw": 3,
+            "messages-processor@messages-processor-5ffb7c68d9-kwkjt": 3,
+            "messages-processor@messages-processor-5ffb7c68d9-vlhb8": 3
+          }
+        },
+        "post_drain": {
+          "total_partitions": 12,
+          "assigned_partitions": 12,
+          "unique_members": [
+            "messages-processor@messages-processor-5ffb7c68d9-84v9d",
+            "messages-processor@messages-processor-5ffb7c68d9-d2zsw",
+            "messages-processor@messages-processor-5ffb7c68d9-kwkjt",
+            "messages-processor@messages-processor-5ffb7c68d9-vlhb8"
+          ],
+          "member_partition_counts": {
+            "messages-processor@messages-processor-5ffb7c68d9-84v9d": 3,
+            "messages-processor@messages-processor-5ffb7c68d9-d2zsw": 3,
+            "messages-processor@messages-processor-5ffb7c68d9-kwkjt": 3,
+            "messages-processor@messages-processor-5ffb7c68d9-vlhb8": 3
+          }
+        },
+        "members_ok": true,
+        "expected_members": 4
+      },
+      "result_dir": "benchmarks//results//2026-06-09-processor-scaling-matrix//4replicas-105msgsec"
+    },
+    {
+      "processor_replicas": 4,
+      "rate_msg_sec": 120,
+      "status": "passed",
+      "requested": 74700,
+      "accepted": 74700,
+      "postgres_exact": 74700,
+      "cassandra_exact": 74700,
+      "kafka_lag_zero_seconds": 103.145316,
+      "kafka_lag_settled_to_zero": true,
+      "kafka_lag_at_end": 0,
+      "latency": {
+        "label": "client-observed HTTP accept latency",
+        "calculation": "exact from merged shard accept samples",
+        "sample_count": 74700,
+        "p50_ms": 2022.568,
+        "p95_ms": 2091.69015,
+        "p99_ms": 2131.4682
+      },
+      "restart_changes": {},
+      "stage_counters": {
+        "consumed": 74700,
+        "decoded": 74700,
+        "deduped": 0,
+        "postgres_write_succeeded": 74700,
+        "cassandra_write_succeeded": 74700,
+        "redis_ack_set_succeeded": 74700,
+        "persisted_publish_succeeded": 74700,
+        "microservice_publish_succeeded": 74700,
+        "offset_commit_succeeded": 74700,
+        "handler_success": 74700,
+        "handler_error": 0
+      },
+      "assignment": {
+        "scale_ready": {
+          "total_partitions": 12,
+          "assigned_partitions": 12,
+          "unique_members": [
+            "messages-processor@messages-processor-5ffb7c68d9-84v9d",
+            "messages-processor@messages-processor-5ffb7c68d9-d2zsw",
+            "messages-processor@messages-processor-5ffb7c68d9-kwkjt",
+            "messages-processor@messages-processor-5ffb7c68d9-vlhb8"
+          ],
+          "member_partition_counts": {
+            "messages-processor@messages-processor-5ffb7c68d9-84v9d": 3,
+            "messages-processor@messages-processor-5ffb7c68d9-d2zsw": 3,
+            "messages-processor@messages-processor-5ffb7c68d9-kwkjt": 3,
+            "messages-processor@messages-processor-5ffb7c68d9-vlhb8": 3
+          }
+        },
+        "post_run": {
+          "total_partitions": 12,
+          "assigned_partitions": 12,
+          "unique_members": [
+            "messages-processor@messages-processor-5ffb7c68d9-84v9d",
+            "messages-processor@messages-processor-5ffb7c68d9-d2zsw",
+            "messages-processor@messages-processor-5ffb7c68d9-kwkjt",
+            "messages-processor@messages-processor-5ffb7c68d9-vlhb8"
+          ],
+          "member_partition_counts": {
+            "messages-processor@messages-processor-5ffb7c68d9-84v9d": 3,
+            "messages-processor@messages-processor-5ffb7c68d9-d2zsw": 3,
+            "messages-processor@messages-processor-5ffb7c68d9-kwkjt": 3,
+            "messages-processor@messages-processor-5ffb7c68d9-vlhb8": 3
+          }
+        },
+        "post_drain": {
+          "total_partitions": 12,
+          "assigned_partitions": 12,
+          "unique_members": [
+            "messages-processor@messages-processor-5ffb7c68d9-84v9d",
+            "messages-processor@messages-processor-5ffb7c68d9-d2zsw",
+            "messages-processor@messages-processor-5ffb7c68d9-kwkjt",
+            "messages-processor@messages-processor-5ffb7c68d9-vlhb8"
+          ],
+          "member_partition_counts": {
+            "messages-processor@messages-processor-5ffb7c68d9-84v9d": 3,
+            "messages-processor@messages-processor-5ffb7c68d9-d2zsw": 3,
+            "messages-processor@messages-processor-5ffb7c68d9-kwkjt": 3,
+            "messages-processor@messages-processor-5ffb7c68d9-vlhb8": 3
+          }
+        },
+        "members_ok": true,
+        "expected_members": 4
+      },
+      "result_dir": "benchmarks//results//2026-06-09-processor-scaling-matrix//4replicas-120msgsec"
+    }
+  ],
+  "artifacts": {
+    "summary_json": "benchmarks//results//2026-06-09-processor-scaling-matrix//summary.json",
+    "summary_md": "benchmarks//results//2026-06-09-processor-scaling-matrix//summary.md",
+    "deploy_result_md": "deploy/k8s/results/2026-06-09-processor-scaling-matrix.md",
+    "rollout_evidence": "benchmarks/results/2026-06-09-processor-scaling-matrix/rollout-evidence.json"
+  }
+}

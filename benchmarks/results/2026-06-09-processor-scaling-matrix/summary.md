@@ -48,14 +48,14 @@
 
 ## Artifacts
 
-- Combined JSON: `benchmarks\results\2026-06-09-processor-scaling-matrix\summary.json`
+- Combined JSON: `benchmarks/results/2026-06-09-processor-scaling-matrix/summary.json`
 - Deploy note: `deploy/k8s/results/2026-06-09-processor-scaling-matrix.md`
-- `1 replicas @ 105 msg/sec`: `benchmarks\results\2026-06-09-processor-scaling-matrix\1replicas-105msgsec`
-- `1 replicas @ 120 msg/sec`: `benchmarks\results\2026-06-09-processor-scaling-matrix\1replicas-120msgsec`
-- `2 replicas @ 105 msg/sec`: `benchmarks\results\2026-06-09-processor-scaling-matrix\2replicas-105msgsec`
-- `2 replicas @ 120 msg/sec`: `benchmarks\results\2026-06-09-processor-scaling-matrix\2replicas-120msgsec`
-- `4 replicas @ 105 msg/sec`: `benchmarks\results\2026-06-09-processor-scaling-matrix\4replicas-105msgsec`
-- `4 replicas @ 120 msg/sec`: `benchmarks\results\2026-06-09-processor-scaling-matrix\4replicas-120msgsec`
+- `1 replicas @ 105 msg/sec`: `benchmarks/results/2026-06-09-processor-scaling-matrix/1replicas-105msgsec`
+- `1 replicas @ 120 msg/sec`: `benchmarks/results/2026-06-09-processor-scaling-matrix/1replicas-120msgsec`
+- `2 replicas @ 105 msg/sec`: `benchmarks/results/2026-06-09-processor-scaling-matrix/2replicas-105msgsec`
+- `2 replicas @ 120 msg/sec`: `benchmarks/results/2026-06-09-processor-scaling-matrix/2replicas-120msgsec`
+- `4 replicas @ 105 msg/sec`: `benchmarks/results/2026-06-09-processor-scaling-matrix/4replicas-105msgsec`
+- `4 replicas @ 120 msg/sec`: `benchmarks/results/2026-06-09-processor-scaling-matrix/4replicas-120msgsec`
 
 Required capture files per rung live under each rung's `observations/` directory:
 
