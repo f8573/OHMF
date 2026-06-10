@@ -12,9 +12,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Set up Go
-        uses: actions/setup-go@v4
+        uses: actions/setup-go@v5
         with:
-          go-version: '1.25'
+          go-version: '1.25.0'
       - name: Diagnostic
         run: |
           echo "CWD: $(pwd)"
@@ -38,7 +38,7 @@ jobs:
       - name: Run go tests
         run: |
           set -euo pipefail
-          mods="$(find . -name go.mod -not -path './ohmf/.tools/*' -print | sort)"
+          mods="$(git ls-files '**/go.mod' | sort)"
           if [ -z "$mods" ]; then
             echo "No go.mod files found; skipping."
             exit 0
