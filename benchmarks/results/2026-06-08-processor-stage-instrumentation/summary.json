@@ -7,7 +7,7 @@
     {
       "rate_msg_sec": 45,
       "accepted": 6750,
-      "result_dir": "C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-08-processor-stage-instrumentation/45msgsec",
+      "result_dir": "benchmarks/results/2026-06-08-processor-stage-instrumentation/45msgsec",
       "run_id_prefix": "20260608t21081780952909z-multisource",
       "postgres_exact": 6750,
       "cassandra_exact": 6750,
@@ -35,7 +35,7 @@
     {
       "rate_msg_sec": 60,
       "accepted": 9000,
-      "result_dir": "C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-08-processor-stage-instrumentation/60msgsec",
+      "result_dir": "benchmarks/results/2026-06-08-processor-stage-instrumentation/60msgsec",
       "run_id_prefix": "20260608t21151780953357z-multisource",
       "postgres_exact": 9000,
       "cassandra_exact": 9000,
@@ -62,8 +62,8 @@
     }
   ],
   "artifacts": {
-    "summary_json": "C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-08-processor-stage-instrumentation/summary.json",
-    "summary_md": "C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-08-processor-stage-instrumentation/summary.md",
+    "summary_json": "benchmarks/results/2026-06-08-processor-stage-instrumentation/summary.json",
+    "summary_md": "benchmarks/results/2026-06-08-processor-stage-instrumentation/summary.md",
     "deploy_result_md": "deploy/k8s/results/2026-06-08-processor-stage-instrumentation.md"
   }
 }

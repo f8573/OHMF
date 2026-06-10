@@ -3,7 +3,7 @@
   "stage": "B1",
   "status": "failed",
   "scope": "local single-node Kubernetes only",
-  "result_dir": "C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-08-processor-stage-instrumentation/60msgsec",
+  "result_dir": "benchmarks/results/2026-06-08-processor-stage-instrumentation/60msgsec",
   "run": {
     "run_id_prefix": "20260608t21151780953357z-multisource",
     "run_date": "2026-06-08",
@@ -334,9 +334,9 @@
     "Any cloud or production benchmark interpretation"
   ],
   "artifacts": {
-    "human_summary_md": "C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-08-processor-stage-instrumentation/60msgsec/summary.md",
+    "human_summary_md": "benchmarks/results/2026-06-08-processor-stage-instrumentation/60msgsec/summary.md",
     "deploy_result_md": "deploy/k8s/results/2026-06-08-processor-stage-60msgsec-multisource.md",
-    "observations_dir": "C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-08-processor-stage-instrumentation/60msgsec/observations",
-    "shards_dir": "C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-08-processor-stage-instrumentation/60msgsec/shards"
+    "observations_dir": "benchmarks/results/2026-06-08-processor-stage-instrumentation/60msgsec/observations",
+    "shards_dir": "benchmarks/results/2026-06-08-processor-stage-instrumentation/60msgsec/shards"
   }
 }

@@ -1,5 +1,7 @@
 # processor-pod-deletion-120msgsec
 
+> **Diagnostic-only / superseded:** this 2026-06-09 run failed because a coincident Redis ack outage surfaced post-persistence gateway 500s. It is retained to document the failure mode and gateway fix. The passing rerun is `benchmarks/results/2026-06-10-processor-pod-deletion-120msgsec/summary.md` and `deploy/k8s/results/2026-06-10-processor-pod-deletion-120msgsec.md`.
+
 ## Outcome
 
 - Status: `failed`

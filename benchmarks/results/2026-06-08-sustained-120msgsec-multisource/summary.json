@@ -3,7 +3,7 @@
   "stage": "B1",
   "status": "failed",
   "scope": "local single-node Kubernetes only",
-  "result_dir": "C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-08-sustained-120msgsec-multisource",
+  "result_dir": "benchmarks/results/2026-06-08-sustained-120msgsec-multisource",
   "run": {
     "run_id_prefix": "20260608t18301780943411z-multisource",
     "run_date": "2026-06-08",
@@ -227,9 +227,9 @@
     "Any cloud or production benchmark interpretation"
   ],
   "artifacts": {
-    "human_summary_md": "C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-08-sustained-120msgsec-multisource/summary.md",
+    "human_summary_md": "benchmarks/results/2026-06-08-sustained-120msgsec-multisource/summary.md",
     "deploy_result_md": "deploy/k8s/results/2026-06-08-throughput-120msgsec-multisource.md",
-    "observations_dir": "C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-08-sustained-120msgsec-multisource/observations",
-    "shards_dir": "C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-08-sustained-120msgsec-multisource/shards"
+    "observations_dir": "benchmarks/results/2026-06-08-sustained-120msgsec-multisource/observations",
+    "shards_dir": "benchmarks/results/2026-06-08-sustained-120msgsec-multisource/shards"
   }
 }
