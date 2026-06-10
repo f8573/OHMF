@@ -1,0 +1,140 @@
+LAST SEEN   TYPE     REASON              OBJECT                                                  MESSAGE
+3m19s       Normal   Scheduled           pod/loadgen-processor-pod-deletion-120msgsec-2-f8v47    Successfully assigned ohmf/loadgen-processor-pod-deletion-120msgsec-2-f8v47 to k3d-ohmf-b1-server-0
+5m44s       Normal   Scheduled           pod/messages-processor-5db6ccfc57-hzc48                 Successfully assigned ohmf/messages-processor-5db6ccfc57-hzc48 to k3d-ohmf-b1-server-0
+5m30s       Normal   Scheduled           pod/messages-processor-5db6ccfc57-99ktr                 Successfully assigned ohmf/messages-processor-5db6ccfc57-99ktr to k3d-ohmf-b1-server-0
+3m19s       Normal   Scheduled           pod/loadgen-processor-pod-deletion-120msgsec-5-whzq8    Successfully assigned ohmf/loadgen-processor-pod-deletion-120msgsec-5-whzq8 to k3d-ohmf-b1-server-0
+5m30s       Normal   Scheduled           pod/messages-processor-5db6ccfc57-kttkl                 Successfully assigned ohmf/messages-processor-5db6ccfc57-kttkl to k3d-ohmf-b1-server-0
+3m19s       Normal   Scheduled           pod/loadgen-processor-pod-deletion-120msgsec-4-8wf6q    Successfully assigned ohmf/loadgen-processor-pod-deletion-120msgsec-4-8wf6q to k3d-ohmf-b1-server-0
+3m19s       Normal   Scheduled           pod/loadgen-processor-pod-deletion-120msgsec-6-6njmx    Successfully assigned ohmf/loadgen-processor-pod-deletion-120msgsec-6-6njmx to k3d-ohmf-b1-server-0
+3m19s       Normal   Scheduled           pod/loadgen-processor-pod-deletion-120msgsec-1-fctmc    Successfully assigned ohmf/loadgen-processor-pod-deletion-120msgsec-1-fctmc to k3d-ohmf-b1-server-0
+5m44s       Normal   Scheduled           pod/messages-processor-5db6ccfc57-vvcj6                 Successfully assigned ohmf/messages-processor-5db6ccfc57-vvcj6 to k3d-ohmf-b1-server-0
+3m19s       Normal   Scheduled           pod/loadgen-processor-pod-deletion-120msgsec-7-746zm    Successfully assigned ohmf/loadgen-processor-pod-deletion-120msgsec-7-746zm to k3d-ohmf-b1-server-0
+40s         Normal   Scheduled           pod/messages-processor-5db6ccfc57-qpxxk                 Successfully assigned ohmf/messages-processor-5db6ccfc57-qpxxk to k3d-ohmf-b1-server-0
+3m19s       Normal   Scheduled           pod/loadgen-processor-pod-deletion-120msgsec-11-jv7wn   Successfully assigned ohmf/loadgen-processor-pod-deletion-120msgsec-11-jv7wn to k3d-ohmf-b1-server-0
+5m44s       Normal   Scheduled           pod/gateway-59c66ffd6c-pd8dw                            Successfully assigned ohmf/gateway-59c66ffd6c-pd8dw to k3d-ohmf-b1-server-0
+3m19s       Normal   Scheduled           pod/loadgen-processor-pod-deletion-120msgsec-8-l59j8    Successfully assigned ohmf/loadgen-processor-pod-deletion-120msgsec-8-l59j8 to k3d-ohmf-b1-server-0
+3m19s       Normal   Scheduled           pod/loadgen-processor-pod-deletion-120msgsec-10-24tdm   Successfully assigned ohmf/loadgen-processor-pod-deletion-120msgsec-10-24tdm to k3d-ohmf-b1-server-0
+3m19s       Normal   Scheduled           pod/loadgen-processor-pod-deletion-120msgsec-9-xf55n    Successfully assigned ohmf/loadgen-processor-pod-deletion-120msgsec-9-xf55n to k3d-ohmf-b1-server-0
+3m19s       Normal   Scheduled           pod/loadgen-processor-pod-deletion-120msgsec-3-skdzl    Successfully assigned ohmf/loadgen-processor-pod-deletion-120msgsec-3-skdzl to k3d-ohmf-b1-server-0
+5m44s       Normal   Scheduled           pod/apps-86b4f77486-6bfdh                               Successfully assigned ohmf/apps-86b4f77486-6bfdh to k3d-ohmf-b1-server-0
+3m19s       Normal   Scheduled           pod/loadgen-processor-pod-deletion-120msgsec-0-9mzbf    Successfully assigned ohmf/loadgen-processor-pod-deletion-120msgsec-0-9mzbf to k3d-ohmf-b1-server-0
+5m45s       Normal   Killing             pod/messages-processor-6f75d4dfff-g5d4s                 Stopping container messages-processor
+5m45s       Normal   ScalingReplicaSet   deployment/messages-processor                           Scaled up replica set messages-processor-5db6ccfc57 from 1 to 2
+5m45s       Normal   SuccessfulDelete    replicaset/messages-processor-6f75d4dfff                Deleted pod: messages-processor-6f75d4dfff-g5d4s
+5m45s       Normal   ScalingReplicaSet   deployment/gateway                                      Scaled up replica set gateway-59c66ffd6c from 0 to 1
+5m45s       Normal   SuccessfulCreate    replicaset/gateway-59c66ffd6c                           Created pod: gateway-59c66ffd6c-pd8dw
+5m45s       Normal   SuccessfulCreate    replicaset/apps-86b4f77486                              Created pod: apps-86b4f77486-6bfdh
+5m45s       Normal   SuccessfulCreate    replicaset/messages-processor-5db6ccfc57                Created pod: messages-processor-5db6ccfc57-vvcj6
+5m45s       Normal   ScalingReplicaSet   deployment/apps                                         Scaled up replica set apps-86b4f77486 from 0 to 1
+5m45s       Normal   SuccessfulCreate    replicaset/messages-processor-5db6ccfc57                Created pod: messages-processor-5db6ccfc57-hzc48
+5m45s       Normal   ScalingReplicaSet   deployment/messages-processor                           Scaled up replica set messages-processor-5db6ccfc57 from 0 to 1
+5m45s       Normal   ScalingReplicaSet   deployment/messages-processor                           Scaled down replica set messages-processor-6f75d4dfff from 4 to 3
+5m44s       Normal   Started             pod/gateway-59c66ffd6c-pd8dw                            Container started
+5m44s       Normal   Pulled              pod/messages-processor-5db6ccfc57-vvcj6                 Container image "busybox:1.36" already present on machine and can be accessed by the pod
+5m44s       Normal   Created             pod/gateway-59c66ffd6c-pd8dw                            Container created
+5m44s       Normal   Started             pod/apps-86b4f77486-6bfdh                               Container started
+5m44s       Normal   Created             pod/messages-processor-5db6ccfc57-hzc48                 Container created
+5m44s       Normal   Pulled              pod/gateway-59c66ffd6c-pd8dw                            Container image "busybox:1.36" already present on machine and can be accessed by the pod
+5m44s       Normal   Started             pod/messages-processor-5db6ccfc57-hzc48                 Container started
+5m44s       Normal   Created             pod/apps-86b4f77486-6bfdh                               Container created
+5m44s       Normal   Pulled              pod/apps-86b4f77486-6bfdh                               Container image "busybox:1.36" already present on machine and can be accessed by the pod
+5m44s       Normal   Pulled              pod/messages-processor-5db6ccfc57-hzc48                 Container image "busybox:1.36" already present on machine and can be accessed by the pod
+5m44s       Normal   Started             pod/messages-processor-5db6ccfc57-vvcj6                 Container started
+5m44s       Normal   Created             pod/messages-processor-5db6ccfc57-vvcj6                 Container created
+5m43s       Normal   Pulled              pod/gateway-59c66ffd6c-pd8dw                            Container image "ohmf-gateway:poddelete-20260610t035059366758z" already present on machine and can be accessed by the pod
+5m43s       Normal   Started             pod/apps-86b4f77486-6bfdh                               Container started
+5m43s       Normal   Created             pod/apps-86b4f77486-6bfdh                               Container created
+5m43s       Normal   Pulled              pod/messages-processor-5db6ccfc57-hzc48                 Container image "ohmf-messages-processor:poddelete-20260610t035059366758z" already present on machine and can be accessed by the pod
+5m43s       Normal   Pulled              pod/apps-86b4f77486-6bfdh                               Container image "ohmf-apps:poddelete-20260610t035059366758z" already present on machine and can be accessed by the pod
+5m43s       Normal   Pulled              pod/messages-processor-5db6ccfc57-vvcj6                 Container image "ohmf-messages-processor:poddelete-20260610t035059366758z" already present on machine and can be accessed by the pod
+5m43s       Normal   Created             pod/messages-processor-5db6ccfc57-hzc48                 Container created
+5m43s       Normal   Created             pod/gateway-59c66ffd6c-pd8dw                            Container created
+5m43s       Normal   Started             pod/messages-processor-5db6ccfc57-hzc48                 Container started
+5m43s       Normal   Started             pod/messages-processor-5db6ccfc57-vvcj6                 Container started
+5m43s       Normal   Started             pod/gateway-59c66ffd6c-pd8dw                            Container started
+5m43s       Normal   Created             pod/messages-processor-5db6ccfc57-vvcj6                 Container created
+5m36s       Normal   Killing             pod/apps-6cb5795d4d-69krx                               Stopping container apps
+5m36s       Normal   SuccessfulDelete    replicaset/gateway-6d6df7db8f                           Deleted pod: gateway-6d6df7db8f-5q5kk
+5m36s       Normal   ScalingReplicaSet   deployment/gateway                                      Scaled down replica set gateway-6d6df7db8f from 1 to 0
+5m36s       Normal   Killing             pod/gateway-6d6df7db8f-5q5kk                            Stopping container gateway
+5m36s       Normal   SuccessfulDelete    replicaset/apps-6cb5795d4d                              Deleted pod: apps-6cb5795d4d-69krx
+5m36s       Normal   ScalingReplicaSet   deployment/apps                                         Scaled down replica set apps-6cb5795d4d from 1 to 0
+5m31s       Normal   SuccessfulDelete    replicaset/messages-processor-6f75d4dfff                Deleted pod: messages-processor-6f75d4dfff-f5dpj
+5m31s       Normal   SuccessfulDelete    replicaset/messages-processor-6f75d4dfff                Deleted pod: messages-processor-6f75d4dfff-924p6
+5m31s       Normal   Killing             pod/messages-processor-6f75d4dfff-f5dpj                 Stopping container messages-processor
+5m31s       Normal   Killing             pod/messages-processor-6f75d4dfff-924p6                 Stopping container messages-processor
+5m31s       Normal   ScalingReplicaSet   deployment/messages-processor                           Scaled down replica set messages-processor-6f75d4dfff from 2 to 1
+5m31s       Normal   SuccessfulCreate    replicaset/messages-processor-5db6ccfc57                Created pod: messages-processor-5db6ccfc57-99ktr
+5m31s       Normal   SuccessfulCreate    replicaset/messages-processor-5db6ccfc57                Created pod: messages-processor-5db6ccfc57-kttkl
+5m31s       Normal   ScalingReplicaSet   deployment/messages-processor                           Scaled up replica set messages-processor-5db6ccfc57 from 3 to 4
+5m31s       Normal   ScalingReplicaSet   deployment/messages-processor                           Scaled down replica set messages-processor-6f75d4dfff from 3 to 2
+5m31s       Normal   ScalingReplicaSet   deployment/messages-processor                           Scaled up replica set messages-processor-5db6ccfc57 from 2 to 3
+5m30s       Normal   Started             pod/messages-processor-5db6ccfc57-99ktr                 Container started
+5m30s       Normal   Created             pod/messages-processor-5db6ccfc57-kttkl                 Container created
+5m30s       Normal   Started             pod/messages-processor-5db6ccfc57-kttkl                 Container started
+5m30s       Normal   Created             pod/messages-processor-5db6ccfc57-kttkl                 Container created
+5m30s       Normal   Pulled              pod/messages-processor-5db6ccfc57-kttkl                 Container image "ohmf-messages-processor:poddelete-20260610t035059366758z" already present on machine and can be accessed by the pod
+5m30s       Normal   Pulled              pod/messages-processor-5db6ccfc57-kttkl                 Container image "busybox:1.36" already present on machine and can be accessed by the pod
+5m30s       Normal   Started             pod/messages-processor-5db6ccfc57-99ktr                 Container started
+5m30s       Normal   Created             pod/messages-processor-5db6ccfc57-99ktr                 Container created
+5m30s       Normal   Pulled              pod/messages-processor-5db6ccfc57-99ktr                 Container image "ohmf-messages-processor:poddelete-20260610t035059366758z" already present on machine and can be accessed by the pod
+5m30s       Normal   Started             pod/messages-processor-5db6ccfc57-kttkl                 Container started
+5m30s       Normal   Created             pod/messages-processor-5db6ccfc57-99ktr                 Container created
+5m30s       Normal   Pulled              pod/messages-processor-5db6ccfc57-99ktr                 Container image "busybox:1.36" already present on machine and can be accessed by the pod
+5m18s       Normal   ScalingReplicaSet   deployment/messages-processor                           Scaled down replica set messages-processor-6f75d4dfff from 1 to 0
+5m18s       Normal   SuccessfulDelete    replicaset/messages-processor-6f75d4dfff                Deleted pod: messages-processor-6f75d4dfff-9mvcp
+5m18s       Normal   Killing             pod/messages-processor-6f75d4dfff-9mvcp                 Stopping container messages-processor
+3m20s       Normal   SuccessfulCreate    job/loadgen-processor-pod-deletion-120msgsec            (combined from similar events): Created pod: loadgen-processor-pod-deletion-120msgsec-11-jv7wn
+3m20s       Normal   SuccessfulCreate    job/loadgen-processor-pod-deletion-120msgsec            Created pod: loadgen-processor-pod-deletion-120msgsec-8-l59j8
+3m20s       Normal   SuccessfulCreate    job/loadgen-processor-pod-deletion-120msgsec            Created pod: loadgen-processor-pod-deletion-120msgsec-9-xf55n
+3m20s       Normal   SuccessfulCreate    job/loadgen-processor-pod-deletion-120msgsec            Created pod: loadgen-processor-pod-deletion-120msgsec-4-8wf6q
+3m20s       Normal   SuccessfulCreate    job/loadgen-processor-pod-deletion-120msgsec            Created pod: loadgen-processor-pod-deletion-120msgsec-3-skdzl
+3m20s       Normal   SuccessfulCreate    job/loadgen-processor-pod-deletion-120msgsec            Created pod: loadgen-processor-pod-deletion-120msgsec-5-whzq8
+3m20s       Normal   SuccessfulCreate    job/loadgen-processor-pod-deletion-120msgsec            Created pod: loadgen-processor-pod-deletion-120msgsec-6-6njmx
+3m20s       Normal   SuccessfulCreate    job/loadgen-processor-pod-deletion-120msgsec            Created pod: loadgen-processor-pod-deletion-120msgsec-2-f8v47
+3m20s       Normal   SuccessfulCreate    job/loadgen-processor-pod-deletion-120msgsec            Created pod: loadgen-processor-pod-deletion-120msgsec-1-fctmc
+3m20s       Normal   SuccessfulCreate    job/loadgen-processor-pod-deletion-120msgsec            Created pod: loadgen-processor-pod-deletion-120msgsec-0-9mzbf
+3m18s       Normal   Pulled              pod/loadgen-processor-pod-deletion-120msgsec-9-xf55n    Container image "ohmf-loadgen:dev" already present on machine and can be accessed by the pod
+3m18s       Normal   Pulled              pod/loadgen-processor-pod-deletion-120msgsec-2-f8v47    Container image "ohmf-loadgen:dev" already present on machine and can be accessed by the pod
+3m18s       Normal   Pulled              pod/loadgen-processor-pod-deletion-120msgsec-0-9mzbf    Container image "ohmf-loadgen:dev" already present on machine and can be accessed by the pod
+3m18s       Normal   Created             pod/loadgen-processor-pod-deletion-120msgsec-0-9mzbf    Container created
+3m18s       Normal   Started             pod/loadgen-processor-pod-deletion-120msgsec-0-9mzbf    Container started
+3m18s       Normal   Pulled              pod/loadgen-processor-pod-deletion-120msgsec-1-fctmc    Container image "ohmf-loadgen:dev" already present on machine and can be accessed by the pod
+3m18s       Normal   Pulled              pod/loadgen-processor-pod-deletion-120msgsec-8-l59j8    Container image "ohmf-loadgen:dev" already present on machine and can be accessed by the pod
+3m18s       Normal   Pulled              pod/loadgen-processor-pod-deletion-120msgsec-10-24tdm   Container image "ohmf-loadgen:dev" already present on machine and can be accessed by the pod
+3m18s       Normal   Pulled              pod/loadgen-processor-pod-deletion-120msgsec-11-jv7wn   Container image "ohmf-loadgen:dev" already present on machine and can be accessed by the pod
+3m18s       Normal   Pulled              pod/loadgen-processor-pod-deletion-120msgsec-7-746zm    Container image "ohmf-loadgen:dev" already present on machine and can be accessed by the pod
+3m18s       Normal   Pulled              pod/loadgen-processor-pod-deletion-120msgsec-3-skdzl    Container image "ohmf-loadgen:dev" already present on machine and can be accessed by the pod
+3m18s       Normal   Pulled              pod/loadgen-processor-pod-deletion-120msgsec-4-8wf6q    Container image "ohmf-loadgen:dev" already present on machine and can be accessed by the pod
+3m18s       Normal   Pulled              pod/loadgen-processor-pod-deletion-120msgsec-5-whzq8    Container image "ohmf-loadgen:dev" already present on machine and can be accessed by the pod
+3m18s       Normal   Pulled              pod/loadgen-processor-pod-deletion-120msgsec-6-6njmx    Container image "ohmf-loadgen:dev" already present on machine and can be accessed by the pod
+3m17s       Normal   Created             pod/loadgen-processor-pod-deletion-120msgsec-3-skdzl    Container created
+3m17s       Normal   Started             pod/loadgen-processor-pod-deletion-120msgsec-10-24tdm   Container started
+3m17s       Normal   Started             pod/loadgen-processor-pod-deletion-120msgsec-6-6njmx    Container started
+3m17s       Normal   Created             pod/loadgen-processor-pod-deletion-120msgsec-6-6njmx    Container created
+3m17s       Normal   Created             pod/loadgen-processor-pod-deletion-120msgsec-9-xf55n    Container created
+3m17s       Normal   Started             pod/loadgen-processor-pod-deletion-120msgsec-5-whzq8    Container started
+3m17s       Normal   Created             pod/loadgen-processor-pod-deletion-120msgsec-5-whzq8    Container created
+3m17s       Normal   Created             pod/loadgen-processor-pod-deletion-120msgsec-8-l59j8    Container created
+3m17s       Normal   Started             pod/loadgen-processor-pod-deletion-120msgsec-4-8wf6q    Container started
+3m17s       Normal   Created             pod/loadgen-processor-pod-deletion-120msgsec-4-8wf6q    Container created
+3m17s       Normal   Created             pod/loadgen-processor-pod-deletion-120msgsec-10-24tdm   Container created
+3m17s       Normal   Started             pod/loadgen-processor-pod-deletion-120msgsec-3-skdzl    Container started
+3m17s       Normal   Created             pod/loadgen-processor-pod-deletion-120msgsec-1-fctmc    Container created
+3m17s       Normal   Created             pod/loadgen-processor-pod-deletion-120msgsec-7-746zm    Container created
+3m17s       Normal   Started             pod/loadgen-processor-pod-deletion-120msgsec-1-fctmc    Container started
+3m17s       Normal   Started             pod/loadgen-processor-pod-deletion-120msgsec-2-f8v47    Container started
+3m17s       Normal   Created             pod/loadgen-processor-pod-deletion-120msgsec-2-f8v47    Container created
+3m17s       Normal   Created             pod/loadgen-processor-pod-deletion-120msgsec-11-jv7wn   Container created
+3m16s       Normal   Started             pod/loadgen-processor-pod-deletion-120msgsec-11-jv7wn   Container started
+3m16s       Normal   Started             pod/loadgen-processor-pod-deletion-120msgsec-9-xf55n    Container started
+3m16s       Normal   Started             pod/loadgen-processor-pod-deletion-120msgsec-7-746zm    Container started
+3m16s       Normal   Started             pod/loadgen-processor-pod-deletion-120msgsec-8-l59j8    Container started
+41s         Normal   Killing             pod/messages-processor-5db6ccfc57-99ktr                 Stopping container messages-processor
+41s         Normal   SuccessfulCreate    replicaset/messages-processor-5db6ccfc57                Created pod: messages-processor-5db6ccfc57-qpxxk
+40s         Normal   Started             pod/messages-processor-5db6ccfc57-qpxxk                 Container started
+40s         Normal   Pulled              pod/messages-processor-5db6ccfc57-qpxxk                 Container image "busybox:1.36" already present on machine and can be accessed by the pod
+40s         Normal   Created             pod/messages-processor-5db6ccfc57-qpxxk                 Container created
+39s         Normal   Created             pod/messages-processor-5db6ccfc57-qpxxk                 Container created
+39s         Normal   Pulled              pod/messages-processor-5db6ccfc57-qpxxk                 Container image "ohmf-messages-processor:poddelete-20260610t035059366758z" already present on machine and can be accessed by the pod
+39s         Normal   Started             pod/messages-processor-5db6ccfc57-qpxxk                 Container started

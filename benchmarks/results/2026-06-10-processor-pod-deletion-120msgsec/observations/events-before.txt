@@ -1,0 +1,73 @@
+LAST SEEN   TYPE     REASON              OBJECT                                     MESSAGE
+73s         Normal   Scheduled           pod/gateway-59c66ffd6c-pd8dw               Successfully assigned ohmf/gateway-59c66ffd6c-pd8dw to k3d-ohmf-b1-server-0
+59s         Normal   Scheduled           pod/messages-processor-5db6ccfc57-99ktr    Successfully assigned ohmf/messages-processor-5db6ccfc57-99ktr to k3d-ohmf-b1-server-0
+72s         Normal   Scheduled           pod/messages-processor-5db6ccfc57-hzc48    Successfully assigned ohmf/messages-processor-5db6ccfc57-hzc48 to k3d-ohmf-b1-server-0
+59s         Normal   Scheduled           pod/messages-processor-5db6ccfc57-kttkl    Successfully assigned ohmf/messages-processor-5db6ccfc57-kttkl to k3d-ohmf-b1-server-0
+73s         Normal   Scheduled           pod/apps-86b4f77486-6bfdh                  Successfully assigned ohmf/apps-86b4f77486-6bfdh to k3d-ohmf-b1-server-0
+72s         Normal   Scheduled           pod/messages-processor-5db6ccfc57-vvcj6    Successfully assigned ohmf/messages-processor-5db6ccfc57-vvcj6 to k3d-ohmf-b1-server-0
+73s         Normal   ScalingReplicaSet   deployment/messages-processor              Scaled down replica set messages-processor-6f75d4dfff from 4 to 3
+73s         Normal   ScalingReplicaSet   deployment/apps                            Scaled up replica set apps-86b4f77486 from 0 to 1
+73s         Normal   SuccessfulCreate    replicaset/apps-86b4f77486                 Created pod: apps-86b4f77486-6bfdh
+73s         Normal   ScalingReplicaSet   deployment/messages-processor              Scaled up replica set messages-processor-5db6ccfc57 from 1 to 2
+73s         Normal   ScalingReplicaSet   deployment/messages-processor              Scaled up replica set messages-processor-5db6ccfc57 from 0 to 1
+73s         Normal   Killing             pod/messages-processor-6f75d4dfff-g5d4s    Stopping container messages-processor
+73s         Normal   SuccessfulCreate    replicaset/messages-processor-5db6ccfc57   Created pod: messages-processor-5db6ccfc57-vvcj6
+73s         Normal   ScalingReplicaSet   deployment/gateway                         Scaled up replica set gateway-59c66ffd6c from 0 to 1
+73s         Normal   SuccessfulDelete    replicaset/messages-processor-6f75d4dfff   Deleted pod: messages-processor-6f75d4dfff-g5d4s
+73s         Normal   SuccessfulCreate    replicaset/gateway-59c66ffd6c              Created pod: gateway-59c66ffd6c-pd8dw
+73s         Normal   SuccessfulCreate    replicaset/messages-processor-5db6ccfc57   Created pod: messages-processor-5db6ccfc57-hzc48
+72s         Normal   Created             pod/gateway-59c66ffd6c-pd8dw               Container created
+72s         Normal   Started             pod/messages-processor-5db6ccfc57-vvcj6    Container started
+72s         Normal   Started             pod/gateway-59c66ffd6c-pd8dw               Container started
+72s         Normal   Created             pod/messages-processor-5db6ccfc57-vvcj6    Container created
+72s         Normal   Pulled              pod/messages-processor-5db6ccfc57-vvcj6    Container image "busybox:1.36" already present on machine and can be accessed by the pod
+72s         Normal   Pulled              pod/gateway-59c66ffd6c-pd8dw               Container image "busybox:1.36" already present on machine and can be accessed by the pod
+72s         Normal   Started             pod/apps-86b4f77486-6bfdh                  Container started
+72s         Normal   Created             pod/apps-86b4f77486-6bfdh                  Container created
+72s         Normal   Pulled              pod/apps-86b4f77486-6bfdh                  Container image "busybox:1.36" already present on machine and can be accessed by the pod
+72s         Normal   Started             pod/messages-processor-5db6ccfc57-hzc48    Container started
+72s         Normal   Created             pod/messages-processor-5db6ccfc57-hzc48    Container created
+72s         Normal   Pulled              pod/messages-processor-5db6ccfc57-hzc48    Container image "busybox:1.36" already present on machine and can be accessed by the pod
+71s         Normal   Created             pod/messages-processor-5db6ccfc57-hzc48    Container created
+71s         Normal   Started             pod/apps-86b4f77486-6bfdh                  Container started
+71s         Normal   Pulled              pod/apps-86b4f77486-6bfdh                  Container image "ohmf-apps:poddelete-20260610t035059366758z" already present on machine and can be accessed by the pod
+71s         Normal   Created             pod/apps-86b4f77486-6bfdh                  Container created
+71s         Normal   Pulled              pod/gateway-59c66ffd6c-pd8dw               Container image "ohmf-gateway:poddelete-20260610t035059366758z" already present on machine and can be accessed by the pod
+71s         Normal   Created             pod/gateway-59c66ffd6c-pd8dw               Container created
+71s         Normal   Pulled              pod/messages-processor-5db6ccfc57-hzc48    Container image "ohmf-messages-processor:poddelete-20260610t035059366758z" already present on machine and can be accessed by the pod
+71s         Normal   Started             pod/messages-processor-5db6ccfc57-vvcj6    Container started
+71s         Normal   Started             pod/messages-processor-5db6ccfc57-hzc48    Container started
+71s         Normal   Created             pod/messages-processor-5db6ccfc57-vvcj6    Container created
+71s         Normal   Pulled              pod/messages-processor-5db6ccfc57-vvcj6    Container image "ohmf-messages-processor:poddelete-20260610t035059366758z" already present on machine and can be accessed by the pod
+71s         Normal   Started             pod/gateway-59c66ffd6c-pd8dw               Container started
+64s         Normal   Killing             pod/gateway-6d6df7db8f-5q5kk               Stopping container gateway
+64s         Normal   SuccessfulDelete    replicaset/apps-6cb5795d4d                 Deleted pod: apps-6cb5795d4d-69krx
+64s         Normal   ScalingReplicaSet   deployment/apps                            Scaled down replica set apps-6cb5795d4d from 1 to 0
+64s         Normal   Killing             pod/apps-6cb5795d4d-69krx                  Stopping container apps
+64s         Normal   ScalingReplicaSet   deployment/gateway                         Scaled down replica set gateway-6d6df7db8f from 1 to 0
+64s         Normal   SuccessfulDelete    replicaset/gateway-6d6df7db8f              Deleted pod: gateway-6d6df7db8f-5q5kk
+59s         Normal   SuccessfulDelete    replicaset/messages-processor-6f75d4dfff   Deleted pod: messages-processor-6f75d4dfff-924p6
+59s         Normal   Killing             pod/messages-processor-6f75d4dfff-f5dpj    Stopping container messages-processor
+59s         Normal   ScalingReplicaSet   deployment/messages-processor              Scaled up replica set messages-processor-5db6ccfc57 from 3 to 4
+59s         Normal   ScalingReplicaSet   deployment/messages-processor              Scaled down replica set messages-processor-6f75d4dfff from 2 to 1
+59s         Normal   ScalingReplicaSet   deployment/messages-processor              Scaled up replica set messages-processor-5db6ccfc57 from 2 to 3
+59s         Normal   ScalingReplicaSet   deployment/messages-processor              Scaled down replica set messages-processor-6f75d4dfff from 3 to 2
+59s         Normal   SuccessfulDelete    replicaset/messages-processor-6f75d4dfff   Deleted pod: messages-processor-6f75d4dfff-f5dpj
+59s         Normal   SuccessfulCreate    replicaset/messages-processor-5db6ccfc57   Created pod: messages-processor-5db6ccfc57-kttkl
+59s         Normal   SuccessfulCreate    replicaset/messages-processor-5db6ccfc57   Created pod: messages-processor-5db6ccfc57-99ktr
+59s         Normal   Killing             pod/messages-processor-6f75d4dfff-924p6    Stopping container messages-processor
+58s         Normal   Started             pod/messages-processor-5db6ccfc57-99ktr    Container started
+58s         Normal   Pulled              pod/messages-processor-5db6ccfc57-99ktr    Container image "ohmf-messages-processor:poddelete-20260610t035059366758z" already present on machine and can be accessed by the pod
+58s         Normal   Created             pod/messages-processor-5db6ccfc57-kttkl    Container created
+58s         Normal   Created             pod/messages-processor-5db6ccfc57-kttkl    Container created
+58s         Normal   Started             pod/messages-processor-5db6ccfc57-99ktr    Container started
+58s         Normal   Started             pod/messages-processor-5db6ccfc57-kttkl    Container started
+58s         Normal   Pulled              pod/messages-processor-5db6ccfc57-kttkl    Container image "busybox:1.36" already present on machine and can be accessed by the pod
+58s         Normal   Pulled              pod/messages-processor-5db6ccfc57-99ktr    Container image "busybox:1.36" already present on machine and can be accessed by the pod
+58s         Normal   Created             pod/messages-processor-5db6ccfc57-99ktr    Container created
+58s         Normal   Pulled              pod/messages-processor-5db6ccfc57-kttkl    Container image "ohmf-messages-processor:poddelete-20260610t035059366758z" already present on machine and can be accessed by the pod
+58s         Normal   Created             pod/messages-processor-5db6ccfc57-99ktr    Container created
+58s         Normal   Started             pod/messages-processor-5db6ccfc57-kttkl    Container started
+46s         Normal   Killing             pod/messages-processor-6f75d4dfff-9mvcp    Stopping container messages-processor
+46s         Normal   SuccessfulDelete    replicaset/messages-processor-6f75d4dfff   Deleted pod: messages-processor-6f75d4dfff-9mvcp
+46s         Normal   ScalingReplicaSet   deployment/messages-processor              Scaled down replica set messages-processor-6f75d4dfff from 1 to 0
