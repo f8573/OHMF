@@ -175,7 +175,13 @@ not sized for production:
 
 Real, dated run artifacts belong in [`results/`](results/README.md).
 
-Supported claims must match those artifacts exactly.
+Supported claims must match those artifacts exactly. Current M4 evidence under `results/`:
+
+| Artifact | What it shows |
+| --- | --- |
+| [2026-06-09-processor-scaling-matrix](results/2026-06-09-processor-scaling-4replicas-120msgsec-multisource.md) | Exact reconciliation at `120 msg/sec` with `4` processor replicas |
+| [2026-06-09-processor-pod-deletion-120msgsec](results/2026-06-09-processor-pod-deletion-120msgsec.md) | Kafka consumer group rebalanced after pod deletion; exact reconciliation not confirmed (Redis outage during run) |
+| [2026-06-10-processor-backlog-recovery-120msgsec](results/2026-06-10-processor-backlog-recovery-120msgsec.md) | Exact reconciliation after consumer-group drain and restore at `120 msg/sec` |
 
 ## Unsupported claims
 
@@ -188,5 +194,5 @@ These profiles do **not** support claims of:
 - NetworkPolicy or PodSecurity hardening
 - durable storage
 - backup/restore validation
-- benchmark throughput or latency
-- "zero loss" or large-client-count load-test results
+- benchmark throughput or latency beyond committed artifacts
+- "zero loss" generally or large-client-count load-test results

@@ -12,12 +12,11 @@ across multiple workers, at-least-once delivery with duplicate suppression, and 
 and to show those problems being solved with tests that pin the behavior down. It is a working
 development environment and a correctness case study, **not** a finished, production-operated system.
 
-> Status: actively developed. Core send/persist/deliver paths and reliability hardening are
-> implemented and unit/integration tested. Local single-node Kubernetes evidence now includes a
-> validated exact full-pipeline pass at `120 msg/sec` with `4` `messages-processor` replicas
-> across `12` source IPs, including a backlog recovery validation confirming exact reconciliation
-> after consumer group drain and restore. See [Limitations](#limitations) and
-> [Benchmarks](#benchmarks-and-load-testing).
+> **Validated 120 msg/sec local Kubernetes ingress with exact Kafka/Postgres/Cassandra
+> reconciliation across normal load, processor pod deletion/rebalance, and processor backlog
+> recovery** — all on a single-node local cluster, not production. Core send/persist/deliver paths
+> and reliability hardening are implemented and unit/integration tested. See
+> [Limitations](#limitations) and [Benchmarks](#benchmarks-and-load-testing).
 
 ## Why this exists
 
@@ -139,24 +138,31 @@ below. For the complete day-to-day local-hosting guide, see
 
 ## Benchmarks and load testing
 
-**Honest status:** the repository still does not contain a WebSocket concurrency harness, but it now
-does contain committed local benchmark artifacts under [`benchmarks/results/`](benchmarks/results/).
-Those artifacts currently support a Stage A smoke, per-user and per-IP limiter validations, the
-earlier unique-tag Stage B1 rerun ladder that passed exact full-pipeline reconciliation at `75`,
-`90`, and `105 msg/sec` across `12` source IPs, a processor-scaling matrix that validated a
-full-pipeline pass at `120 msg/sec` with `4` `messages-processor` replicas, and a backlog recovery
-validation at `120 msg/sec` confirming exact full-pipeline reconciliation after the consumer group
-was scaled to zero and restored mid-run. The `105 msg/sec` result remains the previous
-single-processor-supported passing rung. These artifacts do **not**
-substantiate large-client-count, client-observed HTTP accept latency, or production-throughput
-claims. The old `ohmf/services/gateway/_tools/e2ee-load-test.go` remains an in-process simulation
-of E2EE message *generation* - it does not open WebSocket connections, does not measure
-client-observed HTTP accept latency, and does not measure end-to-end message loss. Treat it as a
-micro-benchmark scaffold, not as evidence of system throughput.
+**Honest status:** the repository does not contain a WebSocket concurrency harness, but it does
+contain committed local benchmark artifacts under [`benchmarks/results/`](benchmarks/results/).
 
-Benchmark documentation is being consolidated under [benchmarks/](benchmarks/README.md), which
-describes what a credible run must capture (driver, environment, metrics, how message loss is
-defined, where sample output lives) so results can be reproduced rather than asserted.
+**M4 validation summary** — each row links to the committed artifact:
+
+| Scenario | Result | Artifact |
+| --- | --- | --- |
+| Normal load: `120 msg/sec`, `4` processors, `12` source IPs | Exact reconciliation — `74,700/74,700` accepted, Postgres `74,700`, Cassandra `74,700`, Kafka lag→`0` in `103s` | [processor-scaling-matrix](benchmarks/results/2026-06-09-processor-scaling-matrix/summary.json) |
+| Pod deletion/rebalance: one processor pod deleted mid-run at `120 msg/sec` | Kafka consumer group rebalanced (pod removed, replacement joined, group settled); exact full-pipeline reconciliation **not** confirmed — Redis outage during run caused `4,520` gateway 500s | [processor-pod-deletion-120msgsec](benchmarks/results/2026-06-09-processor-pod-deletion-120msgsec/summary.md) |
+| Backlog recovery: processors scaled to `0`, peak lag `18,021`, restored to `4` replicas | Exact reconciliation — `82,800/82,800` accepted, Postgres `82,800`, Cassandra `82,800`, missing `0`, duplicates `0`, lag→`0` | [processor-backlog-recovery-120msgsec](benchmarks/results/2026-06-10-processor-backlog-recovery-120msgsec/summary.md) |
+
+Path to these results: Stage A smoke at 5 msg/sec → per-user and per-IP limiter validations → Stage
+B1 rerun ladder confirming exact reconciliation at 75, 90, and 105 msg/sec (12 source IPs, 1
+processor). The `105 msg/sec` result remains the previous single-processor-supported rung. Earlier
+failures (60 msg/sec under-reconciliation traced to stale image; 120 msg/sec single-processor lag
+not settling) are preserved in the artifact history as diagnostic context.
+
+These artifacts do **not** substantiate large-client-count, client-observed HTTP accept latency,
+or production-throughput claims. The old `ohmf/services/gateway/_tools/e2ee-load-test.go` remains
+an in-process simulation of E2EE message *generation* — it does not open WebSocket connections,
+does not measure end-to-end message loss. Treat it as a micro-benchmark scaffold, not as system
+throughput evidence.
+
+Benchmark documentation is under [benchmarks/](benchmarks/README.md), which describes what a
+credible run must capture so results can be reproduced rather than asserted.
 
 ## Project structure
 
@@ -196,12 +202,12 @@ These are stated up front so the repo is read accurately:
   - a local HPA layer (`local-k3s-full-hpa`) that was smoke-tested against the gateway
 
   Recorded artifacts under [`deploy/k8s/results/`](deploy/k8s/results/) show
-  these profiles working on a real single-node cluster, including an async
-  `gateway/API -> Kafka -> processor -> Postgres/Cassandra` proof and a gateway
-  HPA smoke where replicas increased under synthetic load and later returned to
-  1 after load stopped. These artifacts do **not** support production
-  operations claims, Helm, multi-node resilience, durable storage, ingress/TLS,
-  network policy, or benchmark/performance claims.
+  these profiles working on a real single-node cluster: async
+  `gateway/API -> Kafka -> processor -> Postgres/Cassandra` proof, gateway HPA
+  smoke, and M4 load validations at 120 msg/sec (scaling matrix, pod
+  deletion/rebalance, backlog recovery). These artifacts do **not** support
+  production operations claims, Helm, multi-node resilience, durable storage,
+  ingress/TLS, network policy, or HA failover claims.
 - **Cassandra is in shadow-write mode.** It is wired up and written to, but reads default to Postgres
   (`APP_USE_CASSANDRA_READS=false`). The Cassandra read path is not the live serving path.
 - **No substantiated production load-test results.** See [Benchmarks](#benchmarks-and-load-testing).

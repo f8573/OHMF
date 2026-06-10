@@ -1,24 +1,22 @@
 # Production Readiness Gap
 
-Status: Stage A evidence exists, but production-readiness remains unsupported.
+Status: M4 local validation complete. Production-readiness remains unsupported and out of scope.
 
-This document exists to make the evidence boundary explicit. Even after local
-M4 validation, the following remain outside the supported claim boundary unless
-separately implemented and proven:
+This document makes the evidence boundary explicit. Even after M4 local Kubernetes validation,
+the following remain outside the supported claim boundary unless separately implemented and proven:
 
-- production-ready Kubernetes operations
+- production-ready Kubernetes operations (no Helm, no ingress/TLS, no NetworkPolicy, no PodSecurity)
 - HA or failover for Kafka, Cassandra, Postgres, or the gateway tier
-- ingress, TLS, NetworkPolicy, PodSecurity, secret rotation
-- backup and restore
-- durable production storage classes
-- end-to-end p95 latency claims
+- multi-node scheduling or multi-host resilience
+- durable production storage classes and backup/restore
+- end-to-end p95/p99 delivery latency claims
 - large-client concurrency claims beyond committed artifacts
+- zero-loss claims generally
 
-Rows will be filled during Stage E with concrete artifact links and gap notes.
+The M4 evidence supports only this bounded boundary:
 
-Current Stage A evidence does support only this narrower boundary:
-
-- local single-cluster deployment and restart validation
-- client-observed accept latency only
-- run-scoped reconciliation by fresh test conversation where possible
-- explicit documentation of the single-broker Kafka availability gap during restart
+- **Local single-node cluster** — normal load, processor pod deletion/Kafka consumer-group rebalance, and processor backlog recovery at `120 msg/sec`
+- **Exact Kafka/Postgres/Cassandra reconciliation** for the scaling-matrix and backlog-recovery committed artifacts
+- **Kafka consumer group rebalance** confirmed after pod deletion (exact reconciliation was not established for that run; Redis outage caused gateway failures)
+- **Client-observed HTTP accept latency** only — no server-internal latency claims
+- Explicit documentation of single-broker Kafka availability gap during restart (resilience overlay artifact)
