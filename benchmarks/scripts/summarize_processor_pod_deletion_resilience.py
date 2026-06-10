@@ -377,9 +377,12 @@ def render_stage_table(stage_by_pod, aggregate):
     return "\n".join(lines)
 
 
-def build_supported_claim(status):
+def build_supported_claim(status, aggregate_target_rate):
     if status == "passed":
-        return 'Validated 120 msg/sec local Kubernetes ingress with exact full-pipeline reconciliation during "messages-processor" pod deletion and Kafka consumer-group rebalance.'
+        return (
+            f'Validated {aggregate_target_rate} msg/sec local Kubernetes ingress with exact full-pipeline reconciliation '
+            'during "messages-processor" pod deletion and Kafka consumer-group rebalance.'
+        )
     return 'The pod-deletion resilience run did not establish the supported full-pipeline claim.'
 
 
@@ -776,7 +779,7 @@ def main():
         "HA or failover",
         "Any cloud or production benchmark interpretation",
     ]
-    if status != "passed":
+    if args.aggregate_target_rate != 120 or status != "passed":
         unsupported_claims.insert(0, "Validated 120 msg/sec local Kubernetes ingress with exact full-pipeline reconciliation during \"messages-processor\" pod deletion and Kafka consumer-group rebalance.")
 
     summary = {
@@ -839,7 +842,7 @@ def main():
             "by_pod": stage_by_pod,
             "aggregate": stage_counters,
         },
-        "supported_claim": build_supported_claim(status),
+        "supported_claim": build_supported_claim(status, args.aggregate_target_rate),
         "unsupported_claims": unsupported_claims,
         "diagnostics": {
             "gateway_500_cause": gateway_500_cause,

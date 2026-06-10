@@ -28,7 +28,7 @@ Pod-deletion resilience run **passed**.
 
 ## Claim boundary
 
-Validated 120 msg/sec local Kubernetes ingress with exact full-pipeline reconciliation during "messages-processor" pod deletion and Kafka consumer-group rebalance.
+Validated 105 msg/sec local Kubernetes ingress with exact full-pipeline reconciliation during "messages-processor" pod deletion and Kafka consumer-group rebalance.
 
 ## Stage counters
 

@@ -75,10 +75,11 @@
 
 ## Supported claim
 
-Validated 120 msg/sec local Kubernetes ingress with exact full-pipeline reconciliation during "messages-processor" pod deletion and Kafka consumer-group rebalance.
+Validated 105 msg/sec local Kubernetes ingress with exact full-pipeline reconciliation during "messages-processor" pod deletion and Kafka consumer-group rebalance.
 
 ## Unsupported claims
 
+- Validated 120 msg/sec local Kubernetes ingress with exact full-pipeline reconciliation during "messages-processor" pod deletion and Kafka consumer-group rebalance.
 - Any p95 or p99 delivery latency claim
 - 3,100 concurrent clients
 - Production readiness
