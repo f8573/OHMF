@@ -1,6 +1,6 @@
 # Validation Matrix
 
-Status: M4 validation complete on a local single-node cluster. Stage B1 confirmed exact reconciliation at 75/90/105 msg/sec (12 source IPs, 1 processor), then at 120 msg/sec with 4 `messages-processor` replicas (scaling matrix), including processor pod deletion/Kafka consumer-group rebalance evidence and a backlog recovery validation confirming exact full-pipeline reconciliation after consumer-group drain and restore. Stages B2-D remain not yet run.
+Status: M4 validation complete on a local single-node cluster. Stage B1 confirmed exact reconciliation at 75/90/105 msg/sec (12 source IPs, 1 processor), then at 120 msg/sec with 4 `messages-processor` replicas (scaling matrix). Backlog recovery confirmed exact full-pipeline reconciliation after consumer-group drain and restore. Processor pod deletion confirmed Kafka consumer-group rebalance only — exact full-pipeline reconciliation was not established for that run (Redis outage caused 4,520 gateway 500s). Stages B2-D remain not yet run.
 
 | Test | Status | Artifact | Notes |
 | --- | --- | --- | --- |
