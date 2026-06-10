@@ -1,6 +1,4 @@
-# OHMF Milestone 1 Foundation
-
-**Phase 1 Status**: COMPLETE (28/29 items, 96.6%)
+# OHMF — Gateway & Services
 
 ## Documentation
 
@@ -8,8 +6,6 @@
 - **iMessage reference**: [`IMESSAGE_COMPLETE_REFERENCE.md`](./IMESSAGE_COMPLETE_REFERENCE.md) - Current Apple Messages/iMessage capability reference used for parity decisions
 - **Parity plan**: [`OHMF_IMESSAGE_PARITY_PLAN.md`](./OHMF_IMESSAGE_PARITY_PLAN.md) - Justified build/cut/add roadmap for OHMF relative to iMessage
 - **Setup guide**: [`SETUP.md`](./SETUP.md) - Local development setup
-- **Phase 1 Report**: [`FINAL_SESSION_REPORT.md`](./ohmf/FINAL_SESSION_REPORT.md) - Completion metrics and deliverables
-- **Phase 2 Roadmap**: [`PHASE_2_ROADMAP.md`](./PHASE_2_ROADMAP.md) - Future work, blockers, priorities
 
 ## Local toolchain (non-admin)
 
@@ -21,8 +17,9 @@ Because system-wide installs were blocked by permissions, local binaries were in
 ## Build and test
 
 ```powershell
-$env:PATH="C:\Users\James\Downloads\Messages\ohmf\.tools\go\bin;C:\Users\James\Downloads\Messages\ohmf\.tools\bin;$env:PATH"
-cd C:\Users\James\Downloads\Messages\ohmf\services\gateway
+# From the ohmf/ directory
+$env:PATH="$PWD\.tools\go\bin;$PWD\.tools\bin;$env:PATH"
+cd services\gateway
 go mod tidy
 go build ./...
 go test ./...
@@ -33,7 +30,7 @@ go test ./integration -v
 ## Run with Docker Compose
 
 1. Start Docker Desktop.
-2. From repo root:
+2. From the `ohmf/` directory:
 
 ```powershell
 docker compose -f .\infra\docker\docker-compose.yml up -d --build

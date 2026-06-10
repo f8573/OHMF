@@ -18,6 +18,28 @@ development environment and a correctness case study, **not** a finished, produc
 > and reliability hardening are implemented and unit/integration tested. See
 > [Limitations](#limitations) and [Benchmarks](#benchmarks-and-load-testing).
 
+## What this demonstrates
+
+- **End-to-end backend ownership** — gateway, Kafka pipeline, message processors, persistence, and delivery in a single coherent system
+- **Distributed messaging pipeline design** — at-least-once delivery with duplicate suppression, per-conversation ordering, and idempotency under concurrent retries
+- **Real-time WebSocket / API behavior** — presence tracking, typing indicators, fan-out across pods via Redis pub/sub
+- **Load and failure-mode validation** — committed benchmark artifacts covering normal scaled load, processor pod deletion/rebalance, and consumer-group backlog recovery at 120 msg/sec on a local Kubernetes cluster
+- **Operational docs and reproducible workflows** — local Docker Compose and Kubernetes (k3s/k3d) bring-up, CI pipeline, and documented limitations
+
+## Benchmark evidence
+
+Full evidence chain for the M4 validation milestone:
+
+| Document | Contents |
+| --- | --- |
+| [docs/claims-and-evidence.md](docs/claims-and-evidence.md) | Per-claim status, artifact links, and supported claim boundary |
+| [docs/validation-matrix.md](docs/validation-matrix.md) | Test-by-test pass/fail table across all stages |
+| [benchmarks/results/2026-06-09-processor-scaling-matrix/summary.json](benchmarks/results/2026-06-09-processor-scaling-matrix/summary.json) | Normal scaled load: `4 replicas @ 120 msg/sec`, exact reconciliation |
+| [benchmarks/results/2026-06-10-processor-pod-deletion-120msgsec/summary.json](benchmarks/results/2026-06-10-processor-pod-deletion-120msgsec/summary.json) | Pod deletion/rebalance at `120 msg/sec`, exact reconciliation |
+| [benchmarks/results/2026-06-10-processor-backlog-recovery-120msgsec/summary.md](benchmarks/results/2026-06-10-processor-backlog-recovery-120msgsec/summary.md) | Backlog recovery at `120 msg/sec`, exact reconciliation after lag drain |
+
+All results are local single-node cluster only. See [Limitations](#limitations) for the full boundary.
+
 ## Why this exists
 
 Most "chat app" projects stop at create-read-update-delete over a database. The interesting and
@@ -53,9 +75,9 @@ layer (`overlays/local-k3s-full-hpa`). These support local single-node evidence
 only: they are not a production deployment package, not multi-node resilience
 evidence, not Helm, and not benchmark-validated. See `deploy/k8s/README.md`.
 
-Not currently in the repo: Helm charts, and standalone WebSocket load-test
-scripts or captured benchmark artifacts. These are referenced as design intent
-only and are called out below.
+Not currently in the repo: Helm charts and standalone WebSocket load-test client scripts
+(the benchmark load-generators run as Kubernetes Jobs, not standalone scripts). These are
+referenced as design intent only and are called out below.
 
 ## Architecture
 
