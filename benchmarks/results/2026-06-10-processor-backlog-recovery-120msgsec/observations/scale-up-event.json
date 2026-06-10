@@ -1,0 +1,7 @@
+{
+  "scale_up_at_utc": "2026-06-10T06:01:12Z",
+  "scale_up_at_epoch": 1781071272.5150537,
+  "scale_up_offset_seconds": 300,
+  "replicas_before": 0,
+  "replicas_after": 4
+}

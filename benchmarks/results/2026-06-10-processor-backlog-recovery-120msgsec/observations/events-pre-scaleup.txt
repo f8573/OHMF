@@ -1,0 +1,140 @@
+LAST SEEN   TYPE     REASON              OBJECT                                                      MESSAGE
+7m42s       Normal   Scheduled           pod/messages-processor-6c8568bc6f-s7zrv                     Successfully assigned ohmf/messages-processor-6c8568bc6f-s7zrv to k3d-ohmf-b1-server-0
+7m29s       Normal   Scheduled           pod/messages-processor-6c8568bc6f-t6drq                     Successfully assigned ohmf/messages-processor-6c8568bc6f-t6drq to k3d-ohmf-b1-server-0
+5m4s        Normal   Scheduled           pod/loadgen-processor-backlog-recovery-120msgsec-5-gz5tw    Successfully assigned ohmf/loadgen-processor-backlog-recovery-120msgsec-5-gz5tw to k3d-ohmf-b1-server-0
+7m42s       Normal   Scheduled           pod/apps-6bdfd8c5fd-br2kw                                   Successfully assigned ohmf/apps-6bdfd8c5fd-br2kw to k3d-ohmf-b1-server-0
+5m4s        Normal   Scheduled           pod/loadgen-processor-backlog-recovery-120msgsec-9-mnwpk    Successfully assigned ohmf/loadgen-processor-backlog-recovery-120msgsec-9-mnwpk to k3d-ohmf-b1-server-0
+5m4s        Normal   Scheduled           pod/loadgen-processor-backlog-recovery-120msgsec-8-nnjng    Successfully assigned ohmf/loadgen-processor-backlog-recovery-120msgsec-8-nnjng to k3d-ohmf-b1-server-0
+5m4s        Normal   Scheduled           pod/loadgen-processor-backlog-recovery-120msgsec-7-p9wcz    Successfully assigned ohmf/loadgen-processor-backlog-recovery-120msgsec-7-p9wcz to k3d-ohmf-b1-server-0
+5m4s        Normal   Scheduled           pod/loadgen-processor-backlog-recovery-120msgsec-0-vdqxd    Successfully assigned ohmf/loadgen-processor-backlog-recovery-120msgsec-0-vdqxd to k3d-ohmf-b1-server-0
+5m4s        Normal   Scheduled           pod/loadgen-processor-backlog-recovery-120msgsec-4-cdjgl    Successfully assigned ohmf/loadgen-processor-backlog-recovery-120msgsec-4-cdjgl to k3d-ohmf-b1-server-0
+5m4s        Normal   Scheduled           pod/loadgen-processor-backlog-recovery-120msgsec-6-nfdfr    Successfully assigned ohmf/loadgen-processor-backlog-recovery-120msgsec-6-nfdfr to k3d-ohmf-b1-server-0
+5m4s        Normal   Scheduled           pod/loadgen-processor-backlog-recovery-120msgsec-1-qlbld    Successfully assigned ohmf/loadgen-processor-backlog-recovery-120msgsec-1-qlbld to k3d-ohmf-b1-server-0
+7m28s       Normal   Scheduled           pod/messages-processor-6c8568bc6f-rsk8b                     Successfully assigned ohmf/messages-processor-6c8568bc6f-rsk8b to k3d-ohmf-b1-server-0
+7m42s       Normal   Scheduled           pod/messages-processor-6c8568bc6f-vmwcw                     Successfully assigned ohmf/messages-processor-6c8568bc6f-vmwcw to k3d-ohmf-b1-server-0
+5m4s        Normal   Scheduled           pod/loadgen-processor-backlog-recovery-120msgsec-3-dzmnw    Successfully assigned ohmf/loadgen-processor-backlog-recovery-120msgsec-3-dzmnw to k3d-ohmf-b1-server-0
+7m42s       Normal   Scheduled           pod/gateway-5dbb95477f-8ttqn                                Successfully assigned ohmf/gateway-5dbb95477f-8ttqn to k3d-ohmf-b1-server-0
+5m4s        Normal   Scheduled           pod/loadgen-processor-backlog-recovery-120msgsec-10-7k9sg   Successfully assigned ohmf/loadgen-processor-backlog-recovery-120msgsec-10-7k9sg to k3d-ohmf-b1-server-0
+5m4s        Normal   Scheduled           pod/loadgen-processor-backlog-recovery-120msgsec-2-vk877    Successfully assigned ohmf/loadgen-processor-backlog-recovery-120msgsec-2-vk877 to k3d-ohmf-b1-server-0
+5m4s        Normal   Scheduled           pod/loadgen-processor-backlog-recovery-120msgsec-11-9v9jh   Successfully assigned ohmf/loadgen-processor-backlog-recovery-120msgsec-11-9v9jh to k3d-ohmf-b1-server-0
+7m43s       Normal   ScalingReplicaSet   deployment/gateway                                          Scaled up replica set gateway-5dbb95477f from 0 to 1
+7m43s       Normal   SuccessfulCreate    replicaset/gateway-5dbb95477f                               Created pod: gateway-5dbb95477f-8ttqn
+7m43s       Normal   SuccessfulCreate    replicaset/apps-6bdfd8c5fd                                  Created pod: apps-6bdfd8c5fd-br2kw
+7m43s       Normal   ScalingReplicaSet   deployment/apps                                             Scaled up replica set apps-6bdfd8c5fd from 0 to 1
+7m42s       Normal   Pulled              pod/messages-processor-6c8568bc6f-s7zrv                     Container image "busybox:1.36" already present on machine and can be accessed by the pod
+7m42s       Normal   ScalingReplicaSet   deployment/messages-processor                               Scaled up replica set messages-processor-6c8568bc6f from 1 to 2
+7m42s       Normal   Killing             pod/messages-processor-5db6ccfc57-vvcj6                     Stopping container messages-processor
+7m42s       Normal   SuccessfulDelete    replicaset/messages-processor-5db6ccfc57                    Deleted pod: messages-processor-5db6ccfc57-vvcj6
+7m42s       Normal   Pulled              pod/apps-6bdfd8c5fd-br2kw                                   Container image "busybox:1.36" already present on machine and can be accessed by the pod
+7m42s       Normal   SuccessfulCreate    replicaset/messages-processor-6c8568bc6f                    Created pod: messages-processor-6c8568bc6f-s7zrv
+7m42s       Normal   SuccessfulCreate    replicaset/messages-processor-6c8568bc6f                    Created pod: messages-processor-6c8568bc6f-vmwcw
+7m42s       Normal   Pulled              pod/gateway-5dbb95477f-8ttqn                                Container image "busybox:1.36" already present on machine and can be accessed by the pod
+7m42s       Normal   Created             pod/gateway-5dbb95477f-8ttqn                                Container created
+7m42s       Normal   ScalingReplicaSet   deployment/messages-processor                               Scaled up replica set messages-processor-6c8568bc6f from 0 to 1
+7m42s       Normal   ScalingReplicaSet   deployment/messages-processor                               Scaled down replica set messages-processor-5db6ccfc57 from 4 to 3
+7m41s       Normal   Started             pod/apps-6bdfd8c5fd-br2kw                                   Container started
+7m41s       Normal   Created             pod/apps-6bdfd8c5fd-br2kw                                   Container created
+7m41s       Normal   Started             pod/gateway-5dbb95477f-8ttqn                                Container started
+7m41s       Normal   Started             pod/gateway-5dbb95477f-8ttqn                                Container started
+7m41s       Normal   Pulled              pod/gateway-5dbb95477f-8ttqn                                Container image "ohmf-gateway:backlog-20260610t055254432798z" already present on machine and can be accessed by the pod
+7m41s       Normal   Started             pod/messages-processor-6c8568bc6f-s7zrv                     Container started
+7m41s       Normal   Started             pod/messages-processor-6c8568bc6f-s7zrv                     Container started
+7m41s       Normal   Created             pod/messages-processor-6c8568bc6f-s7zrv                     Container created
+7m41s       Normal   Created             pod/messages-processor-6c8568bc6f-s7zrv                     Container created
+7m41s       Normal   Started             pod/messages-processor-6c8568bc6f-vmwcw                     Container started
+7m41s       Normal   Pulled              pod/messages-processor-6c8568bc6f-s7zrv                     Container image "ohmf-messages-processor:backlog-20260610t055254432798z" already present on machine and can be accessed by the pod
+7m41s       Normal   Pulled              pod/apps-6bdfd8c5fd-br2kw                                   Container image "ohmf-apps:backlog-20260610t055254432798z" already present on machine and can be accessed by the pod
+7m41s       Normal   Created             pod/apps-6bdfd8c5fd-br2kw                                   Container created
+7m41s       Normal   Started             pod/apps-6bdfd8c5fd-br2kw                                   Container started
+7m41s       Normal   Created             pod/gateway-5dbb95477f-8ttqn                                Container created
+7m41s       Normal   Pulled              pod/messages-processor-6c8568bc6f-vmwcw                     Container image "busybox:1.36" already present on machine and can be accessed by the pod
+7m41s       Normal   Created             pod/messages-processor-6c8568bc6f-vmwcw                     Container created
+7m40s       Normal   Created             pod/messages-processor-6c8568bc6f-vmwcw                     Container created
+7m40s       Normal   Started             pod/messages-processor-6c8568bc6f-vmwcw                     Container started
+7m40s       Normal   Pulled              pod/messages-processor-6c8568bc6f-vmwcw                     Container image "ohmf-messages-processor:backlog-20260610t055254432798z" already present on machine and can be accessed by the pod
+7m34s       Normal   ScalingReplicaSet   deployment/gateway                                          Scaled down replica set gateway-59c66ffd6c from 1 to 0
+7m34s       Normal   Killing             pod/apps-86b4f77486-6bfdh                                   Stopping container apps
+7m34s       Normal   SuccessfulDelete    replicaset/gateway-59c66ffd6c                               Deleted pod: gateway-59c66ffd6c-pd8dw
+7m34s       Normal   SuccessfulDelete    replicaset/apps-86b4f77486                                  Deleted pod: apps-86b4f77486-6bfdh
+7m34s       Normal   ScalingReplicaSet   deployment/apps                                             Scaled down replica set apps-86b4f77486 from 1 to 0
+7m34s       Normal   Killing             pod/gateway-59c66ffd6c-pd8dw                                Stopping container gateway
+7m29s       Normal   ScalingReplicaSet   deployment/messages-processor                               Scaled down replica set messages-processor-5db6ccfc57 from 3 to 2
+7m29s       Normal   SuccessfulCreate    replicaset/messages-processor-6c8568bc6f                    Created pod: messages-processor-6c8568bc6f-t6drq
+7m29s       Normal   Killing             pod/messages-processor-5db6ccfc57-hzc48                     Stopping container messages-processor
+7m29s       Normal   ScalingReplicaSet   deployment/messages-processor                               Scaled up replica set messages-processor-6c8568bc6f from 2 to 3
+7m29s       Normal   SuccessfulDelete    replicaset/messages-processor-5db6ccfc57                    Deleted pod: messages-processor-5db6ccfc57-hzc48
+7m28s       Normal   Started             pod/messages-processor-6c8568bc6f-t6drq                     Container started
+7m28s       Normal   Pulled              pod/messages-processor-6c8568bc6f-t6drq                     Container image "ohmf-messages-processor:backlog-20260610t055254432798z" already present on machine and can be accessed by the pod
+7m28s       Normal   SuccessfulCreate    replicaset/messages-processor-6c8568bc6f                    Created pod: messages-processor-6c8568bc6f-rsk8b
+7m28s       Normal   Created             pod/messages-processor-6c8568bc6f-t6drq                     Container created
+7m28s       Normal   Killing             pod/messages-processor-5db6ccfc57-kttkl                     Stopping container messages-processor
+7m28s       Normal   ScalingReplicaSet   deployment/messages-processor                               Scaled up replica set messages-processor-6c8568bc6f from 3 to 4
+7m28s       Normal   Pulled              pod/messages-processor-6c8568bc6f-t6drq                     Container image "busybox:1.36" already present on machine and can be accessed by the pod
+7m28s       Normal   ScalingReplicaSet   deployment/messages-processor                               Scaled down replica set messages-processor-5db6ccfc57 from 2 to 1
+7m28s       Normal   Created             pod/messages-processor-6c8568bc6f-t6drq                     Container created
+7m28s       Normal   SuccessfulDelete    replicaset/messages-processor-5db6ccfc57                    Deleted pod: messages-processor-5db6ccfc57-kttkl
+7m27s       Normal   Created             pod/messages-processor-6c8568bc6f-rsk8b                     Container created
+7m27s       Normal   Pulled              pod/messages-processor-6c8568bc6f-rsk8b                     Container image "busybox:1.36" already present on machine and can be accessed by the pod
+7m27s       Normal   Created             pod/messages-processor-6c8568bc6f-rsk8b                     Container created
+7m27s       Normal   Started             pod/messages-processor-6c8568bc6f-rsk8b                     Container started
+7m27s       Normal   Pulled              pod/messages-processor-6c8568bc6f-rsk8b                     Container image "ohmf-messages-processor:backlog-20260610t055254432798z" already present on machine and can be accessed by the pod
+7m27s       Normal   Started             pod/messages-processor-6c8568bc6f-t6drq                     Container started
+7m27s       Normal   Started             pod/messages-processor-6c8568bc6f-rsk8b                     Container started
+7m16s       Normal   SuccessfulDelete    replicaset/messages-processor-5db6ccfc57                    Deleted pod: messages-processor-5db6ccfc57-qpxxk
+7m16s       Normal   Killing             pod/messages-processor-5db6ccfc57-qpxxk                     Stopping container messages-processor
+7m16s       Normal   ScalingReplicaSet   deployment/messages-processor                               Scaled down replica set messages-processor-5db6ccfc57 from 1 to 0
+6m29s       Normal   ScalingReplicaSet   deployment/messages-processor                               Scaled down replica set messages-processor-6c8568bc6f from 4 to 0
+6m29s       Normal   SuccessfulDelete    replicaset/messages-processor-6c8568bc6f                    Deleted pod: messages-processor-6c8568bc6f-t6drq
+6m29s       Normal   Killing             pod/messages-processor-6c8568bc6f-s7zrv                     Stopping container messages-processor
+6m29s       Normal   SuccessfulDelete    replicaset/messages-processor-6c8568bc6f                    Deleted pod: messages-processor-6c8568bc6f-s7zrv
+6m29s       Normal   SuccessfulDelete    replicaset/messages-processor-6c8568bc6f                    Deleted pod: messages-processor-6c8568bc6f-rsk8b
+6m29s       Normal   SuccessfulDelete    replicaset/messages-processor-6c8568bc6f                    Deleted pod: messages-processor-6c8568bc6f-vmwcw
+6m29s       Normal   Killing             pod/messages-processor-6c8568bc6f-rsk8b                     Stopping container messages-processor
+6m29s       Normal   Killing             pod/messages-processor-6c8568bc6f-vmwcw                     Stopping container messages-processor
+6m29s       Normal   Killing             pod/messages-processor-6c8568bc6f-t6drq                     Stopping container messages-processor
+5m4s        Normal   SuccessfulCreate    job/loadgen-processor-backlog-recovery-120msgsec            Created pod: loadgen-processor-backlog-recovery-120msgsec-1-qlbld
+5m4s        Normal   SuccessfulCreate    job/loadgen-processor-backlog-recovery-120msgsec            Created pod: loadgen-processor-backlog-recovery-120msgsec-0-vdqxd
+5m4s        Normal   SuccessfulCreate    job/loadgen-processor-backlog-recovery-120msgsec            Created pod: loadgen-processor-backlog-recovery-120msgsec-2-vk877
+5m4s        Normal   SuccessfulCreate    job/loadgen-processor-backlog-recovery-120msgsec            Created pod: loadgen-processor-backlog-recovery-120msgsec-5-gz5tw
+5m4s        Normal   SuccessfulCreate    job/loadgen-processor-backlog-recovery-120msgsec            Created pod: loadgen-processor-backlog-recovery-120msgsec-6-nfdfr
+5m4s        Normal   SuccessfulCreate    job/loadgen-processor-backlog-recovery-120msgsec            Created pod: loadgen-processor-backlog-recovery-120msgsec-3-dzmnw
+5m4s        Normal   SuccessfulCreate    job/loadgen-processor-backlog-recovery-120msgsec            Created pod: loadgen-processor-backlog-recovery-120msgsec-4-cdjgl
+5m4s        Normal   SuccessfulCreate    job/loadgen-processor-backlog-recovery-120msgsec            (combined from similar events): Created pod: loadgen-processor-backlog-recovery-120msgsec-9-mnwpk
+5m4s        Normal   SuccessfulCreate    job/loadgen-processor-backlog-recovery-120msgsec            Created pod: loadgen-processor-backlog-recovery-120msgsec-11-9v9jh
+5m4s        Normal   SuccessfulCreate    job/loadgen-processor-backlog-recovery-120msgsec            Created pod: loadgen-processor-backlog-recovery-120msgsec-8-nnjng
+5m3s        Normal   Pulled              pod/loadgen-processor-backlog-recovery-120msgsec-1-qlbld    Container image "ohmf-loadgen:dev" already present on machine and can be accessed by the pod
+5m3s        Normal   Pulled              pod/loadgen-processor-backlog-recovery-120msgsec-0-vdqxd    Container image "ohmf-loadgen:dev" already present on machine and can be accessed by the pod
+5m2s        Normal   Pulled              pod/loadgen-processor-backlog-recovery-120msgsec-9-mnwpk    Container image "ohmf-loadgen:dev" already present on machine and can be accessed by the pod
+5m2s        Normal   Pulled              pod/loadgen-processor-backlog-recovery-120msgsec-11-9v9jh   Container image "ohmf-loadgen:dev" already present on machine and can be accessed by the pod
+5m2s        Normal   Created             pod/loadgen-processor-backlog-recovery-120msgsec-0-vdqxd    Container created
+5m2s        Normal   Started             pod/loadgen-processor-backlog-recovery-120msgsec-0-vdqxd    Container started
+5m2s        Normal   Created             pod/loadgen-processor-backlog-recovery-120msgsec-1-qlbld    Container created
+5m2s        Normal   Pulled              pod/loadgen-processor-backlog-recovery-120msgsec-8-nnjng    Container image "ohmf-loadgen:dev" already present on machine and can be accessed by the pod
+5m2s        Normal   Started             pod/loadgen-processor-backlog-recovery-120msgsec-1-qlbld    Container started
+5m2s        Normal   Pulled              pod/loadgen-processor-backlog-recovery-120msgsec-10-7k9sg   Container image "ohmf-loadgen:dev" already present on machine and can be accessed by the pod
+5m2s        Normal   Pulled              pod/loadgen-processor-backlog-recovery-120msgsec-7-p9wcz    Container image "ohmf-loadgen:dev" already present on machine and can be accessed by the pod
+5m2s        Normal   Pulled              pod/loadgen-processor-backlog-recovery-120msgsec-3-dzmnw    Container image "ohmf-loadgen:dev" already present on machine and can be accessed by the pod
+5m2s        Normal   Created             pod/loadgen-processor-backlog-recovery-120msgsec-6-nfdfr    Container created
+5m2s        Normal   Pulled              pod/loadgen-processor-backlog-recovery-120msgsec-6-nfdfr    Container image "ohmf-loadgen:dev" already present on machine and can be accessed by the pod
+5m2s        Normal   Started             pod/loadgen-processor-backlog-recovery-120msgsec-5-gz5tw    Container started
+5m2s        Normal   Created             pod/loadgen-processor-backlog-recovery-120msgsec-5-gz5tw    Container created
+5m2s        Normal   Pulled              pod/loadgen-processor-backlog-recovery-120msgsec-5-gz5tw    Container image "ohmf-loadgen:dev" already present on machine and can be accessed by the pod
+5m2s        Normal   Pulled              pod/loadgen-processor-backlog-recovery-120msgsec-2-vk877    Container image "ohmf-loadgen:dev" already present on machine and can be accessed by the pod
+5m2s        Normal   Created             pod/loadgen-processor-backlog-recovery-120msgsec-2-vk877    Container created
+5m2s        Normal   Pulled              pod/loadgen-processor-backlog-recovery-120msgsec-4-cdjgl    Container image "ohmf-loadgen:dev" already present on machine and can be accessed by the pod
+5m2s        Normal   Started             pod/loadgen-processor-backlog-recovery-120msgsec-2-vk877    Container started
+5m2s        Normal   Created             pod/loadgen-processor-backlog-recovery-120msgsec-3-dzmnw    Container created
+5m1s        Normal   Started             pod/loadgen-processor-backlog-recovery-120msgsec-6-nfdfr    Container started
+5m1s        Normal   Started             pod/loadgen-processor-backlog-recovery-120msgsec-3-dzmnw    Container started
+5m1s        Normal   Created             pod/loadgen-processor-backlog-recovery-120msgsec-4-cdjgl    Container created
+5m1s        Normal   Started             pod/loadgen-processor-backlog-recovery-120msgsec-4-cdjgl    Container started
+5m1s        Normal   Started             pod/loadgen-processor-backlog-recovery-120msgsec-11-9v9jh   Container started
+5m1s        Normal   Created             pod/loadgen-processor-backlog-recovery-120msgsec-11-9v9jh   Container created
+5m1s        Normal   Started             pod/loadgen-processor-backlog-recovery-120msgsec-9-mnwpk    Container started
+5m1s        Normal   Started             pod/loadgen-processor-backlog-recovery-120msgsec-10-7k9sg   Container started
+5m1s        Normal   Created             pod/loadgen-processor-backlog-recovery-120msgsec-10-7k9sg   Container created
+5m1s        Normal   Created             pod/loadgen-processor-backlog-recovery-120msgsec-7-p9wcz    Container created
+5m1s        Normal   Started             pod/loadgen-processor-backlog-recovery-120msgsec-7-p9wcz    Container started
+5m1s        Normal   Created             pod/loadgen-processor-backlog-recovery-120msgsec-8-nnjng    Container created
+5m1s        Normal   Started             pod/loadgen-processor-backlog-recovery-120msgsec-8-nnjng    Container started
+5m1s        Normal   Created             pod/loadgen-processor-backlog-recovery-120msgsec-9-mnwpk    Container created

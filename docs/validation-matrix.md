@@ -1,6 +1,6 @@
 # Validation Matrix
 
-Status: Stage A complete. Stage B1 now has per-user limiter evidence, per-IP limiter evidence, and the earlier unique-tag rerun ladder that passed 75/90/105 msg/sec with exact processor-stage reconciliation; a new processor-scaling matrix now validates 120 msg/sec with 4 `messages-processor` replicas. Stages B2-D remain not yet run.
+Status: Stage A complete. Stage B1 now has per-user limiter evidence, per-IP limiter evidence, the earlier unique-tag rerun ladder that passed 75/90/105 msg/sec with exact processor-stage reconciliation, a processor-scaling matrix that validates 120 msg/sec with 4 `messages-processor` replicas, and a backlog recovery validation at 120 msg/sec confirming exact full-pipeline reconciliation after Kafka consumer group drain and restore. Stages B2-D remain not yet run.
 
 | Test | Status | Artifact | Notes |
 | --- | --- | --- | --- |
@@ -13,7 +13,7 @@ Status: Stage A complete. Stage B1 now has per-user limiter evidence, per-IP lim
 | Stage B1 rerun throughput ladder (`75/90/105/120 msg/sec`, 12 source IPs) | bounded throughput result | [2026-06-08-stage-b1-rerun-throughput](C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-08-stage-b1-rerun-throughput/summary.md) | Unique-tag rollout plus processor stage instrumentation passed exact reconciliation at `75`, `90`, and `105 msg/sec`; the `120 msg/sec for 600s` rung accepted `74685/74700`, but only consumed `46568`, committed `46567`, left Kafka lag at `28212`, and did not settle within `903s` |
 | Processor scaling matrix (`1/2/4 replicas @ 105/120 msg/sec`) | validated | [2026-06-09-processor-scaling-matrix](C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-09-processor-scaling-matrix/summary.md) | The clean `4 replicas @ 120 msg/sec` cell passed with exact reconciliation (`74,700/74,700` accepted, `74,700` Postgres rows, `74,700` Cassandra rows, Kafka lag `0` in `103.145s`). The standalone `2 replicas @ 105 msg/sec` rerun passed, but the strict six-cell matrix rollup marks that cell failed because the original rung required recovery after runner interruption and did not satisfy the matrix's exact evidence rules. |
 | Burst ladder | not yet run | not yet run | Publish highest repeatable passing only |
-| Backlog recovery | not yet run | not yet run | Reconcile by run_id / conversation |
+| Backlog recovery at 120 msg/sec | passed | [2026-06-10-processor-backlog-recovery-120msgsec](C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-10-processor-backlog-recovery-120msgsec/summary.md) | Scaled processor to 0, accumulated 18,021 Kafka lag, scaled back to 4; lag drained to 0; `accepted=82800`, `pg_exact=82800`, `cass_exact=82800`, `missing=0`, `duplicates=0`, `restart_deltas={}` |
 | Gateway failure | not yet run | not yet run | Hard failures itemized |
 | Kafka restart | not yet run | not yet run | Single-broker availability gap must be documented |
 | Cassandra restart | not yet run | not yet run | Postgres remains authoritative |

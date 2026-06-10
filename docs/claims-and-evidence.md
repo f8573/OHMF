@@ -1,6 +1,6 @@
 # Claims And Evidence
 
-Status: Stage A complete. Stage B1 now includes front-door limiter evidence, the earlier unique-tag rerun ladder, and a processor-scaling matrix that establishes a current exact full-pipeline pass at 120 msg/sec with 4 `messages-processor` replicas. The `105 msg/sec` rung remains the previous single-processor-supported result. Later stages remain not yet run.
+Status: Stage A complete. Stage B1 now includes front-door limiter evidence, the earlier unique-tag rerun ladder, a processor-scaling matrix that establishes a clean full-pipeline pass at 120 msg/sec with 4 `messages-processor` replicas, and a backlog recovery validation at 120 msg/sec. The `105 msg/sec` rung remains the previous single-processor-supported result. Later stages remain not yet run.
 
 | Claim | Status | Evidence artifact | Notes |
 | --- | --- | --- | --- |
@@ -15,7 +15,8 @@ Status: Stage A complete. Stage B1 now includes front-door limiter evidence, the
 | Full local Kubernetes pipeline currently reconciles at 120 msg/sec with 4 messages-processor replicas | validated | [2026-06-09-processor-scaling-matrix](C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-09-processor-scaling-matrix/summary.md) | The clean `4 replicas @ 120 msg/sec` cell accepted `74,700/74,700`, wrote `74,700` rows to Postgres and Cassandra, committed `74,700` offsets, and returned Kafka lag to `0` in `103.145s` |
 | Full local Kubernetes pipeline previously reconciled at 105 msg/sec with 1 messages-processor replica | prior supported result | [2026-06-08-stage-b1-rerun-throughput](C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-08-stage-b1-rerun-throughput/summary.md) | Unique-tag rerun across `12` source IPs passed `75`, `90`, and `105 msg/sec` with exact reconciliation; the `120 msg/sec for 600s` rung accepted `74685/74700`, consumed `46568`, committed `46567`, and left Kafka lag at `28212` after `903s` |
 | Burst local throughput claim | not yet run | not yet run | Must publish highest repeatable passing level only |
-| Local restart/recovery claim | partially supported | [2026-06-08-local-k3s-resilience-kafka-restart.md](C:/Users/James/Downloads/Messages/deploy/k8s/results/2026-06-08-local-k3s-resilience-kafka-restart.md) | Single-node local PVC only; no HA or failover claim |
+| Local restart/recovery claim | supported | [2026-06-10-processor-backlog-recovery-120msgsec](C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-10-processor-backlog-recovery-120msgsec/summary.md) | Validated backlog recovery: processor scaled to 0 while load ran, Kafka accumulated 18,021 lag, processor scaled to 4, lag drained to 0; exact full-pipeline reconciliation (`82800/82800`) confirmed; no HA or failover claim |
+| Pod-deletion resilience at 120 msg/sec | passed | [2026-06-09-processor-pod-deletion-120msgsec](C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-09-processor-pod-deletion-120msgsec/summary.md) | Single pod deleted mid-run; Kafka consumer group recovered; full reconciliation confirmed |
 
 Supported claim boundary:
 
@@ -23,6 +24,6 @@ Supported claim boundary:
 - client-observed accept latency only
 - host-driven aggregate evidence remains bounded by gateway per-IP limiting
 - the earlier clean multisource aggregate evidence showed gateway ingress near `120 msg/sec`, but on its own did not support backend end-to-end persistence/reconciliation at that rate
-- current clean full-pipeline claim boundary is `120 msg/sec` with `4` `messages-processor` replicas in this local configuration
+- current clean full-pipeline claim boundary is `120 msg/sec` with `4` `messages-processor` replicas in this local configuration, validated under both steady-state and backlog-recovery conditions
 - A prior 60 msg/sec under-reconciliation result was traced to stale container image deployment; subsequent unique-tag rollout with processor stage instrumentation reconciled exactly.
 - no production, HA, failover, or durability claims without separate evidence

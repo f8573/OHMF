@@ -15,8 +15,8 @@ development environment and a correctness case study, **not** a finished, produc
 > Status: actively developed. Core send/persist/deliver paths and reliability hardening are
 > implemented and unit/integration tested. Local single-node Kubernetes evidence now includes a
 > validated exact full-pipeline pass at `120 msg/sec` with `4` `messages-processor` replicas
-> across `12` source IPs. The earlier `105 msg/sec` result remains the previous
-> single-processor-supported passing rung. See [Limitations](#limitations) and
+> across `12` source IPs, including a backlog recovery validation confirming exact reconciliation
+> after consumer group drain and restore. See [Limitations](#limitations) and
 > [Benchmarks](#benchmarks-and-load-testing).
 
 ## Why this exists
@@ -143,9 +143,11 @@ below. For the complete day-to-day local-hosting guide, see
 does contain committed local benchmark artifacts under [`benchmarks/results/`](benchmarks/results/).
 Those artifacts currently support a Stage A smoke, per-user and per-IP limiter validations, the
 earlier unique-tag Stage B1 rerun ladder that passed exact full-pipeline reconciliation at `75`,
-`90`, and `105 msg/sec` across `12` source IPs, and a processor-scaling matrix that validated a
-full-pipeline pass at `120 msg/sec` with `4` `messages-processor` replicas. The `105 msg/sec`
-result remains the previous single-processor-supported passing rung. These artifacts do **not**
+`90`, and `105 msg/sec` across `12` source IPs, a processor-scaling matrix that validated a
+full-pipeline pass at `120 msg/sec` with `4` `messages-processor` replicas, and a backlog recovery
+validation at `120 msg/sec` confirming exact full-pipeline reconciliation after the consumer group
+was scaled to zero and restored mid-run. The `105 msg/sec` result remains the previous
+single-processor-supported passing rung. These artifacts do **not**
 substantiate large-client-count, client-observed HTTP accept latency, or production-throughput
 claims. The old `ohmf/services/gateway/_tools/e2ee-load-test.go` remains an in-process simulation
 of E2EE message *generation* - it does not open WebSocket connections, does not measure

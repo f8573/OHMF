@@ -1,0 +1,14 @@
+
+GROUP                 TOPIC           PARTITION  CURRENT-OFFSET  LOG-END-OFFSET  LAG             CONSUMER-ID     HOST            CLIENT-ID
+messages-processor-v1 msg.ingress.v1  8          75116           76998           1882            -               -               -
+messages-processor-v1 msg.ingress.v1  4          76294           77233           939             -               -               -
+messages-processor-v1 msg.ingress.v1  2          73213           74270           1057            -               -               -
+messages-processor-v1 msg.ingress.v1  3          68672           69669           997             -               -               -
+messages-processor-v1 msg.ingress.v1  0          84066           84654           588             -               -               -
+messages-processor-v1 msg.ingress.v1  6          73690           75218           1528            -               -               -
+messages-processor-v1 msg.ingress.v1  9          71839           73599           1760            -               -               -
+messages-processor-v1 msg.ingress.v1  10         62671           64427           1756            -               -               -
+messages-processor-v1 msg.ingress.v1  5          78487           79954           1467            -               -               -
+messages-processor-v1 msg.ingress.v1  11         65612           67435           1823            -               -               -
+messages-processor-v1 msg.ingress.v1  1          70776           72892           2116            -               -               -
+messages-processor-v1 msg.ingress.v1  7          83209           84909           1700            -               -               -
