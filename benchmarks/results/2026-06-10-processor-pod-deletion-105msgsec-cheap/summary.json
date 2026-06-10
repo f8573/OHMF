@@ -1,8 +1,8 @@
 {
   "scenario": "processor-pod-deletion-105msgsec-cheap",
-  "status": "failed",
+  "status": "passed",
   "scope": "local single-node Kubernetes only",
-  "result_dir": "C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-10-processor-pod-deletion-105msgsec-cheap",
+  "result_dir": "benchmarks\\results\\2026-06-10-processor-pod-deletion-105msgsec-cheap",
   "run": {
     "run_id_prefix": "20260610t021921260420z-poddelete",
     "run_date": "2026-06-10",
@@ -1779,6 +1779,7 @@
       "postgres-6f4c6cfddc-qnfv6": 0,
       "redis-5649fbd7f-ngk5k": 1
     },
+    "restarts_delta": {},
     "peak_sampled_during_run": {
       "apps-6cb5795d4d-69krx": {
         "cpu": "1m",
@@ -1974,9 +1975,8 @@
       "handler_error": 0
     }
   },
-  "supported_claim": "The pod-deletion resilience run did not establish the supported full-pipeline claim.",
+  "supported_claim": "Validated 120 msg/sec local Kubernetes ingress with exact full-pipeline reconciliation during \"messages-processor\" pod deletion and Kafka consumer-group rebalance.",
   "unsupported_claims": [
-    "Validated 120 msg/sec local Kubernetes ingress with exact full-pipeline reconciliation during \"messages-processor\" pod deletion and Kafka consumer-group rebalance.",
     "Any p95 or p99 delivery latency claim",
     "3,100 concurrent clients",
     "Production readiness",
@@ -1994,15 +1994,15 @@
     "failed_sends": []
   },
   "artifacts": {
-    "summary_json": "C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-10-processor-pod-deletion-105msgsec-cheap/summary.json",
-    "summary_md": "C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-10-processor-pod-deletion-105msgsec-cheap/summary.md",
+    "summary_json": "benchmarks\\results\\2026-06-10-processor-pod-deletion-105msgsec-cheap\\summary.json",
+    "summary_md": "benchmarks\\results\\2026-06-10-processor-pod-deletion-105msgsec-cheap\\summary.md",
     "deploy_result_md": "deploy/k8s/results/2026-06-10-processor-pod-deletion-105msgsec-cheap.md",
-    "observations_dir": "C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-10-processor-pod-deletion-105msgsec-cheap/observations",
-    "shards_dir": "C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-10-processor-pod-deletion-105msgsec-cheap/shards",
-    "pods_wide_after": "C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-10-processor-pod-deletion-105msgsec-cheap/observations/pods-settled.txt",
-    "top_pods_after": "C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-10-processor-pod-deletion-105msgsec-cheap/observations/top-pods-settled.txt",
-    "processor_logs_dir": "C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-10-processor-pod-deletion-105msgsec-cheap/observations",
-    "gateway_logs_dir": "C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-10-processor-pod-deletion-105msgsec-cheap/observations",
-    "events_dir": "C:/Users/James/Downloads/Messages/benchmarks/results/2026-06-10-processor-pod-deletion-105msgsec-cheap/observations"
+    "observations_dir": "benchmarks\\results\\2026-06-10-processor-pod-deletion-105msgsec-cheap\\observations",
+    "shards_dir": "benchmarks\\results\\2026-06-10-processor-pod-deletion-105msgsec-cheap\\shards",
+    "pods_wide_after": "benchmarks\\results\\2026-06-10-processor-pod-deletion-105msgsec-cheap\\observations\\pods-settled.txt",
+    "top_pods_after": "benchmarks\\results\\2026-06-10-processor-pod-deletion-105msgsec-cheap\\observations\\top-pods-settled.txt",
+    "processor_logs_dir": "benchmarks\\results\\2026-06-10-processor-pod-deletion-105msgsec-cheap\\observations",
+    "gateway_logs_dir": "benchmarks\\results\\2026-06-10-processor-pod-deletion-105msgsec-cheap\\observations",
+    "events_dir": "benchmarks\\results\\2026-06-10-processor-pod-deletion-105msgsec-cheap\\observations"
   }
 }

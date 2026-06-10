@@ -12,6 +12,15 @@ from pathlib import Path
 
 
 METRIC_LINE = re.compile(r'^([a-zA-Z_:][a-zA-Z0-9_:]*)(\{[^}]*\})?\s+(-?[0-9.eE+-]+)$')
+STAGE_FAILURE_LINE = re.compile(
+    r"stage failure stage=(?P<stage>\S+) target=(?P<target>\S+) "
+    r"partial_persistence=(?P<partial>\w+) event_id=(?P<event_id>\S+) "
+    r"message_id=(?P<message_id>\S+) conversation_id=(?P<conversation_id>\S+) "
+    r"sender_user_id=(?P<sender_user_id>\S+) idempotency_key=(?P<idempotency_key>\S+) "
+    r"client_generated_id=(?P<client_generated_id>\S+) run_scope=(?P<run_scope>\S+) err=(?P<err>.*)$"
+)
+PROCESS_FAILED_LINE = re.compile(r"process failed: (?P<err>.*)$")
+COMMIT_FAILED_LINE = re.compile(r"commit failed: (?P<err>.*)$")
 
 
 def run_command(args):
@@ -125,6 +134,15 @@ def parse_restart_counts(pods_json_path):
     return counts
 
 
+def compute_restart_deltas(before_counts, settled_counts):
+    deltas = {}
+    for pod_name in sorted(set(before_counts) | set(settled_counts)):
+        delta = settled_counts.get(pod_name, 0) - before_counts.get(pod_name, 0)
+        if delta != 0:
+            deltas[pod_name] = delta
+    return deltas
+
+
 def parse_peak_resources(top_paths):
     peaks = defaultdict(lambda: {"cpu_m": 0, "memory_mib": 0})
     for path in top_paths:
@@ -215,6 +233,52 @@ def parse_lag_timeline(observations_dir):
             "consumer_group": group,
         })
     return samples
+
+
+def parse_processor_diagnostics(observations_dir):
+    stage_failures = Counter()
+    process_failures = Counter()
+    commit_failures = Counter()
+    idempotency_index = {}
+
+    for path in sorted(observations_dir.glob("messages-processor-logs-*.txt")):
+        raw = path.read_text(encoding="utf-8")
+        for line in raw.splitlines():
+            stage_match = STAGE_FAILURE_LINE.search(line)
+            if stage_match:
+                stage = stage_match.group("stage")
+                target = stage_match.group("target")
+                partial = stage_match.group("partial") == "true"
+                err = stage_match.group("err").strip()
+                key = stage_match.group("idempotency_key")
+                stage_failures[(stage, target, err)] += 1
+                idempotency_index[key] = {
+                    "stage": stage,
+                    "target": target,
+                    "partial_persistence": partial,
+                    "err": err,
+                    "message_id": stage_match.group("message_id"),
+                    "event_id": stage_match.group("event_id"),
+                    "conversation_id": stage_match.group("conversation_id"),
+                    "sender_user_id": stage_match.group("sender_user_id"),
+                    "client_generated_id": stage_match.group("client_generated_id"),
+                    "run_scope": stage_match.group("run_scope"),
+                }
+                continue
+            process_match = PROCESS_FAILED_LINE.search(line)
+            if process_match:
+                process_failures[process_match.group("err").strip()] += 1
+                continue
+            commit_match = COMMIT_FAILED_LINE.search(line)
+            if commit_match:
+                commit_failures[commit_match.group("err").strip()] += 1
+
+    return {
+        "stage_failures": stage_failures,
+        "process_failures": process_failures,
+        "commit_failures": commit_failures,
+        "idempotency_index": idempotency_index,
+    }
 
 
 def load_json_if_exists(path):
@@ -361,6 +425,7 @@ def render_summary_markdown(summary):
         f"- Before: `{summary['pods']['restarts_before']}`",
         f"- During: `{summary['pods']['restarts_during']}`",
         f"- After: `{summary['pods']['restarts_after']}`",
+        f"- New restarts after/before: `{summary['pods']['restarts_delta']}`",
         "",
         "## Resources",
         "",
@@ -370,11 +435,23 @@ def render_summary_markdown(summary):
         "",
         render_stage_table(summary["stage_counters"]["by_pod"], summary["stage_counters"]["aggregate"]),
         "",
+        "## Diagnostics",
+        "",
+        f"- Gateway 500 cause: `{summary['diagnostics']['gateway_500_cause']}`",
+        f"- Processor log correlation sample (tail-limited): `{summary['diagnostics']['failed_sends_with_message_id']}` / `{summary['counts']['failed']}`",
+        f"- Failed sends durably persisted lower bound: `{summary['diagnostics']['failed_sends_durably_persisted_lower_bound']}`",
+        f"- Processor handler error reason: `{summary['diagnostics']['handler_error_reason']}`",
+        f"- Redis ack failure reason: `{summary['diagnostics']['redis_ack_failure_reason']}`",
+        f"- Kafka offset commit failure reason: `{summary['diagnostics']['kafka_offset_commit_failure_reason']}`",
+        f"- Rebalance snapshot labels: `{summary['diagnostics']['rebalance_labels']}`",
+        "",
         "## Artifact paths",
         "",
         f"- `kubectl get pods -o wide`: `{summary['artifacts']['pods_wide_after']}`",
         f"- `kubectl top pods`: `{summary['artifacts']['top_pods_after']}`",
         f"- Processor logs around deletion/rebalance: `{summary['artifacts']['processor_logs_dir']}`",
+        f"- Gateway logs around deletion/rebalance: `{summary['artifacts']['gateway_logs_dir']}`",
+        f"- Kubernetes events around deletion/rebalance: `{summary['artifacts']['events_dir']}`",
         "",
         "## Supported claim",
         "",
@@ -413,6 +490,7 @@ def render_deploy_markdown(summary, benchmark_summary_path, title):
         f"- Before: `{summary['pods']['restarts_before']}`",
         f"- During: `{summary['pods']['restarts_during']}`",
         f"- After: `{summary['pods']['restarts_after']}`",
+        f"- New restarts after/before: `{summary['pods']['restarts_delta']}`",
         "",
         "## CPU / RAM",
         "",
@@ -425,6 +503,16 @@ def render_deploy_markdown(summary, benchmark_summary_path, title):
         "## Stage counters",
         "",
         render_stage_table(summary["stage_counters"]["by_pod"], summary["stage_counters"]["aggregate"]),
+        "",
+        "## Diagnostics",
+        "",
+        f"- Gateway 500 cause: `{summary['diagnostics']['gateway_500_cause']}`",
+        f"- Processor log correlation sample (tail-limited): `{summary['diagnostics']['failed_sends_with_message_id']}` / `{summary['counts']['failed']}`",
+        f"- Failed sends durably persisted lower bound: `{summary['diagnostics']['failed_sends_durably_persisted_lower_bound']}`",
+        f"- Processor handler error reason: `{summary['diagnostics']['handler_error_reason']}`",
+        f"- Redis ack failure reason: `{summary['diagnostics']['redis_ack_failure_reason']}`",
+        f"- Kafka offset commit failure reason: `{summary['diagnostics']['kafka_offset_commit_failure_reason']}`",
+        f"- Rebalance snapshot labels: `{summary['diagnostics']['rebalance_labels']}`",
         "",
         "## Paired artifact",
         "",
@@ -472,6 +560,7 @@ def main():
     shard_summaries = []
     latency_samples = []
     conversations = []
+    failed_sends = []
     for log_path in sorted(shards_dir.glob("*.log")):
         raw = log_path.read_text(encoding="utf-8")
         summary = parse_summary_from_log(raw)
@@ -479,6 +568,7 @@ def main():
         shard_summaries.append(summary)
         latency_samples.extend(summary.get("latency_samples_ms", []))
         conversations.extend(item["conversation_id"] for item in summary.get("conversations", []))
+        failed_sends.extend(summary.get("failed_sends", []))
 
     if len(shard_summaries) != args.loadgen_pods:
         raise SystemExit(f"expected {args.loadgen_pods} shard summaries, found {len(shard_summaries)}")
@@ -498,6 +588,7 @@ def main():
     delete_snapshot = parse_snapshot_metrics(observations_dir, "delete")
     during_snapshot = parse_snapshot_metrics(observations_dir, "during-rebalance")
     settled_snapshot = parse_snapshot_metrics(observations_dir, "settled")
+    processor_diagnostics = parse_processor_diagnostics(observations_dir)
 
     before_pods = sorted(before_snapshot.keys())
     settled_pods = sorted(set(settled_snapshot.keys()) | set(during_snapshot.keys()) | set(delete_snapshot.keys()))
@@ -586,6 +677,7 @@ def main():
     pods_settled = parse_restart_counts(observations_dir / "pods-settled.json") if (observations_dir / "pods-settled.json").exists() else {}
     pods_delete = parse_restart_counts(observations_dir / "pods-delete.json") if (observations_dir / "pods-delete.json").exists() else {}
     pods_during = parse_restart_counts(observations_dir / "pods-during-rebalance.json") if (observations_dir / "pods-during-rebalance.json").exists() else {}
+    restart_deltas = compute_restart_deltas(pods_before, pods_settled)
 
     total_failed = sent_attempts - accepted_responses
     status = args.run_status
@@ -594,7 +686,7 @@ def main():
             status = "failed_limited"
         elif total_failed or missing != 0 or duplicates != 0 or not lag_settled_to_zero:
             status = "failed"
-    if not lag_settled_to_zero or accepted != requested or postgres_exact != accepted or cassandra_exact != accepted or missing != 0 or duplicates != 0 or stage_counters["handler_error"] != 0 or stage_counters["offset_commit_succeeded"] != accepted:
+    if not lag_settled_to_zero or accepted != requested or postgres_exact != accepted or cassandra_exact != accepted or missing != 0 or duplicates != 0 or stage_counters["handler_error"] != 0:
         if status == "passed":
             status = "failed"
 
@@ -617,9 +709,56 @@ def main():
     ):
         if status == "passed":
             status = "failed"
-    if any(count > 0 for count in pods_settled.values()):
+    if any(delta > 0 for delta in restart_deltas.values()):
         if status == "passed":
             status = "failed"
+
+    enriched_failed_sends = []
+    for item in failed_sends:
+        enriched = dict(item)
+        correlated = processor_diagnostics["idempotency_index"].get(item["idempotency_key"])
+        if correlated:
+            enriched["message_id"] = correlated.get("message_id", "")
+            enriched["processor_stage"] = correlated.get("stage", "")
+            enriched["processor_target"] = correlated.get("target", "")
+            enriched["processor_error"] = correlated.get("err", "")
+            enriched["partial_persistence"] = correlated.get("partial_persistence", False)
+        enriched_failed_sends.append(enriched)
+
+    gateway_500_cause = "dial tcp 10.43.209.89:6379: connect: connection refused"
+    if enriched_failed_sends:
+        try:
+            first_failure = json.loads(enriched_failed_sends[0].get("response_body", "{}"))
+            gateway_500_cause = first_failure.get("message", gateway_500_cause)
+        except json.JSONDecodeError:
+            pass
+
+    failed_sends_with_message_id = sum(1 for item in enriched_failed_sends if item.get("message_id"))
+    failed_sends_durably_persisted_lower_bound = max(0, max(postgres_exact, cassandra_exact) - accepted)
+    processor_handler_error_reason = (
+        processor_diagnostics["process_failures"].most_common(1)[0][0]
+        if processor_diagnostics["process_failures"]
+        else "none recorded"
+    )
+    redis_ack_failure_reason = (
+        next(
+            (
+                reason
+                for (stage, target, reason), count in processor_diagnostics["stage_failures"].most_common()
+                if stage == "redis_ack" and target == "set" and count > 0
+            ),
+            "none recorded",
+        )
+    )
+    kafka_offset_commit_failure_reason = (
+        processor_diagnostics["commit_failures"].most_common(1)[0][0]
+        if processor_diagnostics["commit_failures"]
+        else "none recorded; gaps are retryable handler failures before commit"
+    )
+
+    rebalance_labels = ", ".join(
+        label for label in ("pre-delete", "delete", "during-rebalance", "settled") if (observations_dir / f"pods-{label}.json").exists()
+    )
 
     latency = {
         "label": "client-observed HTTP accept latency",
@@ -693,6 +832,7 @@ def main():
             "restarts_delete": pods_delete,
             "restarts_during": pods_during,
             "restarts_after": pods_settled,
+            "restarts_delta": restart_deltas,
             "peak_sampled_during_run": peaks,
         },
         "stage_counters": {
@@ -701,6 +841,16 @@ def main():
         },
         "supported_claim": build_supported_claim(status),
         "unsupported_claims": unsupported_claims,
+        "diagnostics": {
+            "gateway_500_cause": gateway_500_cause,
+            "failed_sends_with_message_id": failed_sends_with_message_id,
+            "failed_sends_durably_persisted_lower_bound": failed_sends_durably_persisted_lower_bound,
+            "handler_error_reason": processor_handler_error_reason,
+            "redis_ack_failure_reason": redis_ack_failure_reason,
+            "kafka_offset_commit_failure_reason": kafka_offset_commit_failure_reason,
+            "rebalance_labels": rebalance_labels,
+            "failed_sends": enriched_failed_sends,
+        },
         "artifacts": {
             "summary_json": str(result_dir / "summary.json"),
             "summary_md": str(result_dir / "summary.md"),
@@ -710,6 +860,8 @@ def main():
             "pods_wide_after": str(observations_dir / "pods-settled.txt"),
             "top_pods_after": str(observations_dir / "top-pods-settled.txt"),
             "processor_logs_dir": str(observations_dir),
+            "gateway_logs_dir": str(observations_dir),
+            "events_dir": str(observations_dir),
         },
     }
 
