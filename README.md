@@ -13,10 +13,8 @@ and to show those problems being solved with tests that pin the behavior down. I
 development environment and a correctness case study, **not** a finished, production-operated system.
 
 > **Validated 120 msg/sec local Kubernetes ingress with exact Kafka/Postgres/Cassandra
-> reconciliation under normal load (scaling matrix) and processor backlog recovery; Kafka
-> consumer-group rebalance confirmed during processor pod deletion (exact full-pipeline
-> reconciliation was not established for that run — a coincident Redis outage caused 4,520 gateway
-> 500s)** — all on a single-node local cluster, not production. Core send/persist/deliver paths
+> reconciliation across normal load, processor pod deletion/rebalance, and processor backlog
+> recovery** — all on a single-node local cluster, not production. Core send/persist/deliver paths
 > and reliability hardening are implemented and unit/integration tested. See
 > [Limitations](#limitations) and [Benchmarks](#benchmarks-and-load-testing).
 

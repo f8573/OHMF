@@ -1,6 +1,6 @@
 # Claims And Evidence
 
-Status: M4 validation complete on a local single-node cluster. Supported claim boundary: validated 120 msg/sec local Kubernetes ingress with exact Kafka/Postgres/Cassandra reconciliation under normal load (scaling matrix) and processor backlog recovery; Kafka consumer group rebalance after pod deletion confirmed. The `105 msg/sec` rung remains the previous single-processor-supported result. Later stages remain not yet run.
+Status: M4 validation complete on a local single-node cluster. Supported claim boundary: validated 120 msg/sec local Kubernetes ingress with exact Kafka/Postgres/Cassandra reconciliation across normal load (scaling matrix), processor pod deletion/rebalance, and processor backlog recovery. The `105 msg/sec` rung remains the previous single-processor-supported result. Later stages remain not yet run.
 
 | Claim | Status | Evidence artifact | Notes |
 | --- | --- | --- | --- |
@@ -16,13 +16,13 @@ Status: M4 validation complete on a local single-node cluster. Supported claim b
 | Full local Kubernetes pipeline previously reconciled at 105 msg/sec with 1 messages-processor replica | prior supported result | [2026-06-08-stage-b1-rerun-throughput](../benchmarks/results/2026-06-08-stage-b1-rerun-throughput/summary.md) | Unique-tag rerun across `12` source IPs passed `75`, `90`, and `105 msg/sec` with exact reconciliation; the `120 msg/sec for 600s` rung accepted `74685/74700`, consumed `46568`, committed `46567`, and left Kafka lag at `28212` after `903s` |
 | Burst local throughput claim | not yet run | not yet run | Must publish highest repeatable passing level only |
 | Local restart/recovery claim | supported | [2026-06-10-processor-backlog-recovery-120msgsec](../benchmarks/results/2026-06-10-processor-backlog-recovery-120msgsec/summary.md) | Validated backlog recovery at `120 msg/sec`: processor scaled to 0 while load ran, Kafka accumulated peak lag `18,021`, processor scaled back to 4 replicas, lag drained to `0`; exact full-pipeline reconciliation (`82,800/82,800`) confirmed; `0` stage errors; no HA or failover claim |
-| Processor pod deletion/rebalance at `120 msg/sec` | partial — Kafka rebalance confirmed; exact reconciliation not established | [2026-06-09-processor-pod-deletion-120msgsec](../benchmarks/results/2026-06-09-processor-pod-deletion-120msgsec/summary.md) | One processor pod deleted mid-run; Kafka consumer group rebalanced (deleted pod replaced by new pod, group settled); `78,280/82,800` accepted; `4,520` gateway 500s caused by Redis outage coinciding with deletion (not the Kafka rebalance itself); Postgres/Cassandra deltas matched accepted count; exact full-pipeline reconciliation **not** confirmed; run artifact is marked failed |
+| Processor pod deletion/rebalance at `120 msg/sec` | passed | [2026-06-10-processor-pod-deletion-120msgsec](../benchmarks/results/2026-06-10-processor-pod-deletion-120msgsec/summary.json) | One pod deleted mid-run; Kafka consumer group rebalanced; `82,800/82,800` accepted, `0` failed, Postgres `82,800`, Cassandra `82,800`, `missing=0`, `duplicates=0`, lag→`0` in `283.608s`. Initial 2026-06-09 run invalidated by coincident Redis outage (`4,520` gateway 500s); preserved as diagnostic at [2026-06-09-processor-pod-deletion-120msgsec](../benchmarks/results/2026-06-09-processor-pod-deletion-120msgsec/summary.md). |
 
 Supported claim boundary:
 
 - **Local Kubernetes single-node only** — no production, cloud-scale, multi-host, or HA claims
-- **Exact Kafka/Postgres/Cassandra reconciliation** confirmed for two committed artifacts: the `4 replicas @ 120 msg/sec` scaling-matrix cell and the `120 msg/sec` backlog-recovery run
-- **Kafka consumer group rebalance after pod deletion** confirmed — the deleted pod was replaced, the group settled with a new member; exact full-pipeline reconciliation was **not** confirmed for that run (Redis outage during the same window caused 4,520 gateway 500s)
+- **Exact Kafka/Postgres/Cassandra reconciliation** confirmed for three committed artifacts: the `4 replicas @ 120 msg/sec` scaling-matrix cell, the `120 msg/sec` processor pod deletion/rebalance rerun, and the `120 msg/sec` backlog-recovery run
+- **Processor pod deletion/rebalance** confirmed with exact full-pipeline reconciliation in the 2026-06-10 rerun; the initial 2026-06-09 run was invalidated by a coincident Redis outage and is preserved as a diagnostic artifact
 - **Client-observed HTTP accept latency** is the only latency measurement in these artifacts — no server-internal p95/p99 claims
 - **Gateway ingress near 120 msg/sec** shown in multisource runs, but standalone ingress evidence does not imply backend persistence at that rate
 - A prior 60 msg/sec under-reconciliation result was traced to stale container image deployment; the subsequent unique-tag rollout with processor stage instrumentation reconciled exactly
