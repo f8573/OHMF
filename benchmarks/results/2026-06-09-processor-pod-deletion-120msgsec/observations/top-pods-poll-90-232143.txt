@@ -1,0 +1,11 @@
+NAME                                               CPU(cores)   MEMORY(bytes)   
+apps-7898d476c6-647kg                              1m           3Mi             
+cassandra-669556d58f-x4xvf                         266m         1378Mi          
+gateway-645fcd9c49-bt2pt                           257m         70Mi            
+kafka-9fd8b548c-fpsrx                              254m         1326Mi          
+loadgen-processor-pod-deletion-120msgsec-0-nqzsc   33m          10Mi            
+messages-processor-5bff77847-bsjd9                 25m          8Mi             
+messages-processor-5bff77847-fbqvq                 51m          8Mi             
+messages-processor-5bff77847-m6846                 71m          9Mi             
+messages-processor-5bff77847-skz9m                 47m          9Mi             
+postgres-6f4c6cfddc-qnfv6                          187m         358Mi           

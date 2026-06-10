@@ -1,0 +1,4 @@
+2026/06/09 22:59:49 messages-processor started
+2026/06/09 23:21:25 stage failure stage=redis_ack target=set partial_persistence=true event_id=e0534923-cddd-4815-80e4-1217b40c81e7 message_id=5d84f10d-6264-40f6-8c11-0e79aa216565 conversation_id=49e9bb17-4a94-4385-9d85-5daddb5614cd sender_user_id=c2d5fd70-ae43-4079-9387-aea1174aaf10 idempotency_key=m4-20260609t225915922783z-poddelete-s05-u058-main-10x1x600-006318 client_generated_id=20260609t225915922783z-poddelete-s05-u058-006318 run_scope=20260609t225915922783z-poddelete-s05 err=dial tcp 10.43.209.89:6379: connect: connection refused
+2026/06/09 23:21:25 process failed: redis ack failed after persistence: dial tcp 10.43.209.89:6379: connect: connection refused
+2026/06/09 23:21:25 recoverable processor failure; leaving offset uncommitted for retry
