@@ -21,6 +21,10 @@ func TestMetricsHandlerExposesGatewayMetrics(t *testing.T) {
 	IncWSConnection()
 	RecordWSMessage("received", "subscribe")
 	RecordWSMessage("sent", "subscribe_ack")
+	RecordRedisAckFailedAfterPersistence()
+	RecordAckTimeoutAfterPersistence()
+	RecordIdempotentSuccessAfterAckTimeout()
+	RecordSendHandler500("other")
 	DecWSConnection()
 
 	metricsReq := httptest.NewRequest(http.MethodGet, "/metrics", nil)
@@ -36,6 +40,15 @@ func TestMetricsHandlerExposesGatewayMetrics(t *testing.T) {
 	}
 	if !strings.Contains(body, "ohmf_gateway_ws_messages_total") {
 		t.Fatalf("expected ws metrics in body")
+	}
+	if !strings.Contains(body, "redis_ack_failed_after_persistence_total") {
+		t.Fatalf("expected redis ack recovery metric in body")
+	}
+	if !strings.Contains(body, "ack_timeout_after_persistence_total") {
+		t.Fatalf("expected ack timeout recovery metric in body")
+	}
+	if !strings.Contains(body, "send_handler_500_total") {
+		t.Fatalf("expected send handler 500 metric in body")
 	}
 }
 

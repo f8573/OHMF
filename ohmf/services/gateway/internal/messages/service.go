@@ -1787,9 +1787,19 @@ func (s *Service) sendAsync(ctx context.Context, userID, senderDeviceID, convers
 
 	ack, ok, err := s.async.WaitAck(ctx, evt.EventID, s.ackTimeout)
 	if err != nil {
+		if recovered, found, recErr := s.recoverPersistedAsyncSend(ctx, userID, endpoint, idemKey, evt, validation.ReplyToMessageID, provisional.ClientGeneratedID, "redis_ack_failed"); recErr != nil {
+			return SendResult{}, recErr
+		} else if found {
+			return SendResult{Message: *recovered}, nil
+		}
 		return SendResult{}, err
 	}
 	if !ok {
+		if recovered, found, recErr := s.recoverPersistedAsyncSend(ctx, userID, endpoint, idemKey, evt, validation.ReplyToMessageID, provisional.ClientGeneratedID, "ack_timeout"); recErr != nil {
+			return SendResult{}, recErr
+		} else if found {
+			return SendResult{Message: *recovered}, nil
+		}
 		return SendResult{
 			Message:      provisional,
 			Queued:       true,
@@ -1831,6 +1841,43 @@ func (s *Service) sendAsync(ctx context.Context, userID, senderDeviceID, convers
 		})
 	}
 	return SendResult{Message: msg}, nil
+}
+
+func (s *Service) recoverPersistedAsyncSend(ctx context.Context, userID, endpoint, idemKey string, evt IngressEvent, replyToMessageID, clientGeneratedID, reason string) (*Message, bool, error) {
+	cached, cachedStatus, err := s.loadIdempotency(ctx, userID, endpoint, idemKey)
+	if err != nil {
+		return nil, false, err
+	}
+	if cached == nil || cachedStatus != 201 {
+		return nil, false, nil
+	}
+
+	switch reason {
+	case "redis_ack_failed":
+		observability.RecordRedisAckFailedAfterPersistence()
+	case "ack_timeout":
+		observability.RecordAckTimeoutAfterPersistence()
+		observability.RecordIdempotentSuccessAfterAckTimeout()
+	default:
+		observability.RecordRedisAckFailedAfterPersistence()
+	}
+	observability.EmitEvent("message.async_ack_recovered", map[string]any{
+		"request_id":       evt.TraceID,
+		"event_id":         evt.EventID,
+		"message_id":       evt.MessageID,
+		"user_id":          userID,
+		"conversation_id":  evt.ConversationID,
+		"idempotency_key":  idemKey,
+		"endpoint":         endpoint,
+		"reason":           reason,
+		"server_order":     cached.ServerOrder,
+		"transport":        cached.Transport,
+		"status":           cached.Status,
+		"client_generated": clientGeneratedID,
+		"reply_to_message": replyToMessageID,
+		"recovered_from":   "idempotency_keys",
+	})
+	return cached, true, nil
 }
 
 func (s *Service) List(ctx context.Context, actor, conversationID string) ([]Message, error) {

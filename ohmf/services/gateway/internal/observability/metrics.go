@@ -2,8 +2,8 @@ package observability
 
 import (
 	"bufio"
-	"net/http"
 	"net"
+	"net/http"
 	"strconv"
 	"sync"
 	"time"
@@ -55,6 +55,35 @@ var wsMessagesTotal = prometheus.NewCounterVec(
 	[]string{"direction", "event"},
 )
 
+var redisAckFailedAfterPersistenceTotal = prometheus.NewCounter(
+	prometheus.CounterOpts{
+		Name: "redis_ack_failed_after_persistence_total",
+		Help: "Total number of async sends that observed a durable message before Redis ack delivery failed.",
+	},
+)
+
+var ackTimeoutAfterPersistenceTotal = prometheus.NewCounter(
+	prometheus.CounterOpts{
+		Name: "ack_timeout_after_persistence_total",
+		Help: "Total number of async sends that timed out after the processor had already durably persisted the message.",
+	},
+)
+
+var idempotentSuccessAfterAckTimeoutTotal = prometheus.NewCounter(
+	prometheus.CounterOpts{
+		Name: "idempotent_success_after_ack_timeout_total",
+		Help: "Total number of canonical idempotent responses returned after a post-persistence ack timeout.",
+	},
+)
+
+var sendHandler500Total = prometheus.NewCounterVec(
+	prometheus.CounterOpts{
+		Name: "send_handler_500_total",
+		Help: "Total number of send handler 500 responses, partitioned by cause.",
+	},
+	[]string{"cause"},
+)
+
 type statusRecorder struct {
 	http.ResponseWriter
 	status int
@@ -91,7 +120,17 @@ func (r *statusRecorder) Unwrap() http.ResponseWriter {
 
 func initMetrics() {
 	metricsOnce.Do(func() {
-		prometheus.MustRegister(httpRequestsTotal, httpRequestDuration, httpRequestsInflight, wsConnectionsActive, wsMessagesTotal)
+		prometheus.MustRegister(
+			httpRequestsTotal,
+			httpRequestDuration,
+			httpRequestsInflight,
+			wsConnectionsActive,
+			wsMessagesTotal,
+			redisAckFailedAfterPersistenceTotal,
+			ackTimeoutAfterPersistenceTotal,
+			idempotentSuccessAfterAckTimeoutTotal,
+			sendHandler500Total,
+		)
 	})
 }
 
@@ -136,6 +175,29 @@ func RecordWSMessage(direction, event string) {
 		event = "unknown"
 	}
 	wsMessagesTotal.WithLabelValues(direction, event).Inc()
+}
+
+func RecordRedisAckFailedAfterPersistence() {
+	initMetrics()
+	redisAckFailedAfterPersistenceTotal.Inc()
+}
+
+func RecordAckTimeoutAfterPersistence() {
+	initMetrics()
+	ackTimeoutAfterPersistenceTotal.Inc()
+}
+
+func RecordIdempotentSuccessAfterAckTimeout() {
+	initMetrics()
+	idempotentSuccessAfterAckTimeoutTotal.Inc()
+}
+
+func RecordSendHandler500(cause string) {
+	initMetrics()
+	if cause == "" {
+		cause = "unknown"
+	}
+	sendHandler500Total.WithLabelValues(cause).Inc()
 }
 
 func routePattern(r *http.Request) string {

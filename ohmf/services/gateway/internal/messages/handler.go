@@ -30,6 +30,23 @@ func isReservedContentType(contentType string) bool {
 	}
 }
 
+func classifySend500Cause(err error) string {
+	if err == nil {
+		return "unknown"
+	}
+	msg := err.Error()
+	switch {
+	case strings.Contains(msg, "redis ack failed after persistence"):
+		return "redis_ack_after_persistence"
+	case strings.Contains(msg, "redis ack notify failed after persistence"):
+		return "redis_ack_after_persistence"
+	case strings.Contains(msg, "context deadline exceeded"):
+		return "timeout"
+	default:
+		return "other"
+	}
+}
+
 func validateSendContent(contentType string, content map[string]any) error {
 	switch strings.ToLower(strings.TrimSpace(contentType)) {
 	case "text":
@@ -365,6 +382,7 @@ func (h *Handler) Send(w http.ResponseWriter, r *http.Request) {
 			"client_generated": req.ClientGeneratedID,
 			"error":            err.Error(),
 		})
+		observability.RecordSendHandler500(classifySend500Cause(err))
 		httpx.WriteError(w, r, http.StatusInternalServerError, "send_failed", err.Error(), nil)
 		return
 	}
@@ -493,6 +511,7 @@ func (h *Handler) SendToPhone(w http.ResponseWriter, r *http.Request) {
 			"client_generated": req.ClientGeneratedID,
 			"error":            err.Error(),
 		})
+		observability.RecordSendHandler500(classifySend500Cause(err))
 		httpx.WriteError(w, r, http.StatusInternalServerError, "send_phone_failed", err.Error(), nil)
 		return
 	}
