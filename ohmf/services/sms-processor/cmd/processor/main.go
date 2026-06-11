@@ -17,6 +17,7 @@ func main() {
 	smsTopic := getenv("APP_KAFKA_SMS_DISPATCH_TOPIC", "msg.sms.dispatch.v1")
 	deliveryTopic := getenv("APP_KAFKA_DELIVERY_TOPIC", "msg.delivery.v1")
 	dlqTopic := getenv("APP_KAFKA_SMS_DLQ_TOPIC", "msg.sms.dlq.v1")
+	startMetricsServer(getenv("APP_METRICS_ADDR", ":9093"))
 
 	reader := kafka.NewReader(kafka.ReaderConfig{
 		Brokers:     brokers,
@@ -36,15 +37,21 @@ func main() {
 	for {
 		msg, err := reader.FetchMessage(ctx)
 		if err != nil {
+			recordProcessorRetry("fetch_failed")
 			log.Printf("fetch failed: %v", err)
 			time.Sleep(300 * time.Millisecond)
 			continue
 		}
+		startedAt := time.Now()
 		if err := process(ctx, deliveryWriter, msg); err != nil {
+			recordProcessorResult("failure", time.Since(startedAt))
 			log.Printf("process failed: %v", err)
 			_ = publishDLQ(ctx, dlqWriter, msg, err)
+		} else {
+			recordProcessorResult("success", time.Since(startedAt))
 		}
 		if err := reader.CommitMessages(ctx, msg); err != nil {
+			recordProcessorRetry("commit_failed")
 			log.Printf("commit failed: %v", err)
 		}
 	}

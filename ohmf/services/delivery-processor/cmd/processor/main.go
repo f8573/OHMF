@@ -3,13 +3,11 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"log"
 	"os"
 	"strings"
 	"time"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 	"github.com/segmentio/kafka-go"
@@ -28,98 +26,19 @@ type persistedEvent struct {
 	TraceID         string   `json:"trace_id"`
 }
 
-const insertDeliveredReceiptSQL = `
-	INSERT INTO message_deliveries (
-		message_id,
-		recipient_user_id,
-		transport,
-		state,
-		submitted_at,
-		updated_at
-	) VALUES ($1::uuid, $2::uuid, $3, 'DELIVERED', now(), now())
-	ON CONFLICT (message_id, recipient_user_id)
-	WHERE recipient_user_id IS NOT NULL AND state = 'DELIVERED'
-	DO NOTHING
-	RETURNING id
-`
-
-type deliveryRecorder interface {
-	RecordDelivered(context.Context, persistedEvent, string) (bool, error)
-}
-
-type presenceStore interface {
-	IsOnline(context.Context, string) (bool, error)
-	Publish(context.Context, string, []byte) error
-}
-
-type deliveryPublisher interface {
-	Publish(context.Context, string, []byte) error
-}
-
-type queryRower interface {
-	QueryRow(context.Context, string, ...any) pgx.Row
-}
-
-type pgDeliveryRecorder struct {
-	db queryRower
-}
-
-func (r pgDeliveryRecorder) RecordDelivered(ctx context.Context, evt persistedEvent, recipientID string) (bool, error) {
-	var deliveryID string
-	err := r.db.QueryRow(ctx, insertDeliveredReceiptSQL, evt.MessageID, recipientID, evt.Transport).Scan(&deliveryID)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return false, nil
-		}
-		return false, err
-	}
-	return true, nil
-}
-
-type redisPresenceStore struct {
-	client *redis.Client
-}
-
-func (s redisPresenceStore) IsOnline(ctx context.Context, recipientID string) (bool, error) {
-	ok, err := s.client.Exists(ctx, "presence:user:"+recipientID).Result()
-	if err != nil {
-		return false, err
-	}
-	return ok > 0, nil
-}
-
-func (s redisPresenceStore) Publish(ctx context.Context, channel string, body []byte) error {
-	return s.client.Publish(ctx, channel, body).Err()
-}
-
-type kafkaDeliveryPublisher struct {
-	writer *kafka.Writer
-}
-
-func (p kafkaDeliveryPublisher) Publish(ctx context.Context, key string, body []byte) error {
-	return p.writer.WriteMessages(ctx, kafka.Message{
-		Key:   []byte(key),
-		Value: body,
-		Time:  time.Now().UTC(),
-	})
-}
-
-type deliveryMetricsObserver interface {
-	RecordDuplicate()
-}
-
-type noopDeliveryMetricsObserver struct{}
-
-func (noopDeliveryMetricsObserver) RecordDuplicate() {}
-
 func main() {
 	ctx := context.Background()
 	brokers := splitCSV(getenv("APP_KAFKA_BROKERS", "localhost:9092"))
 	persistedTopic := getenv("APP_KAFKA_PERSISTED_TOPIC", "msg.persisted.v1")
 	deliveryTopic := getenv("APP_KAFKA_DELIVERY_TOPIC", "msg.delivery.v1")
 	dlqTopic := getenv("APP_KAFKA_DELIVERY_DLQ_TOPIC", "msg.delivery.dlq.v1")
-	httpAddr := getenv("APP_HTTP_ADDR", ":18089")
-	pg, err := pgxpool.New(ctx, getenv("APP_DB_DSN", "postgres://ohmf:ohmf@localhost:5432/ohmf?sslmode=disable"))
+	startMetricsServer(getenv("APP_METRICS_ADDR", ":9092"))
+	poolCfg, err := pgxpool.ParseConfig(getenv("APP_DB_DSN", "postgres://ohmf:ohmf@localhost:5432/ohmf?sslmode=disable"))
+	if err != nil {
+		log.Fatalf("postgres config failed: %v", err)
+	}
+	poolCfg.ConnConfig.Tracer = &dbQueryTracer{}
+	pg, err := pgxpool.NewWithConfig(ctx, poolCfg)
 	if err != nil {
 		log.Fatalf("postgres init failed: %v", err)
 	}
@@ -148,53 +67,31 @@ func main() {
 		log.Fatalf("redis ping failed: %v", err)
 	}
 
-	obs := newProcessorObservability(
-		"delivery",
-		httpAddr,
-		brokers,
-		[]dependencyCheck{
-			{name: "postgres", check: func(ctx context.Context) error { return pg.Ping(ctx) }},
-			{name: "redis", check: func(ctx context.Context) error { return rdb.Ping(ctx).Err() }},
-		},
-	)
-	obs.start()
-
 	log.Printf("delivery-processor started")
 	for {
 		msg, err := reader.FetchMessage(ctx)
 		if err != nil {
+			recordProcessorRetry("fetch_failed")
 			log.Printf("fetch failed: %v", err)
 			time.Sleep(300 * time.Millisecond)
 			continue
 		}
-		obs.setConsumerLag(messageLag(msg))
 		startedAt := time.Now()
-		if err := process(ctx, pg, rdb, deliveryWriter, msg, obs); err != nil {
-			obs.recordError(time.Since(startedAt))
+		if err := process(ctx, pg, rdb, deliveryWriter, msg); err != nil {
+			recordProcessorResult("failure", time.Since(startedAt))
 			log.Printf("process failed: %v", err)
-			if dlqErr := publishDLQ(ctx, dlqWriter, msg, err); dlqErr != nil {
-				log.Printf("dlq publish failed: %v", dlqErr)
-			} else {
-				obs.recordDLQPublish()
-			}
+			_ = publishDLQ(ctx, dlqWriter, msg, err)
 		} else {
-			obs.recordSuccess(time.Since(startedAt))
+			recordProcessorResult("success", time.Since(startedAt))
 		}
 		if err := reader.CommitMessages(ctx, msg); err != nil {
+			recordProcessorRetry("commit_failed")
 			log.Printf("commit failed: %v", err)
 		}
 	}
 }
 
-func process(ctx context.Context, pg *pgxpool.Pool, rdb *redis.Client, deliveryWriter *kafka.Writer, msg kafka.Message, observer deliveryMetricsObserver) error {
-	return processMessageWithObserver(ctx, pgDeliveryRecorder{db: pg}, redisPresenceStore{client: rdb}, kafkaDeliveryPublisher{writer: deliveryWriter}, msg, observer)
-}
-
-func processMessage(ctx context.Context, deliveries deliveryRecorder, presence presenceStore, publisher deliveryPublisher, msg kafka.Message) error {
-	return processMessageWithObserver(ctx, deliveries, presence, publisher, msg, noopDeliveryMetricsObserver{})
-}
-
-func processMessageWithObserver(ctx context.Context, deliveries deliveryRecorder, presence presenceStore, publisher deliveryPublisher, msg kafka.Message, observer deliveryMetricsObserver) error {
+func process(ctx context.Context, pg *pgxpool.Pool, rdb *redis.Client, deliveryWriter *kafka.Writer, msg kafka.Message) error {
 	var evt persistedEvent
 	if err := json.Unmarshal(msg.Value, &evt); err != nil {
 		return err
@@ -208,19 +105,7 @@ func processMessageWithObserver(ctx context.Context, deliveries deliveryRecorder
 		if strings.TrimSpace(recipientID) == "" {
 			continue
 		}
-		online, err := presence.IsOnline(ctx, recipientID)
-		if err != nil {
-			return err
-		}
-		if !online {
-			continue
-		}
-		created, err := deliveries.RecordDelivered(ctx, evt, recipientID)
-		if err != nil {
-			return err
-		}
-		if !created {
-			observer.RecordDuplicate()
+		if ok, err := rdb.Exists(ctx, "presence:user:"+recipientID).Result(); err != nil || ok == 0 {
 			continue
 		}
 		delivery := map[string]any{
@@ -235,12 +120,28 @@ func processMessageWithObserver(ctx context.Context, deliveries deliveryRecorder
 			"trace_id":          evt.TraceID,
 		}
 		body, _ := json.Marshal(delivery)
-		if err := publisher.Publish(ctx, recipientID, body); err != nil {
+		if _, err := pg.Exec(ctx, `
+			INSERT INTO message_deliveries (
+				message_id,
+				recipient_user_id,
+				transport,
+				state,
+				submitted_at,
+				updated_at
+			) VALUES ($1::uuid, $2::uuid, $3, $4, now(), now())
+		`, evt.MessageID, recipientID, evt.Transport, "DELIVERED"); err != nil {
 			return err
 		}
-		_ = presence.Publish(ctx, "delivery:user:"+recipientID, body)
+		if err := deliveryWriter.WriteMessages(ctx, kafka.Message{
+			Key:   []byte(recipientID),
+			Value: body,
+			Time:  time.Now().UTC(),
+		}); err != nil {
+			return err
+		}
+		_ = rdb.Publish(ctx, "delivery:user:"+recipientID, body).Err()
 		if strings.TrimSpace(evt.SenderUserID) != "" && evt.SenderUserID != recipientID {
-			_ = presence.Publish(ctx, "delivery:user:"+evt.SenderUserID, body)
+			_ = rdb.Publish(ctx, "delivery:user:"+evt.SenderUserID, body).Err()
 		}
 	}
 	return nil
@@ -270,17 +171,6 @@ func writer(brokers []string, topic string) *kafka.Writer {
 		RequiredAcks: kafka.RequireAll,
 		BatchTimeout: 10 * time.Millisecond,
 	}
-}
-
-func messageLag(msg kafka.Message) float64 {
-	if msg.HighWaterMark <= 0 {
-		return 0
-	}
-	lag := msg.HighWaterMark - msg.Offset - 1
-	if lag < 0 {
-		return 0
-	}
-	return float64(lag)
 }
 
 func splitCSV(v string) []string {

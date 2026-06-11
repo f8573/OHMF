@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -84,6 +85,23 @@ var sendHandler500Total = prometheus.NewCounterVec(
 	[]string{"cause"},
 )
 
+var dbQueriesTotal = prometheus.NewCounterVec(
+	prometheus.CounterOpts{
+		Name: "ohmf_gateway_db_queries_total",
+		Help: "Total number of gateway PostgreSQL queries observed through pgx tracing.",
+	},
+	[]string{"statement", "outcome"},
+)
+
+var dbQueryLatency = prometheus.NewHistogramVec(
+	prometheus.HistogramOpts{
+		Name:    "ohmf_gateway_db_query_latency_seconds",
+		Help:    "Latency of gateway PostgreSQL queries observed through pgx tracing.",
+		Buckets: []float64{0.0005, 0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2, 5},
+	},
+	[]string{"statement", "outcome"},
+)
+
 type statusRecorder struct {
 	http.ResponseWriter
 	status int
@@ -130,6 +148,8 @@ func initMetrics() {
 			ackTimeoutAfterPersistenceTotal,
 			idempotentSuccessAfterAckTimeoutTotal,
 			sendHandler500Total,
+			dbQueriesTotal,
+			dbQueryLatency,
 		)
 	})
 }
@@ -200,6 +220,19 @@ func RecordSendHandler500(cause string) {
 	sendHandler500Total.WithLabelValues(cause).Inc()
 }
 
+func RecordDBQuery(statement string, err error, duration time.Duration) {
+	initMetrics()
+	outcome := "ok"
+	if err != nil {
+		outcome = "error"
+	}
+	statement = normalizeStatement(statement)
+	dbQueriesTotal.WithLabelValues(statement, outcome).Inc()
+	if duration >= 0 {
+		dbQueryLatency.WithLabelValues(statement, outcome).Observe(duration.Seconds())
+	}
+}
+
 func routePattern(r *http.Request) string {
 	if rctx := chi.RouteContext(r.Context()); rctx != nil {
 		if pattern := rctx.RoutePattern(); pattern != "" {
@@ -210,4 +243,21 @@ func routePattern(r *http.Request) string {
 		return "/"
 	}
 	return r.URL.Path
+}
+
+func normalizeStatement(sql string) string {
+	sql = strings.TrimSpace(strings.ToLower(sql))
+	if sql == "" {
+		return "unknown"
+	}
+	fields := strings.Fields(sql)
+	if len(fields) == 0 {
+		return "unknown"
+	}
+	switch fields[0] {
+	case "select", "insert", "update", "delete", "with":
+		return fields[0]
+	default:
+		return "other"
+	}
 }
