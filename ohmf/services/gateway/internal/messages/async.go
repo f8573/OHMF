@@ -49,19 +49,37 @@ type AsyncPipeline struct {
 	redis    *redis.Client
 	waiters  map[string][]chan PersistedAck
 	mu       sync.Mutex
+	cancel   context.CancelFunc
+	stopOnce sync.Once
+	wg       sync.WaitGroup
 }
 
 func NewAsyncPipeline(producer bus.IngressProducer, redisClient *redis.Client) *AsyncPipeline {
 	if producer == nil || redisClient == nil {
 		return nil
 	}
+	ctx, cancel := context.WithCancel(context.Background())
 	pipeline := &AsyncPipeline{
 		producer: producer,
 		redis:    redisClient,
 		waiters:  make(map[string][]chan PersistedAck),
+		cancel:   cancel,
 	}
-	go pipeline.runAckSubscriber(context.Background())
+	pipeline.wg.Add(1)
+	go pipeline.runAckSubscriber(ctx)
 	return pipeline
+}
+
+func (p *AsyncPipeline) Stop() {
+	if p == nil {
+		return
+	}
+	p.stopOnce.Do(func() {
+		if p.cancel != nil {
+			p.cancel()
+		}
+		p.wg.Wait()
+	})
 }
 
 func (p *AsyncPipeline) PublishIngress(ctx context.Context, evt IngressEvent) error {
@@ -217,7 +235,11 @@ func (p *AsyncPipeline) dispatchAck(ack PersistedAck) {
 }
 
 func (p *AsyncPipeline) runAckSubscriber(ctx context.Context) {
-	if p == nil || p.redis == nil {
+	if p == nil {
+		return
+	}
+	defer p.wg.Done()
+	if p.redis == nil {
 		return
 	}
 	for {
@@ -229,21 +251,38 @@ func (p *AsyncPipeline) runAckSubscriber(ctx context.Context) {
 		pubsub := p.redis.Subscribe(ctx, ackChannelName)
 		if _, err := pubsub.Receive(ctx); err != nil {
 			_ = pubsub.Close()
-			time.Sleep(250 * time.Millisecond)
+			if !sleepWithContext(ctx, 250*time.Millisecond) {
+				return
+			}
 			continue
 		}
-		for {
-			msg, err := pubsub.ReceiveMessage(ctx)
-			if err != nil {
-				_ = pubsub.Close()
-				time.Sleep(250 * time.Millisecond)
-				break
+		func() {
+			defer pubsub.Close()
+			for {
+				msg, err := pubsub.ReceiveMessage(ctx)
+				if err != nil {
+					return
+				}
+				var ack PersistedAck
+				if err := json.Unmarshal([]byte(msg.Payload), &ack); err != nil {
+					continue
+				}
+				p.dispatchAck(ack)
 			}
-			var ack PersistedAck
-			if err := json.Unmarshal([]byte(msg.Payload), &ack); err != nil {
-				continue
-			}
-			p.dispatchAck(ack)
+		}()
+		if !sleepWithContext(ctx, 250*time.Millisecond) {
+			return
 		}
+	}
+}
+
+func sleepWithContext(ctx context.Context, d time.Duration) bool {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
 	}
 }

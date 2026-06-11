@@ -10,6 +10,7 @@ import (
 	pgxmock "github.com/pashagolub/pgxmock/v4"
 	"github.com/redis/go-redis/v9"
 	"ohmf/services/gateway/internal/messages"
+	"ohmf/services/gateway/internal/presence"
 	"ohmf/services/gateway/internal/replication"
 )
 
@@ -224,6 +225,55 @@ func TestTypingStateIsCleanedUpOnDisconnect(t *testing.T) {
 
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("unmet expectations: %v", err)
+	}
+}
+
+func TestWebSocketPresenceKeyTracksViewerSemantics(t *testing.T) {
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("start miniredis: %v", err)
+	}
+	defer mr.Close()
+
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	defer rdb.Close()
+
+	handler := &Handler{
+		redis:   rdb,
+		clients: map[string]map[*client]struct{}{},
+	}
+	presenceSvc := presence.NewService(nil, rdb)
+	c := &client{
+		userID:    "user-1",
+		sessionID: "wsv1:session-1",
+		send:      make(chan outboundMessage, 1),
+	}
+
+	handler.register(c)
+	handler.touchConnection(context.Background(), c)
+
+	item, err := presenceSvc.GetUserPresenceForViewer(context.Background(), "viewer-1", "user-1")
+	if err != nil {
+		t.Fatalf("GetUserPresenceForViewer failed: %v", err)
+	}
+	if !item.Online {
+		t.Fatalf("expected user to be online after connect")
+	}
+	if !mr.Exists("presence:user:user-1") {
+		t.Fatalf("expected presence key to exist after connect")
+	}
+
+	handler.unregister(c)
+
+	item, err = presenceSvc.GetUserPresenceForViewer(context.Background(), "viewer-1", "user-1")
+	if err != nil {
+		t.Fatalf("GetUserPresenceForViewer after disconnect failed: %v", err)
+	}
+	if item.Online {
+		t.Fatalf("expected user to be offline after disconnect")
+	}
+	if mr.Exists("presence:user:user-1") {
+		t.Fatalf("expected presence key to be removed after disconnect")
 	}
 }
 

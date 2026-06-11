@@ -65,10 +65,8 @@ type client struct {
 }
 
 type outboundMessage struct {
-	payload       []byte
-	event         string
-	userEventID   int64
-	userEventType string
+	payload []byte
+	event   string
 }
 
 type wsEnvelope struct {

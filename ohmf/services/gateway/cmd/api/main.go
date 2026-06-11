@@ -151,6 +151,7 @@ func main() {
 	if cfg.UseKafkaSend {
 		kafkaProducer = bus.NewKafkaProducer(cfg.KafkaBrokers, cfg.KafkaClientID, cfg.KafkaIngressTopic)
 		asyncPipeline = messages.NewAsyncPipeline(kafkaProducer, rdb)
+		defer asyncPipeline.Stop()
 		defer kafkaProducer.Close()
 	}
 
