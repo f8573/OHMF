@@ -15,6 +15,17 @@ import (
 
 var metricsOnce sync.Once
 
+// stageEventsTotal is the legacy per-stage counter retained for dashboard compatibility.
+// Deprecated: superseded by per-subsystem latency histograms (processorTransactionLatency,
+// cassandraProjectionLatency, ackPublishLatency). Remove once dashboards are migrated.
+var stageEventsTotal = prometheus.NewCounterVec(
+	prometheus.CounterOpts{
+		Name: "ohmf_messages_processor_stage_events_total",
+		Help: "Per-stage processor event counters. Deprecated: use per-subsystem latency histograms.",
+	},
+	[]string{"stage", "outcome", "target"},
+)
+
 var processorResultsTotal = prometheus.NewCounterVec(
 	prometheus.CounterOpts{
 		Name: "ohmf_messages_processor_handler_results_total",
@@ -100,6 +111,7 @@ type dbQueryTracer struct{}
 func initMetrics() {
 	metricsOnce.Do(func() {
 		prometheus.MustRegister(
+			stageEventsTotal,
 			processorResultsTotal,
 			processorLatency,
 			kafkaConsumeLagLatency,
@@ -115,10 +127,20 @@ func initMetrics() {
 
 func startMetricsServer(addr string) {
 	initMetrics()
+	mux := http.NewServeMux()
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	})
+	mux.HandleFunc("/readyz", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	})
+	mux.Handle("/metrics", promhttp.Handler())
 	go func() {
 		server := &http.Server{
 			Addr:              addr,
-			Handler:           promhttp.Handler(),
+			Handler:           mux,
 			ReadHeaderTimeout: 5 * time.Second,
 		}
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -183,10 +205,12 @@ func recordProcessorRetry(reason string) {
 	processorRetriesTotal.WithLabelValues(reason).Inc()
 }
 
-// recordStage is a no-op bridge retained while stage-level calls are in the processing path.
-// The stage counters were part of the private-registry observability system and are superseded
-// by the per-subsystem latency histograms above.
-func recordStage(_, _, _ string) {}
+// recordStage increments the legacy stage counter for dashboard compatibility.
+// Deprecated: use the per-subsystem latency histograms directly for new queries.
+func recordStage(stage, outcome, target string) {
+	initMetrics()
+	stageEventsTotal.WithLabelValues(stage, outcome, target).Inc()
+}
 
 func (t *dbQueryTracer) TraceQueryStart(ctx context.Context, _ *pgx.Conn, data pgx.TraceQueryStartData) context.Context {
 	ctx = context.WithValue(ctx, dbTraceKey{}, time.Now())
