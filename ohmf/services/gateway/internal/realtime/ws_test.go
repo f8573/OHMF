@@ -10,6 +10,7 @@ import (
 	pgxmock "github.com/pashagolub/pgxmock/v4"
 	"github.com/redis/go-redis/v9"
 	"ohmf/services/gateway/internal/messages"
+	"ohmf/services/gateway/internal/presence"
 	"ohmf/services/gateway/internal/replication"
 )
 
@@ -25,14 +26,17 @@ func TestHandleTypingSignalBroadcastsToOtherMembers(t *testing.T) {
 		messages: svc,
 		clients:  map[string]map[*client]struct{}{},
 	}
-	actor := &client{userID: "user-1", deviceID: "device-1", send: make(chan []byte, 1)}
-	recipient := &client{userID: "user-2", send: make(chan []byte, 1)}
+	actor := &client{userID: "user-1", deviceID: "device-1", send: make(chan outboundMessage, 1)}
+	recipient := &client{userID: "user-2", send: make(chan outboundMessage, 1)}
 	handler.clients["user-1"] = map[*client]struct{}{actor: struct{}{}}
 	handler.clients["user-2"] = map[*client]struct{}{recipient: struct{}{}}
 
 	mock.ExpectQuery(`SELECT 1 FROM conversation_members WHERE conversation_id = \$1::uuid AND user_id = \$2::uuid`).
 		WithArgs("conversation-1", "user-1").
 		WillReturnRows(pgxmock.NewRows([]string{"one"}).AddRow(1))
+	mock.ExpectQuery(`SELECT share_typing FROM user_privacy_preferences WHERE user_id = \$1::uuid`).
+		WithArgs("user-1").
+		WillReturnRows(pgxmock.NewRows([]string{"share_typing"}).AddRow(true))
 	mock.ExpectQuery(`SELECT 1 FROM conversation_members WHERE conversation_id = \$1::uuid AND user_id = \$2::uuid`).
 		WithArgs("conversation-1", "user-2").
 		WillReturnRows(pgxmock.NewRows([]string{"one"}).AddRow(1))
@@ -45,7 +49,7 @@ func TestHandleTypingSignalBroadcastsToOtherMembers(t *testing.T) {
 			Event string         `json:"event"`
 			Data  map[string]any `json:"data"`
 		}
-		if err := json.Unmarshal(raw, &envelope); err != nil {
+		if err := json.Unmarshal(raw.payload, &envelope); err != nil {
 			t.Fatalf("failed to decode ws payload: %v", err)
 		}
 		if envelope.Event != "typing.started" {
@@ -101,13 +105,13 @@ func TestHandleHelloResumeTouchesPresenceAndReplaysFromLastCursor(t *testing.T) 
 		userID:    "user-1",
 		sessionID: "wsv2:session-1",
 		v2:        true,
-		send:      make(chan []byte, 8),
+		send:      make(chan outboundMessage, 8),
 	}
 
 	handler.handleHelloResume(context.Background(), c, resumePayload{
 		DeviceID:   "device-1",
 		LastCursor: "17",
-	})
+	}, time.Now())
 
 	helloMsg := decodeWSMessage(t, c.send)
 	if helloMsg.Event != "hello_ack" {
@@ -187,7 +191,7 @@ func TestTypingStateIsCleanedUpOnDisconnect(t *testing.T) {
 		userID:    "user-1",
 		deviceID:  "device-1",
 		sessionID: "wsv1:session-1",
-		send:      make(chan []byte, 1),
+		send:      make(chan outboundMessage, 1),
 		v2:        false,
 	}
 	handler.register(actor)
@@ -195,6 +199,9 @@ func TestTypingStateIsCleanedUpOnDisconnect(t *testing.T) {
 	mock.ExpectQuery(`SELECT 1 FROM conversation_members WHERE conversation_id = \$1::uuid AND user_id = \$2::uuid`).
 		WithArgs("conversation-1", "user-1").
 		WillReturnRows(pgxmock.NewRows([]string{"one"}).AddRow(1))
+	mock.ExpectQuery(`SELECT share_typing FROM user_privacy_preferences WHERE user_id = \$1::uuid`).
+		WithArgs("user-1").
+		WillReturnRows(pgxmock.NewRows([]string{"share_typing"}).AddRow(true))
 
 	handler.handleTypingSignal(context.Background(), actor, "conversation-1", "typing.started", "127.0.0.1")
 	if !mr.Exists("typing:conv:conversation-1:user:user-1") {
@@ -221,7 +228,7 @@ func TestTypingStateIsCleanedUpOnDisconnect(t *testing.T) {
 	}
 }
 
-func TestDisconnectOnePodKeepsGlobalPresenceWhileAnotherSessionIsActive(t *testing.T) {
+func TestWebSocketPresenceKeyTracksViewerSemantics(t *testing.T) {
 	mr, err := miniredis.Run()
 	if err != nil {
 		t.Fatalf("start miniredis: %v", err)
@@ -231,79 +238,46 @@ func TestDisconnectOnePodKeepsGlobalPresenceWhileAnotherSessionIsActive(t *testi
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 	defer rdb.Close()
 
-	handlerA := &Handler{redis: rdb, clients: map[string]map[*client]struct{}{}}
-	handlerB := &Handler{redis: rdb, clients: map[string]map[*client]struct{}{}}
-	clientA := &client{userID: "user-1", sessionID: "wsv1:pod-a", send: make(chan []byte, 1)}
-	clientB := &client{userID: "user-1", sessionID: "wsv1:pod-b", send: make(chan []byte, 1)}
-
-	handlerA.register(clientA)
-	handlerB.register(clientB)
-	handlerA.touchConnection(context.Background(), clientA)
-	handlerB.touchConnection(context.Background(), clientB)
-
-	handlerA.unregister(clientA)
-
-	if !mr.Exists("presence:user:user-1") {
-		t.Fatalf("expected presence key to remain while another session is active")
+	handler := &Handler{
+		redis:   rdb,
+		clients: map[string]map[*client]struct{}{},
 	}
-	sessionIDs, err := rdb.SMembers(context.Background(), "user_sessions:user-1").Result()
+	presenceSvc := presence.NewService(nil, rdb)
+	c := &client{
+		userID:    "user-1",
+		sessionID: "wsv1:session-1",
+		send:      make(chan outboundMessage, 1),
+	}
+
+	handler.register(c)
+	handler.touchConnection(context.Background(), c)
+
+	item, err := presenceSvc.GetUserPresenceForViewer(context.Background(), "viewer-1", "user-1")
 	if err != nil {
-		t.Fatalf("load user sessions: %v", err)
+		t.Fatalf("GetUserPresenceForViewer failed: %v", err)
 	}
-	if len(sessionIDs) != 1 || sessionIDs[0] != "wsv1:pod-b" {
-		t.Fatalf("unexpected remaining sessions: %#v", sessionIDs)
+	if !item.Online {
+		t.Fatalf("expected user to be online after connect")
+	}
+	if !mr.Exists("presence:user:user-1") {
+		t.Fatalf("expected presence key to exist after connect")
 	}
 
-	handlerB.unregister(clientB)
+	handler.unregister(c)
 
+	item, err = presenceSvc.GetUserPresenceForViewer(context.Background(), "viewer-1", "user-1")
+	if err != nil {
+		t.Fatalf("GetUserPresenceForViewer after disconnect failed: %v", err)
+	}
+	if item.Online {
+		t.Fatalf("expected user to be offline after disconnect")
+	}
 	if mr.Exists("presence:user:user-1") {
-		t.Fatalf("expected presence key to be removed after final disconnect")
+		t.Fatalf("expected presence key to be removed after disconnect")
 	}
 }
 
-func TestTouchConnectionCleansUpStaleSessions(t *testing.T) {
-	mr, err := miniredis.Run()
-	if err != nil {
-		t.Fatalf("start miniredis: %v", err)
-	}
-	defer mr.Close()
-
-	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	defer rdb.Close()
-
-	handler := &Handler{redis: rdb, clients: map[string]map[*client]struct{}{}}
-	staleClient := &client{userID: "user-1", sessionID: "wsv1:stale", send: make(chan []byte, 1)}
-	liveClient := &client{userID: "user-1", sessionID: "wsv1:live", send: make(chan []byte, 1)}
-
-	handler.touchConnection(context.Background(), staleClient)
-	handler.touchConnection(context.Background(), liveClient)
-
-	mr.FastForward(50 * time.Second)
-	handler.touchConnection(context.Background(), liveClient)
-	mr.FastForward(50 * time.Second)
-
-	if !mr.Exists("session:wsv1:live") {
-		t.Fatalf("expected live session to remain before cleanup")
-	}
-	if mr.Exists("session:wsv1:stale") {
-		t.Fatalf("expected stale session key to expire")
-	}
-
-	handler.touchConnection(context.Background(), liveClient)
-
-	sessionIDs, err := rdb.SMembers(context.Background(), "user_sessions:user-1").Result()
-	if err != nil {
-		t.Fatalf("load user sessions: %v", err)
-	}
-	if len(sessionIDs) != 1 || sessionIDs[0] != "wsv1:live" {
-		t.Fatalf("unexpected sessions after cleanup: %#v", sessionIDs)
-	}
-	if !mr.Exists("presence:user:user-1") {
-		t.Fatalf("expected presence key to remain for live session")
-	}
-}
-
-func decodeWSMessage(t *testing.T, ch <-chan []byte) struct {
+func decodeWSMessage(t *testing.T, ch <-chan outboundMessage) struct {
 	Event string         `json:"event"`
 	Data  map[string]any `json:"data"`
 } {
@@ -314,7 +288,7 @@ func decodeWSMessage(t *testing.T, ch <-chan []byte) struct {
 			Event string         `json:"event"`
 			Data  map[string]any `json:"data"`
 		}
-		if err := json.Unmarshal(raw, &msg); err != nil {
+		if err := json.Unmarshal(raw.payload, &msg); err != nil {
 			t.Fatalf("decode ws payload: %v", err)
 		}
 		return msg

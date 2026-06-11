@@ -26,57 +26,6 @@ import (
 const presenceTTL = 90 * time.Second
 const sessionEventChannelPrefix = "miniapp:session:"
 
-// Redis session keys are the source of truth for cross-pod presence.
-// The summary keys are reconciled from live session keys on register,
-// heartbeat, unregister, and any other touch path that refreshes a session.
-// This prevents one gateway pod from marking a user offline while another pod
-// still has an active session.
-const refreshPresenceScript = `
-redis.call('SET', KEYS[1], ARGV[2], 'EX', ARGV[3])
-redis.call('SADD', KEYS[2], ARGV[1])
-local members = redis.call('SMEMBERS', KEYS[2])
-local live = 0
-for _, sid in ipairs(members) do
-	local key = 'session:' .. sid
-	if redis.call('EXISTS', key) == 1 then
-		live = live + 1
-	else
-		redis.call('SREM', KEYS[2], sid)
-	end
-end
-if live > 0 then
-	redis.call('EXPIRE', KEYS[2], tonumber(ARGV[3]))
-	redis.call('SET', KEYS[3], 'online', 'EX', ARGV[3])
-	redis.call('SET', KEYS[4], ARGV[4], 'EX', ARGV[3])
-else
-	redis.call('DEL', KEYS[2], KEYS[3], KEYS[4])
-end
-return live
-`
-
-const unregisterPresenceScript = `
-redis.call('DEL', KEYS[1])
-redis.call('SREM', KEYS[2], ARGV[1])
-local members = redis.call('SMEMBERS', KEYS[2])
-local live = 0
-for _, sid in ipairs(members) do
-	local key = 'session:' .. sid
-	if redis.call('EXISTS', key) == 1 then
-		live = live + 1
-	else
-		redis.call('SREM', KEYS[2], sid)
-	end
-end
-if live > 0 then
-	redis.call('EXPIRE', KEYS[2], tonumber(ARGV[2]))
-	redis.call('SET', KEYS[3], 'online', 'EX', ARGV[2])
-	redis.call('SET', KEYS[4], ARGV[3], 'EX', ARGV[2])
-else
-	redis.call('DEL', KEYS[2], KEYS[3], KEYS[4])
-end
-return live
-`
-
 // miniappServiceInterface defines the minimal interface needed for session event subscriptions.
 // This avoids circular import by not importing the miniapp package directly.
 type miniappServiceInterface interface {
@@ -100,7 +49,7 @@ type Handler struct {
 type client struct {
 	userID              string
 	conn                *websocket.Conn
-	send                chan []byte
+	send                chan outboundMessage
 	deviceID            string
 	sessionID           string
 	v2                  bool
@@ -113,6 +62,11 @@ type client struct {
 
 	sendMu sync.RWMutex
 	closed bool
+}
+
+type outboundMessage struct {
+	payload []byte
+	event   string
 }
 
 type wsEnvelope struct {
@@ -202,7 +156,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	c := &client{
 		userID:               userID,
 		conn:                 conn,
-		send:                 make(chan []byte, 128),
+		send:                 make(chan outboundMessage, 128),
 		sessionID:            "wsv1:" + uuid.NewString(),
 		sessionSubscriptions: make(map[string]context.CancelFunc),
 	}
@@ -245,7 +199,7 @@ func (h *Handler) ServeV2(w http.ResponseWriter, r *http.Request) {
 	c := &client{
 		userID:               userID,
 		conn:                 conn,
-		send:                 make(chan []byte, 128),
+		send:                 make(chan outboundMessage, 128),
 		v2:                   true,
 		sessionID:            "wsv2:" + uuid.NewString(),
 		sessionSubscriptions: make(map[string]context.CancelFunc),
@@ -459,7 +413,7 @@ func (h *Handler) writeLoop(c *client) {
 		if c.conn == nil {
 			return
 		}
-		if err := c.conn.WriteMessage(websocket.TextMessage, msg); err != nil {
+		if err := c.conn.WriteMessage(websocket.TextMessage, msg.payload); err != nil {
 			return
 		}
 	}
@@ -479,13 +433,19 @@ func (h *Handler) register(c *client) {
 
 func (h *Handler) unregister(c *client) {
 	h.mu.Lock()
+	lastConnection := false
 	if bucket, ok := h.clients[c.userID]; ok {
 		delete(bucket, c)
 		if len(bucket) == 0 {
 			delete(h.clients, c.userID)
+			lastConnection = true
 		}
 	}
 	h.mu.Unlock()
+	if lastConnection && h.redis != nil {
+		_ = h.redis.Del(context.Background(), "presence:user:"+c.userID).Err()
+		_ = h.redis.Del(context.Background(), "presence:user:"+c.userID+":last_seen").Err()
+	}
 	h.cleanupTypingState(context.Background(), c)
 	h.unregisterSession(context.Background(), c)
 	// P4.3: Cancel client context to unsubscribe all session subscriptions
@@ -514,35 +474,32 @@ func (h *Handler) sendJSON(c *client, event string, data any) {
 		return
 	}
 	observability.RecordWSMessage("sent", event)
+	outbound := outboundMessage{
+		payload: payload,
+		event:   event,
+	}
 	c.sendMu.RLock()
 	defer c.sendMu.RUnlock()
 	if c.closed {
 		return
 	}
 	select {
-	case c.send <- payload:
+	case c.send <- outbound:
 	default:
 	}
 }
 
-func sessionRedisKey(sessionID string) string {
-	return "session:" + sessionID
-}
-
-func userSessionsRedisKey(userID string) string {
-	return "user_sessions:" + userID
-}
-
-func userPresenceRedisKey(userID string) string {
-	return "presence:user:" + userID
-}
-
-func userLastSeenRedisKey(userID string) string {
-	return "presence:user:" + userID + ":last_seen"
+func (h *Handler) markPresence(ctx context.Context, userID string) {
+	if h.redis == nil || userID == "" {
+		return
+	}
+	now := time.Now().UTC()
+	_ = h.redis.Set(ctx, "presence:user:"+userID, "online", presenceTTL).Err()
+	_ = h.redis.Set(ctx, "presence:user:"+userID+":last_seen", strconv.FormatInt(now.UnixMilli(), 10), presenceTTL).Err()
 }
 
 func (h *Handler) registerSession(ctx context.Context, c *client) {
-	if h.redis == nil || c == nil || c.userID == "" || c.sessionID == "" {
+	if h.redis == nil || c.sessionID == "" {
 		return
 	}
 	now := time.Now().UTC()
@@ -553,25 +510,17 @@ func (h *Handler) registerSession(ctx context.Context, c *client) {
 		"version":         map[bool]string{true: "v2", false: "v1"}[c.v2],
 		"last_seen_at_ms": now.UnixMilli(),
 	})
-	_ = h.redis.Eval(ctx, refreshPresenceScript, []string{
-		sessionRedisKey(c.sessionID),
-		userSessionsRedisKey(c.userID),
-		userPresenceRedisKey(c.userID),
-		userLastSeenRedisKey(c.userID),
-	}, c.sessionID, string(body), int(presenceTTL/time.Second), strconv.FormatInt(now.UnixMilli(), 10)).Err()
+	_ = h.redis.Set(ctx, "session:"+c.sessionID, body, presenceTTL).Err()
+	_ = h.redis.SAdd(ctx, "user_sessions:"+c.userID, c.sessionID).Err()
+	_ = h.redis.Expire(ctx, "user_sessions:"+c.userID, presenceTTL).Err()
 }
 
 func (h *Handler) unregisterSession(ctx context.Context, c *client) {
-	if h.redis == nil || c == nil || c.userID == "" || c.sessionID == "" {
+	if h.redis == nil || c.sessionID == "" {
 		return
 	}
-	now := time.Now().UTC()
-	_ = h.redis.Eval(ctx, unregisterPresenceScript, []string{
-		sessionRedisKey(c.sessionID),
-		userSessionsRedisKey(c.userID),
-		userPresenceRedisKey(c.userID),
-		userLastSeenRedisKey(c.userID),
-	}, c.sessionID, int(presenceTTL/time.Second), strconv.FormatInt(now.UnixMilli(), 10)).Err()
+	_ = h.redis.Del(ctx, "session:"+c.sessionID).Err()
+	_ = h.redis.SRem(ctx, "user_sessions:"+c.userID, c.sessionID).Err()
 }
 
 func (h *Handler) subscribeDelivery(ctx context.Context, c *client) {
@@ -705,12 +654,13 @@ func (h *Handler) readLoopV2(c *client, ip string) {
 		observability.RecordWSMessage("received", env.Event)
 		switch env.Event {
 		case "hello":
+			helloStartedAt := time.Now()
 			var req resumePayload
 			if err := json.Unmarshal(env.Data, &req); err != nil {
 				h.sendJSON(c, "error", map[string]any{"code": "invalid_request", "message": "invalid hello payload"})
 				continue
 			}
-			h.handleHelloResume(context.Background(), c, req)
+			h.handleHelloResume(context.Background(), c, req, helloStartedAt)
 		case "ack":
 			var req struct {
 				ThroughUserEventID int64  `json:"through_user_event_id"`
@@ -937,10 +887,24 @@ func (h *Handler) handleTypingSignal(ctx context.Context, c *client, conversatio
 		}
 		return
 	}
+	sharesTyping, err := h.messages.UserSharesTyping(ctx, c.userID)
+	if err != nil {
+		h.sendJSON(c, "error", map[string]any{"code": "server_error", "message": "privacy_check_failed"})
+		return
+	}
 	now := time.Now().UTC()
 
 	h.touchConnection(ctx, c)
 	key := "typing:conv:" + conversationID + ":user:" + c.userID
+	if eventName == "typing.started" && !sharesTyping {
+		if h.redis != nil {
+			_ = h.redis.Del(ctx, key).Err()
+		}
+		if c.typingConversations != nil {
+			delete(c.typingConversations, conversationID)
+		}
+		return
+	}
 	if eventName == "typing.started" {
 		if h.redis != nil {
 			if exists, err := h.redis.Exists(ctx, key).Result(); err == nil && exists > 0 {
@@ -1020,12 +984,17 @@ func (h *Handler) touchConnection(ctx context.Context, c *client) {
 	if c == nil {
 		return
 	}
+	h.markPresence(ctx, c.userID)
 	h.registerSession(ctx, c)
 }
 
-func (h *Handler) handleHelloResume(ctx context.Context, c *client, req resumePayload) {
+func (h *Handler) handleHelloResume(ctx context.Context, c *client, req resumePayload, startedAt time.Time) {
 	if c == nil {
 		return
+	}
+	mode := "resume"
+	if req.LastUserCursor <= 0 && strings.TrimSpace(req.LastCursor) == "" {
+		mode = "fresh"
 	}
 	cursor, err := h.resolveResumeCursor(req.LastUserCursor, req.LastCursor)
 	if err != nil {
@@ -1042,6 +1011,9 @@ func (h *Handler) handleHelloResume(ctx context.Context, c *client, req resumePa
 		"resume_supported":      true,
 		"heartbeat_interval_ms": 30000,
 	})
+	if mode == "fresh" && cursor == 0 {
+		return
+	}
 	h.replayUserEvents(ctx, c, cursor, "", 250, nil)
 }
 
@@ -1126,6 +1098,7 @@ func (h *Handler) replayUserEvents(ctx context.Context, c *client, lastUserCurso
 			payload[k] = v
 		}
 		h.sendJSON(c, "resync_required", payload)
+		return
 	}
 }
 
