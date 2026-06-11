@@ -8,8 +8,14 @@ This package holds the shared mini-app contract instead of only prose notes.
   - canonical manifest contract for registry publishing and host validation
 - `bridge-contract.md`
   - canonical envelope and launch-context contract for web and Android hosts
+- `docs/lifecycle.md`
+  - registration, launch, teardown, and permissions lifecycle
+- `docs/events.md`
+  - host-to-app and app-to-host bridge event catalogue
+- `docs/versioning.md`
+  - bridge contract versioning and compatibility rules
 - `sdk-web`
-  - reusable web SDK package for bridge calls
+  - reusable web SDK package for bridge calls (JSDoc on all public methods)
 - `sdk-types`
   - shared TypeScript declarations for launch context and bridge client shape
 - `test-harness`
@@ -17,9 +23,11 @@ This package holds the shared mini-app contract instead of only prose notes.
 - `tools/miniapp-cli.mjs`
   - publisher-oriented CLI for validate, sign, package, upload-draft, and submit flows
 - `examples/counter`
-  - minimal state and transcript example
+  - minimal state and transcript example (internal runtime dependency)
 - `examples/eightball`
-  - conversation-oriented demo game example
+  - conversation-oriented demo game example (internal runtime dependency)
+- `examples/ping`
+  - minimal **external** fixture with zero internal deps; includes conformance tests
 
 ## Manifest Baseline
 
