@@ -36,5 +36,6 @@
     use_real_otp_provider: Boolean(runtimeConfig.use_real_otp_provider),
     web_push_enabled: Boolean(runtimeConfig.web_push_enabled),
     web_push_vapid_public_key: String(runtimeConfig.web_push_vapid_public_key || ""),
+    developer_mode: Boolean(runtimeConfig.developer_mode),
   });
 })();
