@@ -1,0 +1,26 @@
+{
+  "manifest_version": "1.0",
+  "app_id": "app.ohmf.ping",
+  "name": "Ping",
+  "version": "1.0.0",
+  "entrypoint": {
+    "type": "url",
+    "url": "./index.html"
+  },
+  "message_preview": {
+    "type": "static_image",
+    "url": "./preview.svg"
+  },
+  "permissions": [
+    "conversation.read_context",
+    "conversation.send_message",
+    "storage.session",
+    "realtime.session"
+  ],
+  "capabilities": {
+    "offline_resume": true
+  },
+  "metadata": {
+    "description": "Minimal external SDK fixture for contract conformance testing."
+  }
+}

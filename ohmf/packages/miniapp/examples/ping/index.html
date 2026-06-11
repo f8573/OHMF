@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'"
+    />
+    <meta name="referrer" content="no-referrer" />
+    <title>Ping</title>
+    <style>
+      body { font-family: system-ui, sans-serif; padding: 1.5rem; max-width: 480px; margin: 0 auto; }
+      #status { font-size: 0.85rem; color: #555; margin-bottom: 1rem; }
+      #status.error { color: #c00; }
+      #log { list-style: none; padding: 0; margin: 0; font-size: 0.8rem; }
+      #log li { border-top: 1px solid #eee; padding: 0.35rem 0; white-space: pre-wrap; word-break: break-all; }
+      button { margin: 0.25rem 0.25rem 0.25rem 0; padding: 0.4rem 0.8rem; cursor: pointer; }
+      #ping-count { font-size: 2rem; font-weight: 700; margin: 0.75rem 0; }
+    </style>
+  </head>
+  <body>
+    <h1>Ping</h1>
+    <p id="status">Booting bridge…</p>
+    <p>Pings sent: <span id="ping-count">0</span></p>
+    <div>
+      <button id="ping-btn">Ping</button>
+      <button id="send-btn">Send message</button>
+      <button id="reload-btn">Reload count</button>
+    </div>
+    <ul id="log"></ul>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
