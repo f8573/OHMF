@@ -468,10 +468,24 @@ function sanitizeText(value, limit = 1000) {
     .slice(0, limit);
 }
 
+function rewriteLocalDevAssetURL(rawUrl) {
+  try {
+    const url = new URL(rawUrl, window.location.href);
+    const localHosts = new Set(["localhost", "127.0.0.1"]);
+    if (localHosts.has(url.hostname) && localHosts.has(window.location.hostname) && url.port !== window.location.port) {
+      url.protocol = window.location.protocol;
+      url.host = `${window.location.hostname}:${window.location.port}`;
+    }
+    return url.toString();
+  } catch {
+    return rawUrl;
+  }
+}
+
 function normalizePreviewURL(value) {
   if (!value) return "";
   try {
-    const url = new URL(String(value), window.location.href);
+    const url = new URL(rewriteLocalDevAssetURL(String(value)), window.location.href);
     if (url.protocol !== "http:" && url.protocol !== "https:") return "";
     return url.toString();
   } catch {
@@ -3486,6 +3500,18 @@ function rewriteLocalDevEntrypoint(rawUrl) {
   return url.toString();
 }
 
+function miniappSandboxBaseURL() {
+  return window.OHMF_RUNTIME_CONFIG?.miniapp_sandbox_url || window.location.origin;
+}
+
+function miniappFrameSandboxFlags() {
+  const url = new URL(miniappSandboxBaseURL());
+  if (url.hostname !== window.location.hostname || url.port !== window.location.port) {
+    return "allow-scripts";
+  }
+  return "allow-scripts allow-same-origin";
+}
+
 function shouldBootstrapBuiltinMiniapps() {
   const params = new URLSearchParams(window.location.search);
   if (params.get("dev_apps") === "1") return true;
@@ -3660,8 +3686,7 @@ async function fetchMiniappManifest(manifestUrl) {
   // Convert relative URLs to absolute URLs from mini-app sandbox origin
   let resolvedUrl = manifestUrl;
   if (!manifestUrl.startsWith("http://") && !manifestUrl.startsWith("https://")) {
-    const miniappSandboxUrl = window.OHMF_RUNTIME_CONFIG?.miniapp_sandbox_url || "http://localhost:5174";
-    resolvedUrl = new URL(manifestUrl, miniappSandboxUrl + "/").toString();
+    resolvedUrl = new URL(manifestUrl, miniappSandboxBaseURL() + "/").toString();
   }
   const response = await fetch(resolvedUrl, { cache: "no-store" });
   if (!response.ok) throw new Error(`Manifest request failed with ${response.status}`);
@@ -3678,7 +3703,11 @@ async function bootstrapBuiltinMiniappCatalog() {
       const manifest = await fetchMiniappManifest(entry.manifestUrl);
       await ensureMiniappManifestRegistered(manifest);
     } catch (error) {
-      console.error(error);
+      const errorCode = String(error?.code || "");
+      const errorMessage = String(error?.message || "");
+      if (errorCode !== "invalid_manifest" || !errorMessage.includes("already published")) {
+        console.error(error);
+      }
     }
   }
 }
@@ -3700,7 +3729,8 @@ async function loadMiniappCatalog(options = {}) {
   if (options.bootstrapDev !== false) {
     await bootstrapBuiltinMiniappCatalog();
   }
-  const response = await apiRequest(`/v1/apps${shouldBootstrapBuiltinMiniapps() ? "?developer_mode=1" : ""}`, { method: "GET" });
+  const devQuery = shouldBootstrapBuiltinMiniapps() ? "?developer_mode=1" : "";
+  const response = await apiRequest(`/v1/apps${devQuery}`, { method: "GET" });
   const items = Array.isArray(response?.items)
     ? response.items
       .map(normalizeMiniappCatalogEntry)
@@ -3720,7 +3750,8 @@ async function loadMiniappCatalog(options = {}) {
 }
 
 async function loadMiniappManifestByAppId(appId) {
-  const response = await apiRequest(`/v1/apps/${encodeURIComponent(appId)}${shouldBootstrapBuiltinMiniapps() ? "?developer_mode=1" : ""}`, { method: "GET" });
+  const devQuery = shouldBootstrapBuiltinMiniapps() ? "?developer_mode=1" : "";
+  const response = await apiRequest(`/v1/apps/${encodeURIComponent(appId)}${devQuery}`, { method: "GET" });
   const manifest = response?.manifest;
   if (!manifest?.app_id || !manifest?.entrypoint?.url) throw new Error("invalid_manifest");
   manifest.entrypoint.url = rewriteLocalDevEntrypoint(manifest.entrypoint.url);
@@ -3827,24 +3858,40 @@ async function joinMiniappSession(sessionId) {
   return record;
 }
 
+function buildMiniappSnapshotRequest(nextVersion) {
+  return {
+    state: {
+      snapshot: cloneJson(state.miniapp.sessionState?.stateSnapshot || {}),
+      session_storage: cloneJson(state.miniapp.sessionState?.storage || {}),
+      shared_conversation_storage: cloneJson(state.miniapp.sessionState?.sharedConversationStorage || {}),
+      projected_messages: cloneJson(state.miniapp.sessionState?.transcript || []),
+    },
+    state_version: nextVersion,
+    capabilities_granted: Array.from(state.miniapp.grantedPermissions),
+  };
+}
+
 async function persistMiniappSession(version, eventName, eventBody) {
-  if (!state.miniapp.launchContext?.app_session_id) return 0;
-  const nextVersion = Math.max(1, Number(version || 0) || 1);
-  const payload = await apiRequest(`/v1/apps/sessions/${encodeURIComponent(state.miniapp.launchContext.app_session_id)}/snapshot`, {
-    method: "POST",
-    body: JSON.stringify({
-      state: {
-        snapshot: cloneJson(state.miniapp.sessionState?.stateSnapshot || {}),
-        session_storage: cloneJson(state.miniapp.sessionState?.storage || {}),
-        shared_conversation_storage: cloneJson(state.miniapp.sessionState?.sharedConversationStorage || {}),
-        projected_messages: cloneJson(state.miniapp.sessionState?.transcript || []),
-      },
-      state_version: nextVersion,
-      capabilities_granted: Array.from(state.miniapp.grantedPermissions),
-    }),
-  });
+  const sessionId = state.miniapp.launchContext?.app_session_id;
+  if (!sessionId) return 0;
+  let nextVersion = Math.max(1, Number(version || 0) || 1);
+  let payload;
+  try {
+    payload = await apiRequest(`/v1/apps/sessions/${encodeURIComponent(sessionId)}/snapshot`, {
+      method: "POST",
+      body: JSON.stringify(buildMiniappSnapshotRequest(nextVersion)),
+    });
+  } catch (error) {
+    if (error?.code !== "state_version_conflict") throw error;
+    const latest = await apiRequest(`/v1/apps/sessions/${encodeURIComponent(sessionId)}`, { method: "GET" });
+    nextVersion = Number(latest?.state_version || latest?.launch_context?.state_version || 0) + 1;
+    payload = await apiRequest(`/v1/apps/sessions/${encodeURIComponent(sessionId)}/snapshot`, {
+      method: "POST",
+      body: JSON.stringify(buildMiniappSnapshotRequest(nextVersion)),
+    });
+  }
   if (eventName) {
-    await apiRequest(`/v1/apps/sessions/${encodeURIComponent(state.miniapp.launchContext.app_session_id)}/events`, {
+    await apiRequest(`/v1/apps/sessions/${encodeURIComponent(sessionId)}/events`, {
       method: "POST",
       body: JSON.stringify({ event_name: eventName, body: eventBody || {} }),
     });
@@ -3988,13 +4035,13 @@ async function refreshActiveMiniappSession(rawEvent) {
 }
 
 function buildMiniappFrameURL() {
-  // Build URL relative to mini-app sandbox origin (separate from main app)
-  const miniappSandboxUrl = window.OHMF_RUNTIME_CONFIG?.miniapp_sandbox_url || "http://localhost:5174";
-  const url = new URL(state.miniapp.manifest.entrypoint.url, miniappSandboxUrl + "/");
+  const entrypointUrl = rewriteLocalDevEntrypoint(state.miniapp.manifest.entrypoint.url);
+  const url = new URL(entrypointUrl, miniappSandboxBaseURL() + "/");
   state.miniapp.channelId = randomId("chan");
   url.searchParams.set("channel", state.miniapp.channelId);
   url.searchParams.set("parent_origin", window.location.origin);
   url.searchParams.set("app_id", state.miniapp.manifest.app_id);
+  url.searchParams.set("asset_version", sanitizeText(window.OHMF_RUNTIME_CONFIG?.asset_version, 80) || "dev");
   return url.toString();
 }
 
@@ -5681,6 +5728,11 @@ function sendRealtimeAck(cursor = state.sync.lastUserCursor) {
   }));
 }
 
+function handleUnauthorizedSession(message = "Session expired. Sign in again.") {
+  window.alert(message);
+  logout();
+}
+
 async function syncFromCursor() {
   if (!state.auth || liveSyncInFlight) return;
   liveSyncInFlight = true;
@@ -5709,6 +5761,10 @@ async function syncFromCursor() {
     sendRealtimeAck();
     renderAll();
   } catch (error) {
+    if (Number(error?.status || 0) === 401) {
+      handleUnauthorizedSession();
+      return;
+    }
     console.error(error);
   } finally {
     liveSyncInFlight = false;
@@ -7536,7 +7592,7 @@ async function openEmbeddedMiniapp() {
     }
     state.miniapp.popupOpen = true;
     startMiniappLoadTimeout();
-    el.miniappFrame.setAttribute("sandbox", "allow-scripts");
+    el.miniappFrame.setAttribute("sandbox", miniappFrameSandboxFlags());
     el.miniappFrame.src = buildMiniappFrameURL();
     persistMiniappRestoreState();
     renderAll();
@@ -7586,7 +7642,7 @@ async function restoreMiniappSessionAfterReload() {
     }
     state.miniapp.popupOpen = true;
     startMiniappLoadTimeout();
-    el.miniappFrame.setAttribute("sandbox", "allow-scripts");
+    el.miniappFrame.setAttribute("sandbox", miniappFrameSandboxFlags());
     el.miniappFrame.src = buildMiniappFrameURL();
     persistMiniappRestoreState();
     renderAll();
