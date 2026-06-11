@@ -30,8 +30,11 @@ type Config struct {
 	KafkaPresenceTopic     string
 	KafkaMicroserviceTopic string
 	KafkaClientID          string
-	AckTimeout             time.Duration
-	CassandraHosts         string
+	AckTimeout              time.Duration
+	SyncFanoutBatchSize     int
+	SyncFanoutFallbackPoll  time.Duration
+	SyncFanoutNotifyChannel string
+	CassandraHosts          string
 	CassandraKeyspace      string
 	CassandraUsername      string
 	CassandraPassword      string
@@ -123,6 +126,9 @@ func Load() Config {
 		KafkaMicroserviceTopic:  get("APP_KAFKA_MICROSERVICE_TOPIC", "microservice.events.v1"),
 		KafkaClientID:           get("APP_KAFKA_CLIENT_ID", "ohmf-gateway"),
 		AckTimeout:              time.Duration(getInt("APP_ACK_TIMEOUT_MS", 2000)) * time.Millisecond,
+		SyncFanoutBatchSize:     getInt("APP_SYNC_FANOUT_BATCH_SIZE", 100),
+		SyncFanoutFallbackPoll:  time.Duration(getInt("APP_SYNC_FANOUT_FALLBACK_POLL_MS", 1000)) * time.Millisecond,
+		SyncFanoutNotifyChannel: get("APP_SYNC_FANOUT_NOTIFY_CHANNEL", "ohmf_domain_events"),
 		CassandraHosts:          get("APP_CASSANDRA_HOSTS", "localhost:9042"),
 		CassandraKeyspace:       get("APP_CASSANDRA_KEYSPACE", "ohmf_messages"),
 		CassandraUsername:       get("APP_CASSANDRA_USERNAME", ""),
