@@ -52,6 +52,30 @@ func TestMetricsHandlerExposesGatewayMetrics(t *testing.T) {
 	}
 }
 
+func TestRecordDBQueryAppearsInMetrics(t *testing.T) {
+	RecordDBQuery("SELECT id FROM messages", nil, 2e6)           // 2ms, ok
+	RecordDBQuery("INSERT INTO messages VALUES ($1)", nil, 1e6)  // 1ms, ok
+	RecordDBQuery("UPDATE messages SET x=1", errTest, 500e3)     // error
+
+	metricsReq := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	rr := httptest.NewRecorder()
+	MetricsHandler().ServeHTTP(rr, metricsReq)
+
+	body := rr.Body.String()
+	if !strings.Contains(body, "ohmf_gateway_db_queries_total") {
+		t.Fatalf("expected db query counter in metrics output")
+	}
+	if !strings.Contains(body, "ohmf_gateway_db_query_latency_seconds_bucket") {
+		t.Fatalf("expected db query latency histogram in metrics output")
+	}
+}
+
+type testError struct{ msg string }
+
+func (e *testError) Error() string { return e.msg }
+
+var errTest = &testError{"injected db error"}
+
 func TestStatusRecorderPreservesHijacker(t *testing.T) {
 	rec := &hijackableRecorder{ResponseRecorder: httptest.NewRecorder()}
 	handler := HTTPMetricsMiddleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
