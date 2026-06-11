@@ -1,9 +1,17 @@
 package messages
 
 import (
+	"context"
 	"testing"
 	"time"
+
+	miniredis "github.com/alicebob/miniredis/v2"
+	"github.com/redis/go-redis/v9"
 )
+
+type fakeIngressProducer struct{}
+
+func (fakeIngressProducer) PublishIngress(context.Context, string, any) error { return nil }
 
 func TestAsyncPipelineDispatchAckToWaiter(t *testing.T) {
 	pipeline := &AsyncPipeline{
@@ -38,5 +46,33 @@ func TestAsyncPipelineDispatchAckToWaiter(t *testing.T) {
 func TestAckRedisChannel(t *testing.T) {
 	if got := AckRedisChannel(); got != "msg:ack:events" {
 		t.Fatalf("unexpected ack channel: %q", got)
+	}
+}
+
+func TestAsyncPipelineStopTerminatesAckSubscriber(t *testing.T) {
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mr.Close()
+
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	defer rdb.Close()
+
+	pipeline := NewAsyncPipeline(fakeIngressProducer{}, rdb)
+	if pipeline == nil {
+		t.Fatal("expected pipeline")
+	}
+
+	done := make(chan struct{})
+	go func() {
+		pipeline.Stop()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for pipeline stop")
 	}
 }
