@@ -27,7 +27,6 @@ type config struct {
 	KafkaSMSDispatchTopic  string
 	KafkaDLQTopic          string
 	KafkaGroupID           string
-	HTTPAddr               string
 	PostgresDSN            string
 	RedisAddr              string
 	CassandraHosts         string
@@ -112,7 +111,6 @@ type processor struct {
 	microserviceW kafkaMessageWriter
 	smsW          kafkaMessageWriter
 	dlqW          kafkaMessageWriter
-	obs           *processorObservability
 }
 
 const domainEventMessageCreated = "message_created"
@@ -239,8 +237,14 @@ func isRetryableProcessError(err error) bool {
 func main() {
 	ctx := context.Background()
 	cfg := loadConfig()
+	startMetricsServer(getenv("APP_METRICS_ADDR", ":9091"))
 
-	pg, err := pgxpool.New(ctx, cfg.PostgresDSN)
+	poolCfg, err := pgxpool.ParseConfig(cfg.PostgresDSN)
+	if err != nil {
+		log.Fatalf("postgres config failed: %v", err)
+	}
+	poolCfg.ConnConfig.Tracer = &dbQueryTracer{}
+	pg, err := pgxpool.NewWithConfig(ctx, poolCfg)
 	if err != nil {
 		log.Fatalf("postgres init failed: %v", err)
 	}
@@ -287,40 +291,28 @@ func main() {
 	defer p.microserviceW.Close()
 	defer p.smsW.Close()
 	defer p.dlqW.Close()
-	p.obs = newProcessorObservability(
-		"messages",
-		cfg.HTTPAddr,
-		splitCSV(cfg.KafkaBrokers),
-		[]dependencyCheck{
-			{name: "postgres", check: func(ctx context.Context) error { return pg.Ping(ctx) }},
-			{name: "redis", check: func(ctx context.Context) error { return rdb.Ping(ctx).Err() }},
-			{name: "cassandra", check: func(ctx context.Context) error {
-				var releaseVersion string
-				return cass.Query(`SELECT release_version FROM system.local`).WithContext(ctx).Scan(&releaseVersion)
-			}},
-		},
-	)
-	p.obs.start()
-
 	log.Printf("messages-processor started")
 	for {
 		msg, err := p.reader.FetchMessage(ctx)
 		if err != nil {
+			recordProcessorRetry("fetch_failed")
 			log.Printf("fetch failed: %v", err)
 			time.Sleep(300 * time.Millisecond)
 			continue
 		}
-		p.obs.setConsumerLag(messageLag(msg))
+		if !msg.Time.IsZero() && time.Now().After(msg.Time) {
+			recordKafkaConsumeLag(time.Since(msg.Time))
+		}
 		p.handleFetchedMessage(ctx, msg)
 	}
 }
 
 func (p *processor) handleFetchedMessage(ctx context.Context, msg kafka.Message) {
 	startedAt := time.Now()
-	p.obs.recordStage("kafka_consume", "succeeded", "")
+	recordStage("kafka_consume", "succeeded", "")
 	if err := p.processMessage(ctx, msg); err != nil {
-		p.obs.recordStage("handler_return", "error", "")
-		p.obs.recordError(time.Since(startedAt))
+		recordStage("handler_return", "error", "")
+		recordProcessorResult("failure", time.Since(startedAt))
 		log.Printf("process failed: %v", err)
 		if isRetryableProcessError(err) {
 			log.Printf("recoverable processor failure; leaving offset uncommitted for retry")
@@ -330,30 +322,31 @@ func (p *processor) handleFetchedMessage(ctx context.Context, msg kafka.Message)
 			log.Printf("dlq publish failed: %v", dlqErr)
 			return
 		}
-		p.obs.recordDLQPublish()
+		recordProcessorRetry("dlq")
 	} else {
-		p.obs.recordStage("handler_return", "success", "")
-		p.obs.recordSuccess(time.Since(startedAt))
+		recordStage("handler_return", "success", "")
+		recordProcessorResult("success", time.Since(startedAt))
 	}
 	if err := p.reader.CommitMessages(ctx, msg); err != nil {
-		p.obs.recordStage("kafka_offset_commit", "failed", "")
+		recordStage("kafka_offset_commit", "failed", "")
+		recordProcessorRetry("commit_failed")
 		log.Printf("commit failed: %v", err)
 		return
 	}
-	p.obs.recordStage("kafka_offset_commit", "succeeded", "")
+	recordStage("kafka_offset_commit", "succeeded", "")
 }
 
 func (p *processor) processMessage(ctx context.Context, msg kafka.Message) error {
 	var evt ingressEvent
 	if err := json.Unmarshal(msg.Value, &evt); err != nil {
-		p.obs.recordStage("decode", "failed", "")
+		recordStage("decode", "failed", "")
 		return fmt.Errorf("decode ingress: %w", err)
 	}
 	if evt.ConversationID == "" || evt.SenderUserID == "" || evt.IdempotencyKey == "" || evt.Endpoint == "" {
-		p.obs.recordStage("decode", "failed", "")
+		recordStage("decode", "failed", "")
 		return fmt.Errorf("invalid ingress event")
 	}
-	p.obs.recordStage("decode", "succeeded", "")
+	recordStage("decode", "succeeded", "")
 
 	tx, err := p.pg.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
@@ -389,8 +382,8 @@ func (p *processor) processMessage(ctx context.Context, msg kafka.Message) error
 		sideEffects storedResponseSideState
 	)
 	if err == nil && existingStatus == 201 {
-		p.obs.recordDuplicate()
-		p.obs.recordStage("dedupe", "skipped", "")
+		recordProcessorRetry("duplicate")
+		recordStage("dedupe", "skipped", "")
 		var existing storedResponsePayload
 		if uErr := json.Unmarshal(existingPayload, &existing); uErr == nil && existing.MessageID != "" {
 			messageID = existing.MessageID
@@ -413,7 +406,7 @@ func (p *processor) processMessage(ctx context.Context, msg kafka.Message) error
 		}
 
 		if p.cfg.ShadowPostgresWrite {
-			p.obs.recordStage("postgres_write", "attempted", "")
+			recordStage("postgres_write", "attempted", "")
 			contentJSON, _ := json.Marshal(evt.Content)
 			tag, execErr := tx.Exec(ctx, `
 				INSERT INTO messages (id, conversation_id, sender_user_id, content_type, content, client_generated_id, transport, server_order, created_at)
@@ -503,15 +496,15 @@ func (p *processor) processMessage(ctx context.Context, msg kafka.Message) error
 		return retryableError("postgres commit failed: %w", err)
 	}
 	if newMessage && p.cfg.ShadowPostgresWrite {
-		p.obs.recordStage("postgres_write", "succeeded", "")
+		recordStage("postgres_write", "succeeded", "")
 	}
 
-	p.obs.recordStage("cassandra_write", "attempted", "")
+	recordStage("cassandra_write", "attempted", "")
 	if err := p.cassandra.WriteMessage(ctx, evt, messageID, serverOrder, persistedAt); err != nil {
 		p.recordStageFailure("cassandra_write", "", evt, true, err)
 		return retryableError("cassandra write failed after postgres commit: %w", err)
 	}
-	p.obs.recordStage("cassandra_write", "succeeded", "")
+	recordStage("cassandra_write", "succeeded", "")
 
 	ackBody, _ := json.Marshal(ackPayload{
 		EventID:           evt.EventID,
@@ -523,18 +516,18 @@ func (p *processor) processMessage(ctx context.Context, msg kafka.Message) error
 		PersistedAtMS:     persistedAt.UnixMilli(),
 		ClientGeneratedID: evt.ClientGeneratedID,
 	})
-	p.obs.recordStage("redis_ack", "attempted", "set")
+	recordStage("redis_ack", "attempted", "set")
 	if err := p.redis.Set(ctx, ackKeyPrefix+evt.EventID, string(ackBody), 24*time.Hour); err != nil {
 		p.recordStageFailure("redis_ack", "set", evt, true, err)
 		return retryableError("redis ack failed after persistence: %w", err)
 	}
-	p.obs.recordStage("redis_ack", "succeeded", "set")
-	p.obs.recordStage("redis_ack", "attempted", "notify")
+	recordStage("redis_ack", "succeeded", "set")
+	recordStage("redis_ack", "attempted", "notify")
 	if err := p.redis.Publish(ctx, ackSignalPrefix+evt.EventID, string(ackBody)); err != nil {
 		p.recordStageFailure("redis_ack", "notify", evt, true, err)
 		return retryableError("redis ack notify failed after persistence: %w", err)
 	}
-	p.obs.recordStage("redis_ack", "succeeded", "notify")
+	recordStage("redis_ack", "succeeded", "notify")
 
 	persisted := persistedEvent{
 		EventID:         evt.EventID,
@@ -550,7 +543,7 @@ func (p *processor) processMessage(ctx context.Context, msg kafka.Message) error
 	}
 	body, _ := json.Marshal(persisted)
 	if !sideEffects.PersistedPublished {
-		p.obs.recordStage("downstream_publish", "attempted", "persisted")
+		recordStage("downstream_publish", "attempted", "persisted")
 		if err := p.persistedW.WriteMessages(ctx, kafka.Message{
 			Key:   []byte(evt.ConversationID),
 			Value: body,
@@ -559,16 +552,16 @@ func (p *processor) processMessage(ctx context.Context, msg kafka.Message) error
 			p.recordStageFailure("downstream_publish", "persisted", evt, true, err)
 			return retryableError("persisted topic publish failed after persistence: %w", err)
 		}
-		p.obs.recordStage("downstream_publish", "succeeded", "persisted")
-		p.obs.recordStage("side_effect_mark", "attempted", sideEffectPersistedPublished)
+		recordStage("downstream_publish", "succeeded", "persisted")
+		recordStage("side_effect_mark", "attempted", sideEffectPersistedPublished)
 		if err := p.markSideEffect(ctx, evt, sideEffectPersistedPublished); err != nil {
 			p.recordStageFailure("side_effect_mark", sideEffectPersistedPublished, evt, true, err)
 			return retryableError("mark persisted topic side effect failed: %w", err)
 		}
-		p.obs.recordStage("side_effect_mark", "succeeded", sideEffectPersistedPublished)
+		recordStage("side_effect_mark", "succeeded", sideEffectPersistedPublished)
 	}
 	if !sideEffects.MicroservicePublished {
-		p.obs.recordStage("downstream_publish", "attempted", "microservice")
+		recordStage("downstream_publish", "attempted", "microservice")
 		if err := p.microserviceW.WriteMessages(ctx, kafka.Message{
 			Key:   []byte(evt.ConversationID),
 			Value: body,
@@ -577,16 +570,16 @@ func (p *processor) processMessage(ctx context.Context, msg kafka.Message) error
 			p.recordStageFailure("downstream_publish", "microservice", evt, true, err)
 			return retryableError("microservice topic publish failed after persistence: %w", err)
 		}
-		p.obs.recordStage("downstream_publish", "succeeded", "microservice")
-		p.obs.recordStage("side_effect_mark", "attempted", sideEffectMicroserviceSent)
+		recordStage("downstream_publish", "succeeded", "microservice")
+		recordStage("side_effect_mark", "attempted", sideEffectMicroserviceSent)
 		if err := p.markSideEffect(ctx, evt, sideEffectMicroserviceSent); err != nil {
 			p.recordStageFailure("side_effect_mark", sideEffectMicroserviceSent, evt, true, err)
 			return retryableError("mark microservice topic side effect failed: %w", err)
 		}
-		p.obs.recordStage("side_effect_mark", "succeeded", sideEffectMicroserviceSent)
+		recordStage("side_effect_mark", "succeeded", sideEffectMicroserviceSent)
 	}
 	if mapTransport(evt.TransportIntent) == "SMS" && !sideEffects.SMSDispatchPublished {
-		p.obs.recordStage("downstream_publish", "attempted", "sms_dispatch")
+		recordStage("downstream_publish", "attempted", "sms_dispatch")
 		if err := p.smsW.WriteMessages(ctx, kafka.Message{
 			Key:   []byte(evt.ConversationID),
 			Value: body,
@@ -595,13 +588,13 @@ func (p *processor) processMessage(ctx context.Context, msg kafka.Message) error
 			p.recordStageFailure("downstream_publish", "sms_dispatch", evt, true, err)
 			return retryableError("sms dispatch publish failed after persistence: %w", err)
 		}
-		p.obs.recordStage("downstream_publish", "succeeded", "sms_dispatch")
-		p.obs.recordStage("side_effect_mark", "attempted", sideEffectSMSDispatchSent)
+		recordStage("downstream_publish", "succeeded", "sms_dispatch")
+		recordStage("side_effect_mark", "attempted", sideEffectSMSDispatchSent)
 		if err := p.markSideEffect(ctx, evt, sideEffectSMSDispatchSent); err != nil {
 			p.recordStageFailure("side_effect_mark", sideEffectSMSDispatchSent, evt, true, err)
 			return retryableError("mark sms dispatch side effect failed: %w", err)
 		}
-		p.obs.recordStage("side_effect_mark", "succeeded", sideEffectSMSDispatchSent)
+		recordStage("side_effect_mark", "succeeded", sideEffectSMSDispatchSent)
 	}
 	if !sideEffects.RecipientFanoutSent {
 		for _, recipientID := range recipients {
@@ -610,12 +603,12 @@ func (p *processor) processMessage(ctx context.Context, msg kafka.Message) error
 			}
 			_ = p.redis.Publish(ctx, "message:user:"+recipientID, payload)
 		}
-		p.obs.recordStage("side_effect_mark", "attempted", sideEffectRecipientFanout)
+		recordStage("side_effect_mark", "attempted", sideEffectRecipientFanout)
 		if err := p.markSideEffect(ctx, evt, sideEffectRecipientFanout); err != nil {
 			p.recordStageFailure("side_effect_mark", sideEffectRecipientFanout, evt, true, err)
 			return retryableError("mark recipient fanout side effect failed: %w", err)
 		}
-		p.obs.recordStage("side_effect_mark", "succeeded", sideEffectRecipientFanout)
+		recordStage("side_effect_mark", "succeeded", sideEffectRecipientFanout)
 	}
 	return nil
 }
@@ -651,7 +644,7 @@ func (p *processor) markSideEffect(ctx context.Context, evt ingressEvent, effect
 }
 
 func (p *processor) recordStageFailure(stage, target string, evt ingressEvent, partialPersistence bool, err error) {
-	p.obs.recordStage(stage, "failed", target)
+	recordStage(stage, "failed", target)
 	log.Printf(
 		"stage failure stage=%s target=%s partial_persistence=%t event_id=%s message_id=%s conversation_id=%s sender_user_id=%s idempotency_key=%s client_generated_id=%s run_scope=%s err=%v",
 		stage,
@@ -784,7 +777,6 @@ func loadConfig() config {
 		KafkaSMSDispatchTopic:  getenv("APP_KAFKA_SMS_DISPATCH_TOPIC", "msg.sms.dispatch.v1"),
 		KafkaDLQTopic:          getenv("APP_KAFKA_DLQ_TOPIC", "msg.ingress.dlq.v1"),
 		KafkaGroupID:           getenv("APP_KAFKA_GROUP_ID", "messages-processor-v1"),
-		HTTPAddr:               getenv("APP_HTTP_ADDR", ":18088"),
 		PostgresDSN:            getenv("APP_DB_DSN", "postgres://ohmf:ohmf@localhost:5432/ohmf?sslmode=disable"),
 		RedisAddr:              getenv("APP_REDIS_ADDR", "localhost:6379"),
 		CassandraHosts:         getenv("APP_CASSANDRA_HOSTS", "localhost:9042"),

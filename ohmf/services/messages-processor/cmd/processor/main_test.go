@@ -167,7 +167,6 @@ func newTestProcessor(db processorDB, reader kafkaReader, dlq kafkaMessageWriter
 		microserviceW: &stubKafkaWriter{},
 		smsW:          &stubKafkaWriter{},
 		dlqW:          dlq,
-		obs:           newProcessorObservability("messages", ":0", []string{"127.0.0.1:1"}, nil),
 	}
 }
 
