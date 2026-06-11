@@ -76,10 +76,20 @@ func initMetrics() {
 
 func startMetricsServer(addr string) {
 	initMetrics()
+	mux := http.NewServeMux()
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	})
+	mux.HandleFunc("/readyz", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	})
+	mux.Handle("/metrics", promhttp.Handler())
 	go func() {
 		server := &http.Server{
 			Addr:              addr,
-			Handler:           promhttp.Handler(),
+			Handler:           mux,
 			ReadHeaderTimeout: 5 * time.Second,
 		}
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {

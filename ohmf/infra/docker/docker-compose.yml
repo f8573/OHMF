@@ -211,6 +211,11 @@ services:
       APP_SHADOW_POSTGRES_WRITE: "true"
     ports:
       - "19091:9091"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9091/healthz >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
 
   delivery-processor:
     build:
@@ -237,6 +242,11 @@ services:
       APP_KAFKA_DELIVERY_DLQ_TOPIC: msg.delivery.dlq.v1
     ports:
       - "19092:9092"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9092/healthz >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
 
   sms-processor:
     build:
