@@ -3,8 +3,8 @@ package messages
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -13,9 +13,8 @@ import (
 )
 
 const (
-	ackKeyPrefix          = "msg:ack:"
-	ackSignalPrefix       = "msg:ack:notify:"
-	legacyAckPollInterval = time.Second
+	ackKeyPrefix   = "msg:ack:"
+	ackChannelName = "msg:ack:events"
 )
 
 type IngressEvent struct {
@@ -48,16 +47,21 @@ type PersistedAck struct {
 type AsyncPipeline struct {
 	producer bus.IngressProducer
 	redis    *redis.Client
+	waiters  map[string][]chan PersistedAck
+	mu       sync.Mutex
 }
 
 func NewAsyncPipeline(producer bus.IngressProducer, redisClient *redis.Client) *AsyncPipeline {
 	if producer == nil || redisClient == nil {
 		return nil
 	}
-	return &AsyncPipeline{
+	pipeline := &AsyncPipeline{
 		producer: producer,
 		redis:    redisClient,
+		waiters:  make(map[string][]chan PersistedAck),
 	}
+	go pipeline.runAckSubscriber(context.Background())
+	return pipeline
 }
 
 func (p *AsyncPipeline) PublishIngress(ctx context.Context, evt IngressEvent) error {
@@ -79,59 +83,34 @@ func (p *AsyncPipeline) WaitAck(ctx context.Context, eventID string, timeout tim
 	if p == nil || p.redis == nil {
 		return PersistedAck{}, false, nil
 	}
-	waitCtx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
+	if timeout <= 0 {
+		timeout = 2 * time.Second
+	}
+	key := ackKeyPrefix + eventID
+	waiter := make(chan PersistedAck, 1)
+	p.registerWaiter(eventID, waiter)
+	defer p.unregisterWaiter(eventID, waiter)
 
-	key := AckRedisKey(eventID)
-	if ack, ok, err := p.readAckWithTimeoutHandling(ctx, waitCtx, key); ok || err != nil {
-		return ack, ok, err
+	if ack, ok, err := p.loadPersistedAck(ctx, key); err != nil {
+		return PersistedAck{}, false, err
+	} else if ok {
+		return ack, true, nil
 	}
 
-	pubsub := p.redis.Subscribe(waitCtx, ackSignalChannel(eventID))
-	defer pubsub.Close()
-	if _, err := pubsub.Receive(waitCtx); err != nil {
-		return ackWaitResult(ctx, waitCtx, err)
-	}
-
-	// Re-check the durable ack key after the subscription is live so a key write
-	// that raced with subscription setup is still observed without polling.
-	if ack, ok, err := p.readAckWithTimeoutHandling(ctx, waitCtx, key); ok || err != nil {
-		return ack, ok, err
-	}
-
-	msgCh := pubsub.Channel()
-	legacyTicker := time.NewTicker(legacyAckPollInterval)
-	defer legacyTicker.Stop()
-
-	for {
-		select {
-		case <-waitCtx.Done():
-			// One final authoritative key read avoids timing out on an ack that
-			// landed just before the wait context expired.
-			if ack, ok, err := p.readAck(context.Background(), key); ok || err != nil {
-				return ack, ok, err
-			}
-			return ackWaitResult(ctx, waitCtx, waitCtx.Err())
-		case msg, ok := <-msgCh:
-			if !ok {
-				if ack, found, err := p.readAckWithTimeoutHandling(ctx, waitCtx, key); found || err != nil {
-					return ack, found, err
-				}
-				return ackWaitResult(ctx, waitCtx, errors.New("redis ack subscription closed"))
-			}
-			ack, err := decodeAckPayload(msg.Payload)
-			if err != nil {
-				return PersistedAck{}, false, err
-			}
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return PersistedAck{}, false, ctx.Err()
+	case ack := <-waiter:
+		return ack, true, nil
+	case <-timer.C:
+		if ack, ok, err := p.loadPersistedAck(ctx, key); err != nil {
+			return PersistedAck{}, false, err
+		} else if ok {
 			return ack, true, nil
-		case <-legacyTicker.C:
-			// Sparse fallback polling is retained for rolling-deploy compatibility
-			// and missed/lost Pub/Sub notifications. The durable ack key remains
-			// authoritative; Pub/Sub is only a wake-up optimization.
-			if ack, ok, err := p.readAckWithTimeoutHandling(ctx, waitCtx, key); ok || err != nil {
-				return ack, ok, err
-			}
 		}
+		return PersistedAck{}, false, nil
 	}
 }
 
@@ -176,47 +155,95 @@ func AckRedisKey(eventID string) string {
 	return fmt.Sprintf("%s%s", ackKeyPrefix, eventID)
 }
 
-func ackSignalChannel(eventID string) string {
-	return fmt.Sprintf("%s%s", ackSignalPrefix, eventID)
+func AckRedisChannel() string {
+	return ackChannelName
 }
 
-func (p *AsyncPipeline) readAck(ctx context.Context, key string) (PersistedAck, bool, error) {
+func (p *AsyncPipeline) loadPersistedAck(ctx context.Context, key string) (PersistedAck, bool, error) {
 	payload, err := p.redis.Get(ctx, key).Result()
-	if err == nil {
-		ack, err := decodeAckPayload(payload)
-		if err != nil {
-			return PersistedAck{}, false, err
-		}
-		return ack, true, nil
-	}
-	if err != nil && err != redis.Nil {
-		return PersistedAck{}, false, err
-	}
-	return PersistedAck{}, false, nil
-}
-
-func (p *AsyncPipeline) readAckWithTimeoutHandling(parentCtx, waitCtx context.Context, key string) (PersistedAck, bool, error) {
-	ack, ok, err := p.readAck(waitCtx, key)
-	if err == nil {
-		return ack, ok, nil
-	}
-	return ackWaitResult(parentCtx, waitCtx, err)
-}
-
-func decodeAckPayload(payload string) (PersistedAck, error) {
-	var ack PersistedAck
-	if err := json.Unmarshal([]byte(payload), &ack); err != nil {
-		return PersistedAck{}, err
-	}
-	return ack, nil
-}
-
-func ackWaitResult(parentCtx, waitCtx context.Context, err error) (PersistedAck, bool, error) {
-	if parentErr := parentCtx.Err(); parentErr != nil {
-		return PersistedAck{}, false, parentErr
-	}
-	if errors.Is(err, context.DeadlineExceeded) || errors.Is(waitCtx.Err(), context.DeadlineExceeded) {
+	if err == redis.Nil {
 		return PersistedAck{}, false, nil
 	}
-	return PersistedAck{}, false, err
+	if err != nil {
+		return PersistedAck{}, false, err
+	}
+	var ack PersistedAck
+	if err := json.Unmarshal([]byte(payload), &ack); err != nil {
+		return PersistedAck{}, false, err
+	}
+	return ack, true, nil
+}
+
+func (p *AsyncPipeline) registerWaiter(eventID string, waiter chan PersistedAck) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.waiters[eventID] = append(p.waiters[eventID], waiter)
+}
+
+func (p *AsyncPipeline) unregisterWaiter(eventID string, waiter chan PersistedAck) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	waiters := p.waiters[eventID]
+	if len(waiters) == 0 {
+		return
+	}
+	filtered := waiters[:0]
+	for _, item := range waiters {
+		if item == waiter {
+			continue
+		}
+		filtered = append(filtered, item)
+	}
+	if len(filtered) == 0 {
+		delete(p.waiters, eventID)
+		return
+	}
+	p.waiters[eventID] = filtered
+}
+
+func (p *AsyncPipeline) dispatchAck(ack PersistedAck) {
+	if p == nil || ack.EventID == "" {
+		return
+	}
+	p.mu.Lock()
+	waiters := append([]chan PersistedAck(nil), p.waiters[ack.EventID]...)
+	p.mu.Unlock()
+	for _, waiter := range waiters {
+		select {
+		case waiter <- ack:
+		default:
+		}
+	}
+}
+
+func (p *AsyncPipeline) runAckSubscriber(ctx context.Context) {
+	if p == nil || p.redis == nil {
+		return
+	}
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+		pubsub := p.redis.Subscribe(ctx, ackChannelName)
+		if _, err := pubsub.Receive(ctx); err != nil {
+			_ = pubsub.Close()
+			time.Sleep(250 * time.Millisecond)
+			continue
+		}
+		for {
+			msg, err := pubsub.ReceiveMessage(ctx)
+			if err != nil {
+				_ = pubsub.Close()
+				time.Sleep(250 * time.Millisecond)
+				break
+			}
+			var ack PersistedAck
+			if err := json.Unmarshal([]byte(msg.Payload), &ack); err != nil {
+				continue
+			}
+			p.dispatchAck(ack)
+		}
+	}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -85,11 +86,22 @@ func main() {
 
 	// create runner and workers
 	runner := wk.NewRunner()
-	runner.Add(wk.NewMediaWorker(pool))
-	runner.Add(wk.NewNotificationWorker(notificationHandler))
-	runner.Add(wk.NewAbuseAggregatorWorker(pool))
-	runner.Add(wk.NewRelayRetryWorker(pool))
-	runner.Add(wk.NewSyncFanoutWorker(replicationStore))
+	enabledWorkers := workerSetFromEnv(os.Getenv("APP_ENABLED_WORKERS"))
+	if workerEnabled(enabledWorkers, "media") {
+		runner.Add(wk.NewMediaWorker(pool))
+	}
+	if workerEnabled(enabledWorkers, "notification") {
+		runner.Add(wk.NewNotificationWorker(notificationHandler))
+	}
+	if workerEnabled(enabledWorkers, "abuse") {
+		runner.Add(wk.NewAbuseAggregatorWorker(pool))
+	}
+	if workerEnabled(enabledWorkers, "relay_retry") {
+		runner.Add(wk.NewRelayRetryWorker(pool))
+	}
+	if workerEnabled(enabledWorkers, "sync_fanout") {
+		runner.Add(wk.NewSyncFanoutWorker(replicationStore, cfg.DBDSN, cfg.SyncFanoutBatchSize, cfg.SyncFanoutFallbackPoll, cfg.SyncFanoutNotifyChannel))
+	}
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -108,4 +120,28 @@ func main() {
 	stopCtx, cancelStop := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancelStop()
 	_ = runner.StopAll(stopCtx)
+}
+
+func workerSetFromEnv(value string) map[string]struct{} {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+	out := make(map[string]struct{})
+	for _, item := range strings.Split(value, ",") {
+		item = strings.TrimSpace(strings.ToLower(item))
+		if item == "" {
+			continue
+		}
+		out[item] = struct{}{}
+	}
+	return out
+}
+
+func workerEnabled(enabled map[string]struct{}, name string) bool {
+	if len(enabled) == 0 {
+		return true
+	}
+	_, ok := enabled[strings.TrimSpace(strings.ToLower(name))]
+	return ok
 }

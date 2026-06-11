@@ -237,7 +237,7 @@ func main() {
 	msgHandler := messages.NewHandler(msgSvc)
 	syncSvc := sync.NewService(pool, replicationStore)
 	syncHandler := &sync.Handler{Svc: syncSvc}
-	syncFanoutWorker := wk.NewSyncFanoutWorker(replicationStore)
+	syncFanoutWorker := wk.NewSyncFanoutWorker(replicationStore, cfg.DBDSN, cfg.SyncFanoutBatchSize, cfg.SyncFanoutFallbackPoll, cfg.SyncFanoutNotifyChannel)
 	go func() {
 		if err := syncFanoutWorker.Start(ctx); err != nil {
 			logger.Error().Err(err).Msg("sync fanout worker stopped")
